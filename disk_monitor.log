@@ -1,0 +1,3 @@
+2025-11-10 11:11:04 - INFO - Starting disk monitoring on  ()
+2025-11-10 11:11:35 - ERROR - Webhook returned error: 000
+2025-11-10 11:11:35 - ERROR - Disk monitoring failed to send data
