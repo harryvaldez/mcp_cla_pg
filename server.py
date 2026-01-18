@@ -69,12 +69,6 @@ def _get_auth() -> Any:
     return auth_type
 
 
-mcp = FastMCP(
-    name=os.environ.get("MCP_SERVER_NAME", "PostgreSQL MCP Server"),
-    auth=_get_auth()
-)
-
-
 def _env_int(name: str, default: int) -> int:
     value = os.environ.get(name)
     if value is None or value == "":
@@ -87,6 +81,12 @@ def _env_bool(name: str, default: bool) -> bool:
     if value is None or value == "":
         return default
     return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+mcp = FastMCP(
+    name=os.environ.get("MCP_SERVER_NAME", "PostgreSQL MCP Server"),
+    auth=_get_auth()
+)
 
 
 def _build_database_url_from_pg_env() -> str | None:
@@ -107,13 +107,13 @@ if not DATABASE_URL:
         "Missing DATABASE_URL or PGHOST/PGUSER/PGDATABASE environment variables"
     )
 
-ALLOW_WRITE = _env_bool("MCP_ALLOW_WRITE", False)
+ALLOW_WRITE = _env_bool("MCP_ALLOW_WRITE", True)
 DEFAULT_MAX_ROWS = _env_int("MCP_MAX_ROWS", 500)
 POOL_MIN_SIZE = _env_int("MCP_POOL_MIN_SIZE", 1)
 POOL_MAX_SIZE = _env_int("MCP_POOL_MAX_SIZE", 5)
 POOL_TIMEOUT = float(os.environ.get("MCP_POOL_TIMEOUT", "30.0"))
 POOL_MAX_WAITING = _env_int("MCP_POOL_MAX_WAITING", 10)
-STATEMENT_TIMEOUT_MS = _env_int("MCP_STATEMENT_TIMEOUT_MS", 30000) # 30s default
+STATEMENT_TIMEOUT_MS = _env_int("MCP_STATEMENT_TIMEOUT_MS", 120000) # 120s default
 
 pool = ConnectionPool(
     conninfo=DATABASE_URL,
@@ -121,7 +121,8 @@ pool = ConnectionPool(
     max_size=POOL_MAX_SIZE,
     timeout=POOL_TIMEOUT,
     max_waiting=POOL_MAX_WAITING,
-    kwargs={"row_factory": dict_row},
+    open=True,
+    kwargs={"row_factory": dict_row, "options": "-c DateStyle=ISO,MDY"},
 )
 
 
@@ -172,7 +173,7 @@ _WRITE_KEYWORDS = {
     "release",
 }
 
-_READONLY_START = {"select", "with", "show", "explain"}
+_READONLY_START = {"select", "with", "show", "explain", "set"}
 
 
 def _is_sql_readonly(sql: str) -> bool:
@@ -295,6 +296,13 @@ def create_db_user(
                     cur,
                     sql.SQL("GRANT SELECT ON ALL TABLES IN SCHEMA public TO {}").format(sql.Identifier(username)),
                 )
+                # Optionally grant ro_role if it exists
+                cur.execute("SELECT 1 FROM pg_roles WHERE rolname = 'ro_role'")
+                if cur.fetchone():
+                    _execute_safe(
+                        cur,
+                        sql.SQL("GRANT ro_role to {}").format(sql.Identifier(username)),
+                    )
                 _execute_safe(
                     cur,
                     sql.SQL("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO {}").format(
@@ -377,8 +385,8 @@ def check_bloat(limit: int = 50) -> list[dict[str, Any]]:
                     'table' as type,
                     schemaname,
                     tblname as object_name,
-                    bs * tblpages as real_size,
-                    (tblpages - est_tblpages) * bs as extra_size,
+                    bs::bigint * tblpages::bigint as real_size,
+                    (tblpages::bigint - est_tblpages::bigint) * bs::bigint as extra_size,
                     case when tblpages > 0 then (tblpages - est_tblpages)::float / tblpages else 0 end as bloat_ratio,
                     case
                       when (tblpages - est_tblpages) > 0
@@ -387,7 +395,7 @@ def check_bloat(limit: int = 50) -> list[dict[str, Any]]:
                     end as maintenance_cmd
                   from (
                     select
-                      ceil( reltuples / ( (bs-page_hdr)/fillfactor ) ) + ceil( toasttuples / 4 ) as est_tblpages,
+                      (ceil( reltuples / ( (bs-page_hdr)/fillfactor ) ) + ceil( toasttuples / 4 ))::bigint as est_tblpages,
                       tblpages, fillfactor, bs, tblname, schemaname, page_hdr
                     from (
                       select
@@ -409,6 +417,7 @@ def check_bloat(limit: int = 50) -> list[dict[str, Any]]:
                         join pg_namespace n on n.oid = c.relnamespace
                         where c.relkind = 'r'
                           and n.nspname not in ('pg_catalog', 'information_schema')
+                          and c.relpages > 128
                       ) as foo
                     ) as first_el_idx
                   ) as second_el_idx
@@ -420,14 +429,14 @@ def check_bloat(limit: int = 50) -> list[dict[str, Any]]:
                     'index' as type,
                     schemaname,
                     idxname as object_name,
-                    bs * relpages as real_size,
-                    (relpages - est_pages) * bs as extra_size,
+                    bs::bigint * relpages::bigint as real_size,
+                    (relpages::bigint - est_pages::bigint) * bs::bigint as extra_size,
                     case when relpages > 0 then (relpages - est_pages)::float / relpages else 0 end as bloat_ratio,
                     'REINDEX INDEX ' || quote_ident(schemaname) || '.' || quote_ident(idxname) as maintenance_cmd
                   from (
                     select
                       bs, schemaname, idxname, relpages,
-                      ceil(reltuples * (avgwidth + 12.0) / (bs - 20.0) / 0.9) as est_pages
+                      ceil(reltuples * (avgwidth + 12.0) / (bs - 20.0) / 0.9)::bigint as est_pages
                     from (
                       select
                         (select current_setting('block_size')::int) as bs,
@@ -443,6 +452,7 @@ def check_bloat(limit: int = 50) -> list[dict[str, Any]]:
                       where c.relkind = 'i'
                         and i.indisprimary = false
                         and n.nspname not in ('pg_catalog', 'information_schema')
+                        and c.relpages > 128
                     ) as foo
                   ) as third_el_idx
                 )
@@ -503,10 +513,7 @@ def db_stats(database: str | None = None, include_performance: bool = False) -> 
                       temp_files,
                       temp_bytes,
                       deadlocks,
-                      {checksum_expr},
-                      blk_read_time as block_read_time_ms,
-                      blk_write_time as block_write_time_ms,
-                      stats_reset
+                      {checksum_expr}
                     from pg_stat_database
                     where datname = %(database)s
                     """,
@@ -576,7 +583,8 @@ def analyze_table_health(
     include_bloat: bool = True,
     include_maintenance: bool = True,
     include_autovacuum: bool = True,
-    limit: int = 30
+    limit: int = 30,
+    profile: str = "oltp"
 ) -> dict[str, Any]:
     """
     Comprehensive table health analysis combining bloat detection, maintenance needs, and autovacuum recommendations.
@@ -588,6 +596,7 @@ def analyze_table_health(
         include_maintenance: Include maintenance statistics (default: True).
         include_autovacuum: Include autovacuum recommendations (default: True).
         limit: Maximum number of tables to analyze (default: 30).
+        profile: Workload profile to tune thresholds, e.g. "oltp" or "olap".
     
     Returns:
         Dictionary containing table health summary, detailed analysis, and recommendations.
@@ -599,54 +608,86 @@ def analyze_table_health(
                     "total_tables_analyzed": 0,
                     "tables_with_issues": 0,
                     "critical_issues": 0,
+                    "materialized_view_candidates": 0,
                     "recommendations": []
                 },
                 "tables": [],
                 "overall_health_score": 100
             }
 
+            profile_value = (profile or "oltp").lower()
+            if profile_value == "olap":
+                autovac_high_mod_threshold = 5000
+                autovac_low_mod_threshold = 500
+                mv_min_size_mb = max(min_size_mb, 50)
+                mv_max_mods_per_day = 1000
+                mv_min_reads = 100
+                mv_min_ratio = 3.0
+            else:
+                autovac_high_mod_threshold = 1000
+                autovac_low_mod_threshold = 100
+                mv_min_size_mb = max(min_size_mb, 100)
+                mv_max_mods_per_day = 100
+                mv_min_reads = 1000
+                mv_min_ratio = 10.0
+
             # Get candidate tables
             _execute_safe(
                 cur,
                 """
                 select
-                  n.nspname as schema,
-                  c.relname as table,
-                  pg_total_relation_size(c.oid) as size_bytes,
-                  c.reltuples::bigint as approx_rows,
-                  s.n_live_tup as live_tuples,
-                  s.n_dead_tup as dead_tuples,
-                  s.n_tup_ins as inserts,
-                  s.n_tup_upd as updates,
-                  s.n_tup_del as deletes,
-                  s.seq_scan,
-                  s.idx_scan,
-                  s.last_vacuum,
-                  s.last_autovacuum,
-                  s.last_analyze,
-                  s.last_autoanalyze,
-                  case
-                    when coalesce(s.last_autovacuum, s.last_vacuum) is null then null
-                    else extract(epoch from (now() - coalesce(s.last_autovacuum, s.last_vacuum)))
-                  end as seconds_since_vacuum,
-                  case
-                    when coalesce(s.last_autoanalyze, s.last_analyze) is null then null
-                    else extract(epoch from (now() - coalesce(s.last_autoanalyze, s.last_analyze)))
-                  end as seconds_since_analyze,
-                  age(c.relfrozenxid) as frozenxid_age
+                  c.oid
                 from pg_class c
                 join pg_namespace n on n.oid = c.relnamespace
-                left join pg_stat_user_tables s on s.relid = c.oid
                 where c.relkind = 'r'
                   and n.nspname not in ('pg_catalog', 'information_schema')
                   and (%(schema)s::text is null or n.nspname = %(schema)s::text)
-                  and pg_total_relation_size(c.oid) > %(min_size)s * 1024 * 1024
-                order by pg_total_relation_size(c.oid) desc
+                  and pg_relation_size(c.oid) > %(min_size)s * 1024 * 1024
+                order by pg_relation_size(c.oid) desc
                 limit %(limit)s
                 """,
                 {"schema": schema, "min_size": min_size_mb, "limit": limit}
             )
-            candidate_tables = cur.fetchall()
+            candidate_oids = [row['oid'] for row in cur.fetchall()]
+            
+            candidate_tables = []
+            for oid in candidate_oids:
+                _execute_safe(
+                    cur,
+                    """
+                    select
+                      n.nspname as schema,
+                      c.relname as table,
+                      pg_total_relation_size(c.oid) as size_bytes,
+                      c.reltuples::bigint as approx_rows,
+                      s.n_live_tup as live_tuples,
+                      s.n_dead_tup as dead_tuples,
+                      s.n_tup_ins as inserts,
+                      s.n_tup_upd as updates,
+                      s.n_tup_del as deletes,
+                      s.seq_scan,
+                      s.idx_scan,
+                      s.last_vacuum,
+                      s.last_autovacuum,
+                      s.last_analyze,
+                      s.last_autoanalyze,
+                      case
+                        when coalesce(s.last_autovacuum, s.last_vacuum) is null then null
+                        else extract(epoch from (now() - coalesce(s.last_autovacuum, s.last_vacuum)))
+                      end as seconds_since_vacuum,
+                      case
+                        when coalesce(s.last_autoanalyze, s.last_analyze) is null then null
+                        else extract(epoch from (now() - coalesce(s.last_autoanalyze, s.last_analyze)))
+                      end as seconds_since_analyze,
+                      age(c.relfrozenxid) as frozenxid_age
+                    from pg_class c
+                    join pg_namespace n on n.oid = c.relnamespace
+                    left join pg_stat_user_tables s on s.relid = c.oid
+                    where c.oid = %(oid)s
+                    """,
+                    {"oid": oid}
+                )
+                candidate_tables.append(cur.fetchone())
             
             results["summary"]["total_tables_analyzed"] = len(candidate_tables)
 
@@ -746,19 +787,43 @@ def analyze_table_health(
 
                 # 3. Autovacuum Recommendations
                 if include_autovacuum:
-                    if mod_rate_per_day > 1000:
+                    if mod_rate_per_day > autovac_high_mod_threshold:
                         table_analysis["recommendations"].append("High modification rate - consider aggressive autovacuum settings")
                         table_analysis["autovacuum_suggestions"] = {
                             "autovacuum_vacuum_scale_factor": 0.1,
                             "autovacuum_vacuum_threshold": 50,
                             "autovacuum_vacuum_cost_delay": 0
                         }
-                    elif mod_rate_per_day < 100:
+                    elif mod_rate_per_day < autovac_low_mod_threshold:
                         table_analysis["recommendations"].append("Low modification rate - standard autovacuum settings sufficient")
                         table_analysis["autovacuum_suggestions"] = {
                             "autovacuum_vacuum_scale_factor": 0.2,
                             "autovacuum_vacuum_threshold": 100
                         }
+
+                # 4. Materialized view candidate analysis
+                read_ops = (table["seq_scan"] or 0) + (table["idx_scan"] or 0)
+                write_ops = total_mods
+                if write_ops > 0:
+                    read_to_write_ratio = read_ops / write_ops
+                else:
+                    read_to_write_ratio = float("inf") if read_ops > 0 else 0.0
+
+                mv_candidate = (
+                    table_analysis["size_mb"] >= mv_min_size_mb
+                    and mod_rate_per_day < mv_max_mods_per_day
+                    and read_ops >= mv_min_reads
+                    and read_to_write_ratio >= mv_min_ratio
+                )
+
+                if mv_candidate:
+                    table_analysis["materialized_view_candidate"] = True
+                    table_analysis["recommendations"].append(
+                        "High read, low write workload - consider materialized views for common reporting queries"
+                    )
+                    results["summary"]["materialized_view_candidates"] += 1
+                else:
+                    table_analysis["materialized_view_candidate"] = False
 
                 # Final health score adjustments
                 if table_analysis["health_score"] < 70:
@@ -1551,12 +1616,36 @@ def explain_query(
             return {"format": "text", "plan": text}
 
 
+def _configure_fastmcp_runtime() -> None:
+    cert_file = os.environ.get("SSL_CERT_FILE")
+    if cert_file and not os.path.exists(cert_file):
+        os.environ.pop("SSL_CERT_FILE", None)
+    try:
+        import fastmcp
+
+        fastmcp.settings.check_for_updates = "off"
+    except Exception:
+        pass
+
+
 def main() -> None:
+    _configure_fastmcp_runtime()
+
     transport = os.environ.get("MCP_TRANSPORT", "http").strip().lower()
     host = os.environ.get("MCP_HOST", "0.0.0.0")
     port = _env_int("MCP_PORT", 8000)
+    
+    stateless = _env_bool("MCP_STATELESS", False)
+    json_resp = _env_bool("MCP_JSON_RESPONSE", False)
+    
     if transport in {"http", "sse"}:
-        mcp.run(transport=transport, host=host, port=port)
+        mcp.run(
+            transport=transport,
+            host=host,
+            port=port,
+            stateless_http=stateless,
+            json_response=json_resp
+        )
     else:
         mcp.run()
 

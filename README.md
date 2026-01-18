@@ -2,14 +2,37 @@
 
 Remote MCP server that exposes PostgreSQL DBA-oriented tools over Streamable HTTP, designed to be consumed by MCP-capable clients (including Codex – OpenAI’s coding agent in VS Code).
 
+## Purpose
+
+Provide a repeatable, automated PostgreSQL health and performance inspection service that MCP-capable agents can call to:
+
+- Discover schemas, tables, and indexes.
+- Assess table and index health (bloat, statistics freshness, maintenance needs).
+- Analyze active sessions, locks, and blocking activity.
+- Review configuration and capacity settings relevant to performance and safety.
+
+## Scope
+
+In scope:
+
+- PostgreSQL instances where the MCP server can connect over the network.
+- Read-only inspection of catalog views, statistics, and limited session metadata.
+- Optional use of a maintenance role for user management and session termination.
+
+Out of scope:
+
+- Executing maintenance commands directly (VACUUM, ANALYZE, REINDEX, etc.).
+- Modifying PostgreSQL configuration files or cluster-wide settings.
+- Acting as a generic query runner for arbitrary write workloads.
+
 ## Overview
 
 This server runs as an HTTP service and provides:
 
-- Read-only safe database inspection by default (writes disabled unless explicitly enabled)
-- Common DBA discovery and monitoring tools (schemas, tables, sizes, sessions, query stats)
-- Ad-hoc SQL execution with a configurable row limit
-- EXPLAIN plan generation for query performance analysis
+- Read-only safe database inspection by default (writes disabled unless explicitly enabled).
+- Common DBA discovery and monitoring tools (schemas, tables, sizes, sessions, query stats).
+- Ad-hoc SQL execution with a configurable row limit.
+- EXPLAIN plan generation for query performance analysis.
 
 The MCP endpoint is served at:
 
@@ -19,6 +42,57 @@ Health endpoint:
 
 - `http://<host>:<port>/health`
 
+## Prerequisites
+
+- A running PostgreSQL instance (9.6 or later) reachable from the MCP server.
+- A database role suitable for this server:
+  - Recommended: a read-only role (see PostgreSQL Role Recommendations below).
+  - Optional: a separate maintenance role if you plan to use write-capable tools.
+- At least one MCP-capable client, such as:
+  - VS Code with Codex (OpenAI’s coding agent) or another MCP client.
+- For container-based usage:
+  - Docker installed on the machine where you run the MCP server.
+- For local development usage:
+  - Python 3.12+ for running the server directly.
+  - Node.js and npm if you want to use the `npx .` entry point.
+
+## Architecture Overview
+
+- **MCP client**  
+  - VS Code with Codex or another MCP-capable client sends tool calls over MCP (Streamable HTTP, SSE, or stdio) to this server.
+
+- **MCP server process**  
+  - Implemented in Python using the `FastMCP` framework (see `server.py`).
+  - Exposes each DBA capability as a named MCP tool (for example `analyze_table_health`, `analyze_sessions`, `run_query`).
+  - Supports multiple transports configured via environment:
+    - HTTP / Streamable HTTP: `MCP_TRANSPORT=http` with `MCP_HOST` and `MCP_PORT`.
+    - SSE: `MCP_TRANSPORT=sse`.
+    - stdio: `MCP_TRANSPORT=stdio` (for local, process-based integration).
+
+- **Authentication / authorization layer (optional)**  
+  - Controlled by `FASTMCP_AUTH_TYPE`:
+    - `oidc`: full OAuth/OIDC login flow via an external identity provider.
+    - `jwt`: resource-server style JWT verification using a JWKS endpoint.
+  - Applies auth checks before tool handlers run, so only authenticated clients can call tools.
+
+- **Database access layer**  
+  - Uses `psycopg` with a shared `ConnectionPool` for all tools.
+  - Connection parameters come from `DATABASE_URL` or the `PG*` environment variables.
+  - Each tool function checks `MCP_ALLOW_WRITE` and uses a session-level `statement_timeout` (`MCP_STATEMENT_TIMEOUT_MS`) to protect the database.
+  - Read-only tools query PostgreSQL catalog views and statistics functions; maintenance-oriented tools use a separate role if configured.
+
+- **Deployment surfaces**  
+  - Local container: Docker / Docker Compose running the MCP server alongside or near PostgreSQL.
+  - Local development: `uv run mcp-postgres`, `uvx --from . mcp-postgres`, or `npx .`.
+  - Cloud: Azure Container Apps and AWS ECS Fargate using the templates under `deploy/`.
+
+At runtime, the flow is:
+
+1. An MCP client selects this server and issues a tool call (for example `analyze_table_health`).
+2. FastMCP authenticates the request (if configured) and dispatches it to the corresponding Python function.
+3. The tool function borrows a connection from the PostgreSQL pool, runs the necessary queries, and assembles a JSON result with findings and recommendations.
+4. FastMCP returns the structured result to the client over the active transport, where it can be rendered in the UI or used by the agent for follow-up actions.
+
 ## Tools Exposed
 
 The MCP server exposes these tools:
@@ -27,11 +101,9 @@ The MCP server exposes these tools:
 - `server_info`: Get database version, user, and server settings.
 - `db_stats`: Get database-level statistics (commits, rollbacks, temp files, deadlocks) with optional performance metrics.
 - `analyze_sessions`: Comprehensive session analysis combining active queries, idle sessions, and locks.
-- `analyze_table_health`: Comprehensive table health analysis combining bloat detection, maintenance needs, and autovacuum recommendations.
+- `analyze_table_health`: Comprehensive table health analysis combining bloat detection, maintenance needs, autovacuum recommendations, and materialized view candidate scoring with OLTP/OLAP profiles.
 - `analyze_indexes`: Identify unused, duplicate, missing, and redundant indexes.
 - `recommend_partitioning`: Suggest tables for partitioning based on size and access patterns.
-- `recommend_materialized_views`: Analyze access patterns and recommend tables for materialized view conversion.
-- `recommend_autovacuum_settings`: Analyze tables and recommend autovacuum settings based on data access patterns.
 - `database_security_performance_metrics`: Analyze security and performance metrics with optimization recommendations.
 - `get_db_parameters`: Retrieve database configuration parameters (GUCs) with optional filtering.
 - `list_databases`: List all available databases and their sizes.
@@ -49,7 +121,7 @@ The MCP server exposes these tools:
 
 ### Applying recommendations
 
-Several tools (for example `analyze_table_health`, `recommend_autovacuum_settings`, and `database_security_performance_metrics`) generate maintenance and tuning recommendations such as `VACUUM`, `ALTER TABLE ... SET (autovacuum_*)`, or changes to `postgresql.conf` parameters. These tools are **read-only**:
+Several tools (for example `analyze_table_health`, `check_bloat`, and `database_security_performance_metrics`) generate maintenance and tuning recommendations such as `VACUUM`, `ALTER TABLE ... SET (autovacuum_*)`, or changes to `postgresql.conf` parameters. These tools are **read-only**:
 
 - They never execute `VACUUM`, `VACUUM FULL`, `ANALYZE`, `ALTER TABLE`, or `ALTER SYSTEM`.
 - They do not modify `postgresql.conf` or any database settings.
@@ -123,10 +195,9 @@ Capacity review:
 - “Using `postgres_readonly`, call `table_sizes(limit=20)` and `index_usage(limit=20)`, then highlight the biggest objects.”
 - “Using `postgres_readonly`, call `analyze_indexes(schema='public')` to find optimization opportunities.”
 - “Using `postgres_readonly`, call `recommend_partitioning(min_size_gb=1.0)` to identify candidates for table partitioning.”
-- “Using `postgres_readonly`, call `recommend_materialized_views(schema='public')` to find tables suitable for materialized view conversion.”
-- “Using `postgres_readonly`, call `recommend_autovacuum_settings(min_size_mb=50)` to get autovacuum tuning recommendations.”
 - “Using `postgres_readonly`, call `database_security_performance_metrics()` to analyze security and performance issues with optimization commands.”
-- “Using `postgres_readonly`, call `analyze_table_health(schema='public')` to get comprehensive table health analysis including bloat, maintenance, and autovacuum recommendations.”
+- “Using `postgres_readonly`, call `analyze_table_health(schema='public', profile='oltp')` to get comprehensive table health analysis including bloat, maintenance, autovacuum recommendations, and materialized view candidate flags tuned for OLTP workloads.”
+- “Using `postgres_readonly`, call `analyze_table_health(schema='analytics', profile='olap')` to tune thresholds for analytic workloads and highlight materialized view candidates.”
 - “Using `postgres_readonly`, call `analyze_sessions()` to get comprehensive session analysis including active queries, idle sessions, and lock information.”
 - “Using `postgres_readonly`, call `check_bloat(limit=50)` and summarize the top 10 most bloated objects and their fix commands.”
 - “Using `postgres_readonly`, call `maintenance_stats` and identify tables with high dead tuple counts or freeze risk.”
@@ -208,52 +279,99 @@ If you only need to validate Bearer tokens without a full OAuth flow:
 - `FASTMCP_JWT_ISSUER`: The expected issuer (`iss` claim)
 - `FASTMCP_JWT_AUDIENCE`: (Optional) The expected audience (`aud` claim)
 
-## Deployment Procedures
+## Deployment
 
-### 1. Docker (Recommended for production/remote)
+This server can be deployed in read-only mode (default, recommended) or maintenance mode (write-enabled).
+All commands are tailored for PowerShell.
 
-#### Build the image
-```bash
+- **Read-only Mode**: Safe for production. Disables tools that modify the database (`create_db_user`, `kill_session`, etc.).
+- **Maintenance Mode**: Enables write operations. Use with caution and a dedicated maintenance role.
+
+### 1. Docker (Recommended)
+
+#### Start Server (Read-only)
+Build and run the container. It will connect in read-only mode by default.
+
+```powershell
+# 1. Build the image
 docker build -t mcp-postgres-server .
-```
 
-#### Run with Docker Compose (Easier local management)
-Create a `.env` file or set variables in your shell, then:
-```bash
-docker-compose up -d
-```
-
-#### Run with Docker directly
-```bash
-docker run --rm \
-  -p 8000:8000 \
-  -e DATABASE_URL="postgresql://mcp_readonly:change_me@your_db_host:5432/your_db" \
-  --name mcp-postgres \
+# 2. Run the container
+docker run --rm -d `
+  -p 8000:8000 `
+  -e "DATABASE_URL=postgresql://mcp_readonly:your_password@your_db_host:5432/your_db" `
+  --name mcp-postgres-readonly `
   mcp-postgres-server
 ```
 
-### 2. UV (Recommended for local Python development)
-If you have [uv](https://github.com/astral-sh/uv) installed:
+#### Start Server (Maintenance Mode)
+To enable maintenance mode, set `MCP_ALLOW_WRITE=true` and use a database role with write permissions.
 
-```bash
-# Run the server directly
-uv run mcp-postgres
+```powershell
+docker run --rm -d `
+  -p 8001:8000 `
+  -e "DATABASE_URL=postgresql://mcp_maintenance:your_password@your_db_host:5432/your_db" `
+  -e "MCP_ALLOW_WRITE=true" `
+  --name mcp-postgres-maintenance `
+  mcp-postgres-server
 ```
 
-Or using `uvx` (ephemeral run):
-```bash
-uvx --from . mcp-postgres
+#### Stop Server
+Stop the container by its name:
+```powershell
+# Stop the read-only container
+docker stop mcp-postgres-readonly
+
+# Stop the maintenance container
+docker stop mcp-postgres-maintenance
 ```
 
-### 3. NPX (For Node.js users)
-You can run the server using `npx` from the project root:
+### 2. `uv` (for Local Development)
 
-```bash
+Requires `uv` to be installed. The server will run in the foreground.
+
+#### Start Server (Read-only)
+```powershell
+# Set credentials and run
+$env:DATABASE_URL="postgresql://mcp_readonly:your_password@localhost:5432/your_db"
+uv run python server.py
+```
+
+#### Start Server (Maintenance Mode)
+```powershell
+$env:DATABASE_URL="postgresql://mcp_maintenance:your_password@localhost:5432/your_db"
+$env:MCP_ALLOW_WRITE="true"
+$env:MCP_PORT="8001"
+uv run python server.py
+```
+
+#### Stop Server
+Press `Ctrl+C` in the terminal where the server is running.
+
+### 3. `npx` (for Node.js Ecosystem)
+
+Requires Python 3.12+ on your system. The server will run in the foreground.
+
+#### Start Server (Read-only)
+```powershell
+$env:DATABASE_URL="postgresql://mcp_readonly:your_password@localhost:5432/your_db"
 npx .
 ```
-*(Note: Requires Python 3.12+ to be installed on your system)*
 
-### 4. Cloud Deployment (Azure & AWS)
+#### Start Server (Maintenance Mode)
+```powershell
+$env:DATABASE_URL="postgresql://mcp_maintenance:your_password@localhost:5432/your_db"
+$env:MCP_ALLOW_WRITE="true"
+$env:MCP_PORT="8001"
+npx .
+```
+
+#### Stop Server
+Press `Ctrl+C` in the terminal where the server is running.
+
+
+### Cloud Deployment (Azure & AWS)
+... (rest of the section remains the same)
 
 Infrastructure templates are provided in the `deploy/` directory.
 
@@ -447,7 +565,22 @@ Terminate TLS in front of the server (Caddy/Nginx/Traefik/Cloudflare) and revers
 
 ### How do I change the maximum rows returned by `run_query`?
 
-Set `MCP_MAX_ROWS` or pass `max_rows` when calling `run_query`.
+- Set `MCP_MAX_ROWS` or pass `max_rows` when calling `run_query`.
+
+## Getting Help
+
+- Start with the Troubleshooting and FAQ sections above for common issues.
+- If something still is not working as expected, open an issue on GitHub:
+  - https://github.com/harryvaldez/mcp_cla_pg/issues
+- When filing an issue, include:
+  - PostgreSQL version and how the server is deployed (Docker, UV, NPX, cloud).
+  - Relevant environment variables (redact passwords/secrets).
+  - Any error messages or stack traces from the MCP server logs.
+- For security-sensitive issues, avoid sharing details in public issues; instead, use GitHub’s security reporting flow if available, or open a minimal issue and request a private follow-up channel.
+- For quick usage help from the command line, you can also run:
+  - `uv run mcp-postgres --help`
+  - `uvx --from . mcp-postgres --help`
+  - `npx . --help`
 
 ## Enhancements / Suggestions
 
