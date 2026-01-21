@@ -1,4 +1,5 @@
 import json
+import hashlib
 import logging
 import os
 import re
@@ -14,9 +15,15 @@ from starlette.requests import Request
 from starlette.responses import PlainTextResponse, JSONResponse
 
 # Configure structured logging
+log_level_str = os.environ.get("MCP_LOG_LEVEL", "INFO").upper()
+log_level = getattr(logging, log_level_str, logging.INFO)
+log_file = os.environ.get("MCP_LOG_FILE")
+
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=log_level,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    filename=log_file,
+    filemode='a' if log_file else None
 )
 logger = logging.getLogger("mcp-postgres")
 
@@ -25,8 +32,20 @@ def _get_auth() -> Any:
     if not auth_type:
         return None
 
+    auth_type_lower = auth_type.lower()
+    allowed_auth_types = {"oidc", "jwt", "azure-ad", "none"}
+    
+    if auth_type_lower not in allowed_auth_types:
+        raise ValueError(
+            f"Invalid FASTMCP_AUTH_TYPE: '{auth_type}'. "
+            f"Accepted values are: {', '.join(sorted(allowed_auth_types))}"
+        )
+
+    if auth_type_lower == "none":
+        return None
+
     # Full OIDC Proxy (handles login flow)
-    if auth_type.lower() == "oidc":
+    if auth_type_lower == "oidc":
         from fastmcp.server.auth.providers.oidc import OIDCProxy
 
         config_url = os.environ.get("FASTMCP_OIDC_CONFIG_URL")
@@ -49,7 +68,7 @@ def _get_auth() -> Any:
         )
 
     # Pure JWT Verification (resource server mode)
-    if auth_type.lower() == "jwt":
+    if auth_type_lower == "jwt":
         from fastmcp.server.auth.providers.jwt import JWTVerifier
 
         jwks_uri = os.environ.get("FASTMCP_JWT_JWKS_URI")
@@ -67,7 +86,7 @@ def _get_auth() -> Any:
         )
 
     # Azure AD (Microsoft Entra ID) simplified configuration
-    if auth_type.lower() == "azure-ad":
+    if auth_type_lower == "azure-ad":
         tenant_id = os.environ.get("FASTMCP_AZURE_AD_TENANT_ID")
         client_id = os.environ.get("FASTMCP_AZURE_AD_CLIENT_ID")
         
@@ -101,10 +120,7 @@ def _get_auth() -> Any:
                 issuer=issuer,
                 audience=os.environ.get("FASTMCP_AZURE_AD_AUDIENCE", client_id),
             )
-
-    return auth_type
-
-
+            
 def _env_int(name: str, default: int) -> int:
     value = os.environ.get(name)
     if value is None or value == "":
@@ -202,7 +218,6 @@ _WRITE_KEYWORDS = {
     "call",
     "do",
     "execute",
-    "set",
     "reset",
     "lock",
     "commit",
@@ -253,6 +268,13 @@ def _fetch_limited(cur, max_rows: int) -> list[dict[str, Any]]:
 def _execute_safe(cur, sql: Any, params: Any = None) -> None:
     """Executes a query with session-level timeouts and sanitized error handling."""
     try:
+        if logger.isEnabledFor(logging.DEBUG):
+            # Log query (truncated if too long for sanity)
+            query_str = str(sql)
+            if len(query_str) > 1000:
+                query_str = query_str[:1000] + "..."
+            logger.debug(f"Executing SQL: {query_str} | Params: {params}")
+
         # Set session-level timeout for this specific query execution
         cur.execute(f"SET statement_timeout = {STATEMENT_TIMEOUT_MS}")
         cur.execute(sql, params)
@@ -1106,7 +1128,7 @@ def database_security_performance_metrics(
 
             if checkpoint_metrics["checkpoint_request_ratio"] > checkpoint_req_threshold:
                 results["issues_found"].append(f"High checkpoint request ratio: {checkpoint_metrics['checkpoint_request_ratio']}%")
-                results["recommended_fixes"].append(f"Consider increasing checkpoint_segments or checkpoint_timeout to reduce frequency (threshold: {checkpoint_req_threshold}% for {profile_value})")
+                results["recommended_fixes"].append(f"Consider increasing max_wal_size or checkpoint_timeout to reduce frequency (threshold: {checkpoint_req_threshold}% for {profile_value})")
 
             # 6. Lock and Deadlock Analysis
             _execute_safe(
@@ -1724,7 +1746,7 @@ def list_tables(schema: str = "public") -> list[dict[str, Any]]:
 @mcp.tool
 def analyze_indexes(schema: str | None = None, limit: int = 50) -> dict[str, Any]:
     """
-    Identify unused, duplicate, missing, and redundant indexes.
+    Identify unused and duplicate indexes.
     
     Args:
         schema: Optional schema name to filter.
@@ -2014,6 +2036,12 @@ def run_query(sql: str, params_json: str | None = None, max_rows: int | None = N
     limit = max_rows if max_rows is not None else DEFAULT_MAX_ROWS
     if limit < 0:
         raise ValueError("max_rows must be >= 0")
+    sql_fingerprint = hashlib.sha256(sql.encode("utf-8")).hexdigest()
+    params_fingerprint = (
+        hashlib.sha256(params_json.encode("utf-8")).hexdigest() if params_json is not None else None
+    )
+    logger.info(f"run_query called. sql_len={len(sql)} max_rows={limit} sql_sha256={sql_fingerprint}")
+    logger.debug(f"run_query params_sha256={params_fingerprint}")
     params: dict[str, Any] | None = None
     if params_json:
         params = json.loads(params_json)
@@ -2026,7 +2054,15 @@ def run_query(sql: str, params_json: str | None = None, max_rows: int | None = N
             rows_plus_one = _fetch_limited(cur, limit + 1 if limit >= 0 else 1)
             truncated = len(rows_plus_one) > limit
             rows = rows_plus_one[:limit]
-            columns = [d.name for d in cur.description] if cur.description else []
+            if cur.description:
+                first = cur.description[0]
+                columns = (
+                    [d.name for d in cur.description]
+                    if hasattr(first, "name")
+                    else [d[0] for d in cur.description]
+                )
+            else:
+                columns = []
             return {
                 "columns": columns,
                 "rows": rows,
@@ -2044,6 +2080,11 @@ def explain_query(
     settings: bool = False,
     format: str = "json",
 ) -> dict[str, Any]:
+    sql_fingerprint = hashlib.sha256(sql.encode("utf-8")).hexdigest()
+    logger.info(
+        f"explain_query called. format={format.strip().lower()} analyze={analyze} buffers={buffers} "
+        f"verbose={verbose} settings={settings} sql_len={len(sql)} sql_sha256={sql_fingerprint}"
+    )
     _require_readonly(sql)
     fmt = format.strip().lower()
     if fmt not in {"json", "text"}:
@@ -2080,12 +2121,22 @@ def ping() -> dict[str, Any]:
 @mcp.tool
 def server_info_mcp() -> dict[str, Any]:
     """Get information about the MCP server."""
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            _execute_safe(
+                cur,
+                """
+                select current_database() as database
+                """
+            )
+            row = cur.fetchone()
+            database_name = row["database"] if row and "database" in row else "unknown"
     return {
         "name": mcp.name,
         "version": "1.0.0",
         "status": "healthy",
         "transport": os.environ.get("MCP_TRANSPORT", "http"),
-        "database": os.environ.get("PGDATABASE", "unknown")
+        "database": database_name
     }
 
 

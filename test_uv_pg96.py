@@ -91,11 +91,11 @@ class MCPClient:
             cmd,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=sys.stderr,
+            stderr=subprocess.PIPE,
             env={**os.environ, **env},
             text=True,
             bufsize=1,
-            shell=sys.platform == "win32"
+            shell=False
         )
         self.request_id = 1
 
@@ -107,13 +107,30 @@ class MCPClient:
             "params": params
         }
         self.request_id += 1
+        assert self.proc.stdin is not None
         self.proc.stdin.write(json.dumps(req) + "\n")
         self.proc.stdin.flush()
-        
+
+        start = time.time()
+        timeout_s = 60.0
         while True:
+            if self.proc.poll() is not None:
+                stderr_output = ""
+                if self.proc.stderr is not None:
+                    try:
+                        stderr_output = self.proc.stderr.read()
+                    except Exception:
+                        stderr_output = ""
+                raise RuntimeError(f"Server process exited with code {self.proc.returncode}: {stderr_output}")
+
+            if time.time() - start > timeout_s:
+                self.proc.kill()
+                raise RuntimeError(f"Timed out waiting for response to method {method}")
+
+            assert self.proc.stdout is not None
             line = self.proc.stdout.readline()
             if not line:
-                raise RuntimeError("Server process exited prematurely")
+                continue
             try:
                 resp = json.loads(line)
                 if resp.get("id") == req["id"]:
@@ -130,6 +147,7 @@ class MCPClient:
         }
         if params is not None:
             notif["params"] = params
+        assert self.proc.stdin is not None
         self.proc.stdin.write(json.dumps(notif) + "\n")
         self.proc.stdin.flush()
 
@@ -181,7 +199,7 @@ def _test_uv_stdio() -> None:
                 "name": name,
                 "arguments": params
             })
-            if not result:
+            if result is None:
                 raise RuntimeError(f"Tool {name} returned empty result")
             print(f"  Tool {name} OK")
 

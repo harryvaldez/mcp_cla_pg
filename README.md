@@ -55,7 +55,32 @@ To add this MCP server to Trae:
 }
 ```
 
-### Option 2: Docker (Recommended)
+### Option 2: VS Code & Claude Desktop
+
+This section explains how to configure the server for Claude Desktop and VS Code extensions.
+
+1.  **Claude Desktop Integration**:
+    Edit your `claude_desktop_config.json` (usually in `~/Library/Application Support/Claude/` on macOS or `%APPDATA%\Claude\` on Windows). This configures the server for the Claude Desktop application, which can be invoked from VS Code.
+
+2.  **VS Code Extension Configuration**:
+    For extensions like Cline or Roo Code, go to the extension settings in VS Code and look for "MCP Servers" configuration. You can use the same JSON structure as below.
+
+**Configuration JSON:**
+```json
+{
+  "mcpServers": {
+    "postgres": {
+      "command": "uv",
+      "args": ["run", "mcp-postgres"],
+      "env": {
+        "DATABASE_URL": "postgresql://user:password@localhost:5432/dbname"
+      }
+    }
+  }
+}
+```
+
+### Option 3: Docker (Recommended)
 
 Since this image is not hosted on Docker Hub, you must build it locally first.
 
@@ -87,7 +112,7 @@ The `docker-compose.yml` is configured for HTTP by default:
 docker compose up --build -d
 ```
 
-### Option 3: Local Python (uv)
+### Option 4: Local Python (uv)
 
 ```bash
 # Set connection string
@@ -103,7 +128,7 @@ export MCP_ALLOW_WRITE=true
 uv run .
 ```
 
-### Option 4: Node.js (npx)
+### Option 5: Node.js (npx)
 
 ```bash
 # Set connection string
@@ -133,8 +158,10 @@ The server is configured entirely via environment variables.
 | `MCP_HOST` | Host to bind the server to | `0.0.0.0` |
 | `MCP_PORT` | Port to listen on | `8000` |
 | `MCP_TRANSPORT` | Transport mode: `http` (uses SSE) or `stdio` | `http` |
-| `MCP_ALLOW_WRITE` | Enable write tools (`create_db_user`, etc.) | *Required* |
+| `MCP_ALLOW_WRITE` | Enable write tools (`create_db_user`, etc.) | `false` |
 | `MCP_STATEMENT_TIMEOUT_MS` | Query execution timeout in milliseconds | `120000` |
+| `MCP_LOG_LEVEL` | Logging level (DEBUG, INFO, WARNING, ERROR) | `INFO` |
+| `MCP_LOG_FILE` | Optional path to write logs to a file | *None* |
 
 ### Authentication (Azure AD)
 To enable Azure AD authentication, set `FASTMCP_AUTH_TYPE=azure-ad`.
@@ -156,7 +183,18 @@ To enable HTTPS, provide both the certificate and key files.
 
 ---
 
-## 🛠️ Tools Reference
+## �️ Logging & Security
+
+This server implements strict security practices for logging:
+
+- **Sanitized INFO Logs**: High-level operations (like `run_query` and `explain_query`) are logged at `INFO` level, but **raw SQL queries and parameters are never included** to prevent sensitive data leaks.
+- **Fingerprinting**: Instead of raw SQL, we log SHA-256 fingerprints (`sql_sha256`, `params_sha256`) to allow correlation and debugging without exposing data.
+- **Debug Mode**: Raw SQL and parameters are only logged when `MCP_LOG_LEVEL=DEBUG` is explicitly set, and even then, sensitive parameters are hashed where possible.
+- **Safe Defaults**: By default, the server runs in `INFO` mode, ensuring production logs are safe.
+
+---
+
+## ��️ Tools Reference
 
 ### 🏥 Health & Info
 - `ping()`: Simple health check.
@@ -191,7 +229,7 @@ To enable HTTPS, provide both the certificate and key files.
 - `create_db_user(username: str, password: str, privileges: str = "read")`: Create a new role.
 - `drop_db_user(username: str)`: Remove a role.
 - `kill_session(pid: int)`: Terminate a specific backend PID.
-- `run_query(sql: str, params_json: str = None, max_rows: int = 500)`: Execute ad-hoc SQL.  Note that each LLM has its own chat interface limits. The `max_rows` parameter controls the maximum number of rows to return (defaults to 500, configurable via `MCP_MAX_ROWS` environment variable).  If the query returns more rows than the limit, the server will return the first `max_rows` rows and a `truncated: true` flag in the response. If this error occurs, change prompt to something like:  "using <name of the mcp server>, call run_query(sql, params_json, max_rows=500) and save result to a csv file".
+- `run_query(sql: str, params_json: str = None, max_rows: int = 500)`: Execute ad-hoc SQL and return up to `max_rows` rows (default `500`, configurable via `MCP_MAX_ROWS`). If the query produces more rows than this limit, the server returns the first `max_rows` rows and sets `truncated: true` in the response.
 
 ---
 
