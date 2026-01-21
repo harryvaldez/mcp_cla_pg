@@ -233,6 +233,101 @@ This server implements strict security practices for logging:
 
 ---
 
+## 📖 Usage Examples
+
+Here are some real-world examples of using the tools via an MCP client.
+
+### 1. Check MCP Server Info
+**Prompt:** `using postgres_readonly, call server_info_mcp() and display results`
+
+**Result:**
+```json
+{
+  "name": "PostgreSQL MCP Server",
+  "version": "1.0.0",
+  "status": "healthy",
+  "transport": "http",
+  "database": "lenexa"
+}
+```
+
+### 2. Check Database Connection Info
+**Prompt:** `using postgres_readonly, call server_info() and display results`
+
+**Result:**
+```json
+{
+  "database": "lenexa",
+  "user": "enterprisedb",
+  "server_addr": "10.100.2.20/32",
+  "server_port": 5444,
+  "version": "EnterpriseDB 9.6.2.7 on x86_64-pc-linux-gnu...",
+  "allow_write": false,
+  "default_max_rows": 500,
+  "statement_timeout_ms": 120000
+}
+```
+
+### 3. Analyze Table Health (Power Tool)
+**Prompt:** `using postgres_readonly, call analyze_table_health(schema=smsadmin, profile=oltp) and display results`
+
+**Result (Truncated):**
+```json
+{
+  "summary": {
+    "total_tables_analyzed": 30,
+    "tables_with_issues": 0,
+    "recommendations": []
+  },
+  "tables": [
+    {
+      "schema": "smsadmin",
+      "table": "sms_fe_zp6_2025",
+      "size_mb": 39440.3,
+      "health_score": 85,
+      "issues": ["No vacuum in 138 days", "No analyze in 138 days"],
+      "recommendations": ["High modification rate - consider aggressive autovacuum settings"]
+    },
+    {
+      "schema": "smsadmin",
+      "table": "sms_app_log",
+      "size_mb": 122.2,
+      "health_score": 100,
+      "issues": [],
+      "recommendations": []
+    }
+  ]
+}
+```
+
+### 4. Check Active Tables (Filtering Example)
+**Prompt:** `using postgres_readonly, call analyze_table_health(schema=smsadmin, profile=oltp) and check tables that has been active in the past 60 days`
+
+**Result (Filtered):**
+```json
+{
+  "active_tables": [
+    {
+      "table": "sms_app_log",
+      "size_mb": 122.2,
+      "last_activity": "Recent (<24h or no issues)"
+    },
+    {
+      "table": "collection_element",
+      "size_mb": 2690.3,
+      "last_vacuum": "18 days ago"
+    },
+    {
+      "table": "sms_fe_zp6_2026",
+      "size_mb": 20091.3,
+      "last_analyze": "49 days ago"
+    }
+  ]
+}
+```
+
+---
+
 ## 🧪 Testing & Validation
 
 This project has been rigorously tested against **PostgreSQL 9.6** to ensure compatibility with legacy and modern environments.
