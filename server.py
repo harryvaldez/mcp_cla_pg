@@ -382,6 +382,11 @@ def db_pg96_create_db_user(
         password: The password for the new user.
         privileges: 'read' for SELECT only, 'read-write' for full DML access.
         database: The database to grant access to (default: current database).
+
+    Note:
+        ALTER DEFAULT PRIVILEGES commands executed by this function only apply to objects created by the
+        role running the MCP server. Objects created by other roles will not automatically grant privileges
+        to the new user unless explicitly configured otherwise.
     """
     if not ALLOW_WRITE:
         raise ValueError("Write operations are disabled. Set MCP_ALLOW_WRITE=true to enable user creation.")
@@ -444,6 +449,8 @@ def db_pg96_create_db_user(
                             cur,
                             sql.SQL("GRANT ro_role to {}").format(sql.Identifier(username)),
                         )
+                    # Note: This ALTER DEFAULT PRIVILEGES only applies to objects created by the current role.
+                    # To apply to other creators, one must execute ALTER DEFAULT PRIVILEGES FOR ROLE <creator> ...
                     _execute_safe(
                         cur,
                         sql.SQL("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO {}").format(
@@ -466,6 +473,8 @@ def db_pg96_create_db_user(
                         cur,
                         sql.SQL("GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO {}").format(sql.Identifier(username)),
                     )
+                    # Note: This ALTER DEFAULT PRIVILEGES only applies to objects created by the current role.
+                    # To apply to other creators, one must execute ALTER DEFAULT PRIVILEGES FOR ROLE <creator> ...
                     _execute_safe(
                         cur,
                         sql.SQL("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO {}").format(
