@@ -23,7 +23,7 @@ For detailed deployment instructions on **Azure Container Apps**, **AWS ECS**, a
 
 
 
-### Option 2: VS Code & Claude Desktop
+### Option 1: VS Code & Claude Desktop
 
 This section explains how to configure the server for Claude Desktop and VS Code extensions.
 
@@ -48,7 +48,7 @@ This section explains how to configure the server for Claude Desktop and VS Code
 }
 ```
 
-### Option 3: Docker (Recommended)
+### Option 2: Docker (Recommended)
 
 The Docker image is available on Docker Hub at `harryvaldez/mcp-postgres`.
 
@@ -84,7 +84,7 @@ The `docker-compose.yml` is configured to use the public image:
 docker compose up -d
 ```
 
-### Option 4: Local Python (uv)
+### Option 3: Local Python (uv)
 
 ```bash
 # Set connection string
@@ -103,7 +103,7 @@ export FASTMCP_AUTH_TYPE=azure-ad
 uv run .
 ```
 
-### Option 5: Node.js (npx)
+### Option 4: Node.js (npx)
 
 ```bash
 # Set connection string
@@ -347,7 +347,7 @@ Here are some real-world examples of using the tools via an MCP client.
 
 This project has been rigorously tested against **PostgreSQL 9.6** to ensure compatibility with legacy and modern environments.
 
-### Test Results (2026-01-20)
+### Test Results (2026-01-27)
 - **Deployment**: Docker, `uv`, `npx` (All Passed)
 - **Protocol**: SSE (HTTP/HTTPS), Stdio (All Passed)
 - **Database**: PostgreSQL 9.6 (All Tools Verified)
