@@ -224,9 +224,9 @@ if ALLOW_WRITE:
 
 DEFAULT_MAX_ROWS = _env_int("MCP_MAX_ROWS", 500)
 POOL_MIN_SIZE = _env_int("MCP_POOL_MIN_SIZE", 1)
-POOL_MAX_SIZE = _env_int("MCP_POOL_MAX_SIZE", 5)
-POOL_TIMEOUT = float(os.environ.get("MCP_POOL_TIMEOUT", "30.0"))
-POOL_MAX_WAITING = _env_int("MCP_POOL_MAX_WAITING", 10)
+POOL_MAX_SIZE = _env_int("MCP_POOL_MAX_SIZE", 20)
+POOL_TIMEOUT = float(os.environ.get("MCP_POOL_TIMEOUT", "60.0"))
+POOL_MAX_WAITING = _env_int("MCP_POOL_MAX_WAITING", 20)
 STATEMENT_TIMEOUT_MS = _env_int("MCP_STATEMENT_TIMEOUT_MS", 120000) # 120s default
 
 pool = ConnectionPool(
@@ -1944,6 +1944,403 @@ def db_pg96_analyze_indexes(schema: str | None = None, limit: int = 50) -> dict[
             results["redundant_indexes"] = []
 
             return results
+
+
+@mcp.tool
+def db_pg96_analyze_logical_data_model(
+    schema: str = "public",
+    include_views: bool = False,
+    max_entities: int = 200,
+    include_attributes: bool = True
+) -> dict[str, Any]:
+    """
+    Generate a logical data model (LDM) for a schema and produce issues and recommendations.
+
+    The model includes entities (tables), attributes (columns), identifiers (PK/UK), and relationships (FK).
+
+    Args:
+        schema: Schema to analyze (default: "public").
+        include_views: Include views/materialized views as entities (default: False).
+        max_entities: Maximum number of entities to include (default: 200).
+        include_attributes: Include full attribute details (default: True).
+
+    Returns:
+        Dictionary containing logical model, issues, and recommendations.
+    """
+    def _snake_case(name: str) -> bool:
+        return bool(re.match(r"^[a-z][a-z0-9_]*$", name))
+
+    def _action(code: str) -> str:
+        mapping = {
+            "a": "NO ACTION",
+            "r": "RESTRICT",
+            "c": "CASCADE",
+            "n": "SET NULL",
+            "d": "SET DEFAULT",
+        }
+        return mapping.get(code, code)
+
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            _execute_safe(cur, "select now() at time zone 'utc' as generated_at_utc")
+            generated_at_row = cur.fetchone() or {}
+            generated_at = generated_at_row.get("generated_at_utc")
+            generated_at_iso = generated_at.isoformat() if hasattr(generated_at, "isoformat") else str(generated_at)
+
+            relkinds = ["r", "p"]
+            if include_views:
+                relkinds.extend(["v", "m"])
+
+            _execute_safe(
+                cur,
+                """
+                select
+                  c.oid,
+                  n.nspname as schema,
+                  c.relname as name,
+                  c.relkind
+                from pg_class c
+                join pg_namespace n on n.oid = c.relnamespace
+                where n.nspname = %(schema)s
+                  and c.relkind = any(%(relkinds)s)
+                order by c.relname
+                """,
+                {"schema": schema, "relkinds": relkinds},
+            )
+            table_rows = cur.fetchall()
+            table_rows = table_rows[:max_entities] if max_entities and max_entities > 0 else table_rows
+            table_names = [r["name"] for r in table_rows]
+
+            columns_by_table: dict[str, list[dict[str, Any]]] = {}
+            if include_attributes and table_names:
+                _execute_safe(
+                    cur,
+                    """
+                    select
+                      table_name,
+                      column_name,
+                      ordinal_position,
+                      is_nullable,
+                      data_type,
+                      udt_name,
+                      character_maximum_length,
+                      numeric_precision,
+                      numeric_scale,
+                      column_default
+                    from information_schema.columns
+                    where table_schema = %(schema)s
+                      and table_name = any(%(tables)s)
+                    order by table_name, ordinal_position
+                    """,
+                    {"schema": schema, "tables": table_names},
+                )
+                for row in cur.fetchall():
+                    t = row["table_name"]
+                    columns_by_table.setdefault(t, []).append({
+                        "name": row["column_name"],
+                        "position": row["ordinal_position"],
+                        "data_type": row["data_type"],
+                        "udt_name": row["udt_name"],
+                        "nullable": (row["is_nullable"] == "YES"),
+                        "max_length": row["character_maximum_length"],
+                        "numeric_precision": row["numeric_precision"],
+                        "numeric_scale": row["numeric_scale"],
+                        "default": row["column_default"],
+                    })
+
+            _execute_safe(
+                cur,
+                """
+                select
+                  n.nspname as schema,
+                  c.relname as table,
+                  con.conname as name,
+                  con.contype as type,
+                  array_agg(att.attname order by ck.ord) as columns
+                from pg_constraint con
+                join pg_class c on c.oid = con.conrelid
+                join pg_namespace n on n.oid = c.relnamespace
+                join unnest(con.conkey) with ordinality as ck(attnum, ord) on true
+                join pg_attribute att on att.attrelid = c.oid and att.attnum = ck.attnum
+                where n.nspname = %(schema)s
+                  and c.relname = any(%(tables)s)
+                  and con.contype in ('p', 'u')
+                group by n.nspname, c.relname, con.conname, con.contype
+                """,
+                {"schema": schema, "tables": table_names},
+            )
+            pk_by_table: dict[str, list[str]] = {}
+            uniques_by_table: dict[str, list[list[str]]] = {}
+            for row in cur.fetchall():
+                if row["type"] == "p":
+                    pk_by_table[row["table"]] = row["columns"]
+                else:
+                    uniques_by_table.setdefault(row["table"], []).append(row["columns"])
+
+            _execute_safe(
+                cur,
+                """
+                select
+                  n.nspname as schema,
+                  c.relname as table,
+                  con.conname as name,
+                  array_agg(att.attname order by l.ord) as local_columns,
+                  rn.nspname as ref_schema,
+                  rc.relname as ref_table,
+                  array_agg(ratt.attname order by l.ord) as ref_columns,
+                  con.confupdtype as on_update,
+                  con.confdeltype as on_delete
+                from pg_constraint con
+                join pg_class c on c.oid = con.conrelid
+                join pg_namespace n on n.oid = c.relnamespace
+                join pg_class rc on rc.oid = con.confrelid
+                join pg_namespace rn on rn.oid = rc.relnamespace
+                join unnest(con.conkey) with ordinality as l(attnum, ord) on true
+                join unnest(con.confkey) with ordinality as r(attnum, ord) on r.ord = l.ord
+                join pg_attribute att on att.attrelid = c.oid and att.attnum = l.attnum
+                join pg_attribute ratt on ratt.attrelid = rc.oid and ratt.attnum = r.attnum
+                where n.nspname = %(schema)s
+                  and c.relname = any(%(tables)s)
+                  and con.contype = 'f'
+                group by n.nspname, c.relname, con.conname, rn.nspname, rc.relname, con.confupdtype, con.confdeltype
+                order by c.relname, con.conname
+                """,
+                {"schema": schema, "tables": table_names},
+            )
+            fk_rows = cur.fetchall()
+
+            _execute_safe(
+                cur,
+                """
+                select
+                  n.nspname as schema,
+                  t.relname as table,
+                  i.relname as index,
+                  ix.indisunique as is_unique,
+                  ix.indisprimary as is_primary,
+                  array_agg(case when k.attnum > 0 then a.attname else null end order by k.ord) as columns
+                from pg_index ix
+                join pg_class i on i.oid = ix.indexrelid
+                join pg_class t on t.oid = ix.indrelid
+                join pg_namespace n on n.oid = t.relnamespace
+                join unnest(ix.indkey) with ordinality as k(attnum, ord) on true
+                left join pg_attribute a on a.attrelid = t.oid and a.attnum = k.attnum
+                where n.nspname = %(schema)s
+                  and t.relname = any(%(tables)s)
+                group by n.nspname, t.relname, i.relname, ix.indisunique, ix.indisprimary
+                order by t.relname, i.relname
+                """,
+                {"schema": schema, "tables": table_names},
+            )
+            indexes_by_table: dict[str, list[dict[str, Any]]] = {}
+            for row in cur.fetchall():
+                cols_raw = row["columns"] or []
+                cols = [c for c in cols_raw if c is not None]
+                indexes_by_table.setdefault(row["table"], []).append({
+                    "name": row["index"],
+                    "columns": cols,
+                    "is_unique": bool(row["is_unique"]),
+                    "is_primary": bool(row["is_primary"]),
+                })
+
+            entity_map: dict[str, dict[str, Any]] = {}
+            issues = {
+                "entities": [],
+                "attributes": [],
+                "relationships": [],
+                "identifiers": [],
+                "normalization": [],
+            }
+            recommendations = {
+                "entities": [],
+                "attributes": [],
+                "relationships": [],
+                "identifiers": [],
+                "normalization": [],
+            }
+
+            for t in table_rows:
+                table_name = t["name"]
+                attrs = columns_by_table.get(table_name, [])
+                pk_cols = pk_by_table.get(table_name, [])
+                uniqs = uniques_by_table.get(table_name, [])
+                fks: list[dict[str, Any]] = []
+
+                col_nullable: dict[str, bool] = {a["name"]: bool(a.get("nullable")) for a in attrs}
+                col_types: dict[str, str] = {a["name"]: str(a.get("data_type") or "") for a in attrs}
+                col_udt: dict[str, str] = {a["name"]: str(a.get("udt_name") or "") for a in attrs}
+
+                for fk in fk_rows:
+                    if fk["table"] != table_name:
+                        continue
+                    local_cols = fk["local_columns"] or []
+                    optional = any(col_nullable.get(c, False) for c in local_cols)
+                    fks.append({
+                        "name": fk["name"],
+                        "local_columns": local_cols,
+                        "ref_schema": fk["ref_schema"],
+                        "ref_table": fk["ref_table"],
+                        "ref_columns": fk["ref_columns"] or [],
+                        "on_update": _action(fk["on_update"]),
+                        "on_delete": _action(fk["on_delete"]),
+                        "optional": optional,
+                    })
+
+                if not _snake_case(table_name):
+                    issues["entities"].append({
+                        "entity": f"{schema}.{table_name}",
+                        "issue": "Non-snake_case entity name",
+                    })
+                    recommendations["entities"].append({
+                        "entity": f"{schema}.{table_name}",
+                        "recommendation": "Standardize entity naming to snake_case for consistency.",
+                    })
+
+                if not pk_cols and t["relkind"] in ("r", "p"):
+                    issues["identifiers"].append({
+                        "entity": f"{schema}.{table_name}",
+                        "issue": "Missing primary key",
+                    })
+                    recommendations["identifiers"].append({
+                        "entity": f"{schema}.{table_name}",
+                        "recommendation": "Add a primary key to support entity identity, replication, and FK references.",
+                    })
+
+                if len(pk_cols) > 1 and len(attrs) > len(pk_cols):
+                    issues["normalization"].append({
+                        "entity": f"{schema}.{table_name}",
+                        "issue": "Composite primary key with non-key attributes requires 2NF review",
+                        "details": {"primary_key": pk_cols},
+                    })
+                    recommendations["normalization"].append({
+                        "entity": f"{schema}.{table_name}",
+                        "recommendation": "Review for partial dependencies; consider surrogate key if appropriate.",
+                    })
+
+                if include_attributes:
+                    for a in attrs:
+                        col = a["name"]
+                        if not _snake_case(col):
+                            issues["attributes"].append({
+                                "entity": f"{schema}.{table_name}",
+                                "attribute": col,
+                                "issue": "Non-snake_case attribute name",
+                            })
+                            recommendations["attributes"].append({
+                                "entity": f"{schema}.{table_name}",
+                                "attribute": col,
+                                "recommendation": "Standardize attribute naming to snake_case for consistency.",
+                            })
+
+                        udt = col_udt.get(col, "")
+                        dt = col_types.get(col, "")
+                        is_array = (dt.upper() == "ARRAY") or udt.startswith("_")
+                        is_json = dt in ("json", "jsonb") or udt in ("json", "jsonb")
+                        if is_array or is_json:
+                            issues["normalization"].append({
+                                "entity": f"{schema}.{table_name}",
+                                "attribute": col,
+                                "issue": "Potential denormalization / non-1NF attribute type",
+                                "details": {"data_type": dt, "udt_name": udt},
+                            })
+                            recommendations["normalization"].append({
+                                "entity": f"{schema}.{table_name}",
+                                "attribute": col,
+                                "recommendation": "Review whether this should be modeled as a related entity (child table) or reference data.",
+                            })
+
+                fk_indexes = indexes_by_table.get(table_name, [])
+                for fk in fks:
+                    local_cols = fk["local_columns"]
+                    if not local_cols:
+                        continue
+                    indexed = any(idx.get("columns", [])[:len(local_cols)] == local_cols for idx in fk_indexes)
+                    if not indexed:
+                        issues["relationships"].append({
+                            "entity": f"{schema}.{table_name}",
+                            "relationship": fk["name"],
+                            "issue": "Foreign key columns are not covered by a leading index",
+                            "details": {"columns": local_cols},
+                        })
+                        recommendations["relationships"].append({
+                            "entity": f"{schema}.{table_name}",
+                            "relationship": fk["name"],
+                            "recommendation": f"Create an index on ({', '.join(local_cols)}) to improve join performance and FK maintenance.",
+                        })
+
+                col_names = [a["name"] for a in attrs]
+                repeated_groups = {}
+                for c in col_names:
+                    m = re.match(r"^(.*)_(\d+)$", c)
+                    if m:
+                        base = m.group(1)
+                        repeated_groups.setdefault(base, 0)
+                        repeated_groups[base] += 1
+                for base, count in repeated_groups.items():
+                    if count >= 2:
+                        issues["normalization"].append({
+                            "entity": f"{schema}.{table_name}",
+                            "issue": "Potential repeating group pattern in attributes",
+                            "details": {"base": base, "count": count},
+                        })
+                        recommendations["normalization"].append({
+                            "entity": f"{schema}.{table_name}",
+                            "recommendation": "Consider normalizing repeating groups into a child entity with one row per repeated value.",
+                        })
+
+                for c in col_names:
+                    if c.endswith("_id"):
+                        base = c[:-3]
+                        if f"{base}_name" in col_names or f"{base}_code" in col_names:
+                            issues["normalization"].append({
+                                "entity": f"{schema}.{table_name}",
+                                "issue": "Potential transitive dependency / duplicated reference data",
+                                "details": {"id_column": c},
+                            })
+                            recommendations["normalization"].append({
+                                "entity": f"{schema}.{table_name}",
+                                "recommendation": f"Consider storing only {c} and retrieving related descriptive attributes via relationship joins.",
+                            })
+
+                entity_map[table_name] = {
+                    "schema": schema,
+                    "name": table_name,
+                    "kind": t["relkind"],
+                    "attributes": attrs if include_attributes else [],
+                    "primary_key": pk_cols,
+                    "unique_constraints": uniqs,
+                    "foreign_keys": fks,
+                }
+
+            relationships: list[dict[str, Any]] = []
+            for fk in fk_rows:
+                relationships.append({
+                    "name": fk["name"],
+                    "from_entity": f"{schema}.{fk['table']}",
+                    "to_entity": f"{fk['ref_schema']}.{fk['ref_table']}",
+                    "local_columns": fk["local_columns"] or [],
+                    "ref_columns": fk["ref_columns"] or [],
+                    "on_update": _action(fk["on_update"]),
+                    "on_delete": _action(fk["on_delete"]),
+                })
+
+            summary = {
+                "schema": schema,
+                "generated_at_utc": generated_at_iso,
+                "entities": len(entity_map),
+                "relationships": len(relationships),
+                "issues_count": {k: len(v) for k, v in issues.items()},
+            }
+
+            return {
+                "summary": summary,
+                "logical_model": {
+                    "entities": list(entity_map.values()),
+                    "relationships": relationships,
+                },
+                "issues": issues,
+                "recommendations": recommendations,
+            }
 
 
 @mcp.tool

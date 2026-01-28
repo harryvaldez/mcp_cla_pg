@@ -173,27 +173,39 @@ def _test_docker_http() -> None:
     print("Sending initialized notification...")
     call_tool("notifications/initialized", {}, is_notification=True)
 
+    tools_list = call_tool("tools/list", {})
+    tools = tools_list.get("tools", [])
+    if not isinstance(tools, list) or not tools:
+        raise RuntimeError("tools/list returned no tools")
+    tool_names = {t.get("name") for t in tools if isinstance(t, dict)}
+    if "db_pg96_ping" not in tool_names:
+        raise RuntimeError("tools/list missing db_pg96_ping")
+
     tools_to_test = [
         ("db_pg96_ping", {}),
         ("db_pg96_server_info", {}),
+        ("db_pg96_server_info_mcp", {}),
         ("db_pg96_list_databases", {}),
         ("db_pg96_list_schemas", {"include_system": False}),
         ("db_pg96_list_tables", {"schema": "public"}),
         ("db_pg96_describe_table", {"schema": "public", "table": "customers"}),
         ("db_pg96_run_query", {"sql": "select count(*) from public.orders"}),
         ("db_pg96_explain_query", {"sql": "select * from public.orders", "output_format": "text"}),
-        ("db_pg96_db_stats", {"database": DB_NAME}),
+        ("db_pg96_db_stats", {"database": DB_NAME, "include_performance": True}),
         ("db_pg96_check_bloat", {"limit": 5}),
+        ("db_pg96_get_db_parameters", {"pattern": "max_connections|shared_buffers"}),
         ("db_pg96_list_largest_schemas", {"limit": 5}),
         ("db_pg96_analyze_sessions", {}),
-        ("db_pg96_analyze_table_health", {"limit": 5}),
+        ("db_pg96_analyze_table_health", {"schema": "public", "limit": 5, "min_size_mb": 0}),
         ("db_pg96_database_security_performance_metrics", {}),
         ("db_pg96_analyze_indexes", {"schema": "public"}),
+        ("db_pg96_analyze_logical_data_model", {"schema": "public", "max_entities": 50}),
         ("db_pg96_list_largest_tables", {"schema": "public", "limit": 5}),
         ("db_pg96_list_temp_objects", {}),
         ("db_pg96_table_sizes", {"schema": "public", "limit": 5}),
         ("db_pg96_index_usage", {"schema": "public", "limit": 5}),
         ("db_pg96_maintenance_stats", {"schema": "public", "limit": 5}),
+        ("db_pg96_recommend_partitioning", {"min_size_gb": 0.000001, "schema": "public", "limit": 10}),
     ]
 
     for name, params in tools_to_test:
@@ -207,6 +219,19 @@ def _test_docker_http() -> None:
     call_tool("tools/call", {"name": "db_pg96_create_db_user", "arguments": {"username": username, "password": "password123", "privileges": "read", "database": DB_NAME}})
     print(f"Testing db_pg96_drop_db_user: {username}...")
     call_tool("tools/call", {"name": "db_pg96_drop_db_user", "arguments": {"username": username}})
+
+    dsn = f"postgresql://{USER}:{PASSWORD}@{HOST}:{DB_PORT}/{DB_NAME}"
+    victim = psycopg.connect(dsn, autocommit=True)
+    try:
+        with victim.cursor() as cur:
+            cur.execute("select pg_backend_pid()")
+            pid = cur.fetchone()[0]
+        call_tool("tools/call", {"name": "db_pg96_kill_session", "arguments": {"pid": pid}})
+    finally:
+        try:
+            victim.close()
+        except Exception:
+            pass
 
     print("PASS: All tools tested successfully via Docker Stateless HTTP transport.")
 

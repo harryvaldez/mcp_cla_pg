@@ -7,12 +7,14 @@ This server exposes a suite of DBA-grade tools to inspect schemas, analyze perfo
 ## 🚀 Features
 
 - **Deep Inspection**: Discover schemas, tables, indexes, and their sizes.
+- **Logical Modeling**: Analyze foreign keys and table relationships to understand the data model.
 - **Performance Analysis**: Detect table bloat, missing indexes, and lock contention.
 - **Security Audits**: Analyze database privileges and security settings.
 - **Safe Execution**: Read-only by default, with optional write capabilities for specific maintenance tasks.
 - **Multiple Transports**: Supports `http` (uses SSE) and `stdio`. HTTPS is supported via SSL configuration variables.
 - **Secure Authentication**: Built-in support for **Azure AD (Microsoft Entra ID)** and standard token auth.
 - **HTTPS Support**: Native SSL/TLS support for secure remote connections.
+- **Python 3.13**: Built on the latest Python runtime for improved performance and security.
 - **Broad Compatibility**: Fully tested with **PostgreSQL 9.6+**. (Note: PostgreSQL 9.6 reached EOL in Nov 2021; we recommend using supported releases, e.g., PostgreSQL 12+, for production.)
 
 ---
@@ -20,6 +22,8 @@ This server exposes a suite of DBA-grade tools to inspect schemas, analyze perfo
 ## 📦 Installation & Usage
 
 For detailed deployment instructions on **Azure Container Apps**, **AWS ECS**, and **Docker**, please see our **[Deployment Guide](DEPLOYMENT.md)**.
+
+> **Note**: For details on the required database privileges for read-only and read-write modes, see the **[Database Privileges](DEPLOYMENT.md#database-privileges)** section in the Deployment Guide.
 
 
 
@@ -194,6 +198,7 @@ This server implements strict security practices for logging:
 - `db_pg96_list_largest_schemas(limit: int = 30)`: Lists the largest schemas in the current database ordered by total size.
 - `db_pg96_list_largest_tables(schema: str = "public", limit: int = 30)`: List the largest tables in a specific schema ranked by total size.
 - `db_pg96_table_sizes(schema: str = None, limit: int = 20)`: List tables by size across the database.
+- `db_pg96_analyze_logical_data_model(schema: str = "public")`: Analyze foreign keys and table relationships to understand the logical data model.
 - `db_pg96_list_temp_objects()`: Monitor temporary schema usage.
 
 ### ⚡ Performance & Tuning
@@ -340,6 +345,32 @@ Here are some real-world examples of using the tools via an MCP client.
 4.  **Create Index:** `CREATE INDEX user_client_mapping_lower_user_id_idx ON smsadmin.user_client_mapping (lower(user_id));`
     *   *Reason:* Optimizes frequent case-insensitive joins on `user_id`.
 
+### 6. Logical Data Model Analysis
+**Prompt:** `using postgres_readonly, call db_pg96_analyze_logical_data_model(schema='smsadmin'). Review the resulting logical data model, which includes entities, attributes, relationships, and identifiers.`
+
+**Result (Summarized):**
+The analysis of the `smsadmin` schema reveals a significant lack of structural enforcement. While the schema contains a substantial number of entities (200 tables), it completely lacks formal relationship definitions (Foreign Keys). Additionally, a majority of tables are missing Primary Key constraints.
+
+**Key Findings:**
+*   **Total Entities Analyzed:** 200
+*   **Total Relationships (FKs):** 0 (Critical Issue)
+*   **Identifier Issues:** 122 tables missing or having unclear Primary Keys.
+*   **Normalization Issues:** 32 potential normalization violations detected.
+
+**Detailed Entity Analysis (Selected Examples):**
+
+| Entity Name | PK Status | Key Attributes | Issues Identified |
+| :--- | :--- | :--- | :--- |
+| **`analysis_area`** | **Missing** | `area_id` (float8) | IDs are floats; Recursive relationship not enforced; No PK. |
+| **`app_log`** | Valid (`log_id`) | `client_id` (varchar) | `client_id` is varchar, potentially inconsistent. Missing FKs. |
+| **`attribute`** | Valid (`attribute_id`) | `dimension_id` (numeric) | IDs are `numeric` instead of `integer`. Missing FK to Dimension. |
+| **`client_master`** | Missing | `client_id` (varchar) | `client_id` is the logical PK but not enforced. |
+
+**Recommendations:**
+1.  **Define Primary Keys:** Immediate action required to define PKs for `analysis_area`, `client_master`, etc.
+2.  **Create Foreign Keys:** Explicitly define relationships (e.g., `app_log.client_id` -> `client_master.client_id`).
+3.  **Standardize ID Types:** Migrate `double precision` and `numeric` IDs to `bigint` for consistency and performance.
+
 
 ---
 
@@ -391,10 +422,10 @@ The `db_pg96_analyze_indexes` tool has been updated to group by the indexed colu
 
 We are actively looking for contributions to make this server even better! Here are some recommended areas for enhancement:
 
-- **Advanced Monitoring**: Add tools for replication lag, autovacuum statistics, and lock contention analysis.
 - **Cloud Integrations**: Add specialized support for AWS RDS, Azure Database for PostgreSQL, and Google Cloud SQL.
-- **Extended Auth**: Support for additional OIDC providers (Google, Okta, Auth0) beyond Azure AD.
-- **Visualization**: Integration hooks for dashboard tools like Grafana.
+- **Authentication**: Test Azure AD authentication for write mode.
+- **Visualization**: Integration with MCP apps or hooks for dashboard tools like Grafana.
+- **Deployment**:  Deploy the container image to a more secured container repository like Azure or AWS.
 
 If you have an idea, please submit a feature request!
 

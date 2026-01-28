@@ -1,0 +1,5419 @@
+[
+  {
+    "config": {
+      "threads": 1,
+      "iterations": 10
+    },
+    "analysis": {
+      "summary": {
+        "total_tests": 50,
+        "successful_tests": 10,
+        "failed_tests": 40,
+        "success_rate": 20.0
+      },
+      "tools_stats": {
+        "ping": {
+          "total": 10,
+          "successful": 10,
+          "failed": 0,
+          "avg_execution_time": 1.4543533325195312e-06,
+          "max_execution_time": 3.0994415283203125e-06,
+          "min_execution_time": 4.76837158203125e-07,
+          "errors": []
+        },
+        "server_info": {
+          "total": 10,
+          "successful": 0,
+          "failed": 10,
+          "avg_execution_time": 9.00318956375122,
+          "max_execution_time": 30.014076471328735,
+          "min_execution_time": 3.814697265625e-06,
+          "errors": [
+            "couldn't get a connection after 30.00 sec",
+            "couldn't get a connection after 30.00 sec",
+            "couldn't get a connection after 30.00 sec",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting"
+          ]
+        },
+        "list_schemas": {
+          "total": 10,
+          "successful": 0,
+          "failed": 10,
+          "avg_execution_time": 9.000156664848328,
+          "max_execution_time": 30.00093936920166,
+          "min_execution_time": 3.814697265625e-06,
+          "errors": [
+            "couldn't get a connection after 30.00 sec",
+            "couldn't get a connection after 30.00 sec",
+            "couldn't get a connection after 30.00 sec",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting"
+          ]
+        },
+        "list_tables": {
+          "total": 10,
+          "successful": 0,
+          "failed": 10,
+          "avg_execution_time": 6.001628851890564,
+          "max_execution_time": 30.01540732383728,
+          "min_execution_time": 3.814697265625e-06,
+          "errors": [
+            "couldn't get a connection after 30.00 sec",
+            "couldn't get a connection after 30.00 sec",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting"
+          ]
+        },
+        "analyze_logical_data_model": {
+          "total": 10,
+          "successful": 0,
+          "failed": 10,
+          "avg_execution_time": 6.000574374198914,
+          "max_execution_time": 30.004226207733154,
+          "min_execution_time": 4.76837158203125e-06,
+          "errors": [
+            "couldn't get a connection after 30.00 sec",
+            "couldn't get a connection after 30.00 sec",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting"
+          ]
+        }
+      },
+      "raw_results": [
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 2.384185791015625e-06,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 0,
+          "iteration": 0
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 30.0060818195343,
+          "result_size": 0,
+          "error": "couldn't get a connection after 30.00 sec",
+          "thread_id": 0,
+          "iteration": 0
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 30.0005886554718,
+          "result_size": 0,
+          "error": "couldn't get a connection after 30.00 sec",
+          "thread_id": 0,
+          "iteration": 0
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 30.00080966949463,
+          "result_size": 0,
+          "error": "couldn't get a connection after 30.00 sec",
+          "thread_id": 0,
+          "iteration": 0
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 30.004226207733154,
+          "result_size": 0,
+          "error": "couldn't get a connection after 30.00 sec",
+          "thread_id": 0,
+          "iteration": 0
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 3.0994415283203125e-06,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 0,
+          "iteration": 1
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 30.011701345443726,
+          "result_size": 0,
+          "error": "couldn't get a connection after 30.00 sec",
+          "thread_id": 0,
+          "iteration": 1
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 30.00093936920166,
+          "result_size": 0,
+          "error": "couldn't get a connection after 30.00 sec",
+          "thread_id": 0,
+          "iteration": 1
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 30.01540732383728,
+          "result_size": 0,
+          "error": "couldn't get a connection after 30.00 sec",
+          "thread_id": 0,
+          "iteration": 1
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 30.001458644866943,
+          "result_size": 0,
+          "error": "couldn't get a connection after 30.00 sec",
+          "thread_id": 0,
+          "iteration": 1
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 3.0994415283203125e-06,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 0,
+          "iteration": 2
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 30.014076471328735,
+          "result_size": 0,
+          "error": "couldn't get a connection after 30.00 sec",
+          "thread_id": 0,
+          "iteration": 2
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 30.000006198883057,
+          "result_size": 0,
+          "error": "couldn't get a connection after 30.00 sec",
+          "thread_id": 0,
+          "iteration": 2
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 4.1484832763671875e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 2
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 2.1219253540039062e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 2
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 2.384185791015625e-06,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 0,
+          "iteration": 3
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 9.059906005859375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 3
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 7.3909759521484375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 3
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 5.0067901611328125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 3
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 5.9604644775390625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 3
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 7.152557373046875e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 0,
+          "iteration": 4
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 4.76837158203125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 4
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 4.291534423828125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 4
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 4.291534423828125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 4
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 5.4836273193359375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 4
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 7.152557373046875e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 0,
+          "iteration": 5
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 4.76837158203125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 5
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 4.291534423828125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 5
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 4.291534423828125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 5
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 5.0067901611328125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 5
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 4.76837158203125e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 0,
+          "iteration": 6
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 4.76837158203125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 6
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 4.291534423828125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 6
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 4.5299530029296875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 6
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 5.4836273193359375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 6
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 7.152557373046875e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 0,
+          "iteration": 7
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 4.291534423828125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 7
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 4.291534423828125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 7
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.814697265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 7
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 4.76837158203125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 7
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 4.76837158203125e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 0,
+          "iteration": 8
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 3.814697265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 8
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 3.814697265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 8
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 4.0531158447265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 8
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 5.9604644775390625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 8
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 4.76837158203125e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 0,
+          "iteration": 9
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 4.5299530029296875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 9
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 4.0531158447265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 9
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 4.0531158447265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 9
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 5.0067901611328125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 9
+        }
+      ]
+    },
+    "duration": 302.7612543106079
+  },
+  {
+    "config": {
+      "threads": 5,
+      "iterations": 5
+    },
+    "analysis": {
+      "summary": {
+        "total_tests": 125,
+        "successful_tests": 25,
+        "failed_tests": 100,
+        "success_rate": 20.0
+      },
+      "tools_stats": {
+        "ping": {
+          "total": 25,
+          "successful": 25,
+          "failed": 0,
+          "avg_execution_time": 1.697540283203125e-06,
+          "max_execution_time": 1.0251998901367188e-05,
+          "min_execution_time": 2.384185791015625e-07,
+          "errors": []
+        },
+        "server_info": {
+          "total": 25,
+          "successful": 0,
+          "failed": 25,
+          "avg_execution_time": 1.5125274658203124e-05,
+          "max_execution_time": 5.14984130859375e-05,
+          "min_execution_time": 3.0994415283203125e-06,
+          "errors": [
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting"
+          ]
+        },
+        "list_schemas": {
+          "total": 25,
+          "successful": 0,
+          "failed": 25,
+          "avg_execution_time": 6.113052368164063e-06,
+          "max_execution_time": 1.33514404296875e-05,
+          "min_execution_time": 3.337860107421875e-06,
+          "errors": [
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting"
+          ]
+        },
+        "list_tables": {
+          "total": 25,
+          "successful": 0,
+          "failed": 25,
+          "avg_execution_time": 4.777908325195312e-06,
+          "max_execution_time": 1.0728836059570312e-05,
+          "min_execution_time": 3.0994415283203125e-06,
+          "errors": [
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting"
+          ]
+        },
+        "analyze_logical_data_model": {
+          "total": 25,
+          "successful": 0,
+          "failed": 25,
+          "avg_execution_time": 6.351470947265625e-06,
+          "max_execution_time": 1.5974044799804688e-05,
+          "min_execution_time": 3.5762786865234375e-06,
+          "errors": [
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting"
+          ]
+        }
+      },
+      "raw_results": [
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 4.76837158203125e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 1,
+          "iteration": 0
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 4.5299530029296875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 1,
+          "iteration": 0
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 4.5299530029296875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 1,
+          "iteration": 0
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.0994415283203125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 1,
+          "iteration": 0
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 3.814697265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 1,
+          "iteration": 0
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 1.0251998901367188e-05,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 2,
+          "iteration": 0
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 2.5033950805664062e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 2,
+          "iteration": 0
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 1.33514404296875e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 2,
+          "iteration": 0
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 1.0728836059570312e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 2,
+          "iteration": 0
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 1.5974044799804688e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 2,
+          "iteration": 0
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 1.6689300537109375e-06,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 0,
+          "iteration": 4
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 2.0265579223632812e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 4
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 6.9141387939453125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 4
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 4.5299530029296875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 4
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 6.198883056640625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 4
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 2.1457672119140625e-06,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 0,
+          "iteration": 3
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 2.0265579223632812e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 3
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 9.5367431640625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 3
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 5.4836273193359375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 3
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 9.5367431640625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 3
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 9.5367431640625e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 2,
+          "iteration": 4
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 1.2874603271484375e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 2,
+          "iteration": 4
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 8.344650268554688e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 2,
+          "iteration": 4
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 7.867813110351562e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 2,
+          "iteration": 4
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 8.821487426757812e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 2,
+          "iteration": 4
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 4.76837158203125e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 1,
+          "iteration": 4
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 3.814697265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 1,
+          "iteration": 4
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 3.337860107421875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 1,
+          "iteration": 4
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.814697265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 1,
+          "iteration": 4
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 4.0531158447265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 1,
+          "iteration": 4
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 1.430511474609375e-06,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 2,
+          "iteration": 2
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 1.4781951904296875e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 2,
+          "iteration": 2
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 5.0067901611328125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 2,
+          "iteration": 2
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.814697265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 2,
+          "iteration": 2
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 4.76837158203125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 2,
+          "iteration": 2
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 1.430511474609375e-06,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 2,
+          "iteration": 3
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 2.2649765014648438e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 2,
+          "iteration": 3
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 6.4373016357421875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 2,
+          "iteration": 3
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 4.5299530029296875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 2,
+          "iteration": 3
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 5.7220458984375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 2,
+          "iteration": 3
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 4.76837158203125e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 0,
+          "iteration": 2
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 4.0531158447265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 2
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 3.5762786865234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 2
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 5.245208740234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 2
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 4.0531158447265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 2
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 1.430511474609375e-06,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 2,
+          "iteration": 1
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 1.52587890625e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 2,
+          "iteration": 1
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 5.7220458984375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 2,
+          "iteration": 1
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 4.291534423828125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 2,
+          "iteration": 1
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 7.3909759521484375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 2,
+          "iteration": 1
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 6.198883056640625e-06,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 1,
+          "iteration": 2
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 5.14984130859375e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 1,
+          "iteration": 2
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 1.1920928955078125e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 1,
+          "iteration": 2
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 9.059906005859375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 1,
+          "iteration": 2
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 1.0251998901367188e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 1,
+          "iteration": 2
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 1.430511474609375e-06,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 1,
+          "iteration": 1
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 1.430511474609375e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 1,
+          "iteration": 1
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 5.7220458984375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 1,
+          "iteration": 1
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 4.291534423828125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 1,
+          "iteration": 1
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 7.867813110351562e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 1,
+          "iteration": 1
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 2.384185791015625e-06,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 0,
+          "iteration": 0
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 2.9087066650390625e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 0
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 8.344650268554688e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 0
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 5.7220458984375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 0
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 8.106231689453125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 0
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 1.9073486328125e-06,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 0,
+          "iteration": 1
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 1.1682510375976562e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 1
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 5.0067901611328125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 1
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 5.9604644775390625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 1
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 5.9604644775390625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 1
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 1.6689300537109375e-06,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 1,
+          "iteration": 3
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 1.811981201171875e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 1,
+          "iteration": 3
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 6.67572021484375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 1,
+          "iteration": 3
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 4.5299530029296875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 1,
+          "iteration": 3
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 5.4836273193359375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 1,
+          "iteration": 3
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 9.5367431640625e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 3,
+          "iteration": 2
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 1.239776611328125e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 3,
+          "iteration": 2
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 6.4373016357421875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 3,
+          "iteration": 2
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 4.5299530029296875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 3,
+          "iteration": 2
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 7.152557373046875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 3,
+          "iteration": 2
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 4.76837158203125e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 4,
+          "iteration": 0
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 5.9604644775390625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 4,
+          "iteration": 0
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 5.4836273193359375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 4,
+          "iteration": 0
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.337860107421875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 4,
+          "iteration": 0
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 4.0531158447265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 4,
+          "iteration": 0
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 7.152557373046875e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 4,
+          "iteration": 1
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 3.5762786865234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 4,
+          "iteration": 1
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 3.337860107421875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 4,
+          "iteration": 1
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.337860107421875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 4,
+          "iteration": 1
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 3.5762786865234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 4,
+          "iteration": 1
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 4.76837158203125e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 4,
+          "iteration": 2
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 3.337860107421875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 4,
+          "iteration": 2
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 3.337860107421875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 4,
+          "iteration": 2
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.0994415283203125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 4,
+          "iteration": 2
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 4.291534423828125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 4,
+          "iteration": 2
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 2.384185791015625e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 4,
+          "iteration": 3
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 3.0994415283203125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 4,
+          "iteration": 3
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 3.5762786865234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 4,
+          "iteration": 3
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.337860107421875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 4,
+          "iteration": 3
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 4.0531158447265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 4,
+          "iteration": 3
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 2.384185791015625e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 4,
+          "iteration": 4
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 4.291534423828125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 4,
+          "iteration": 4
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 3.5762786865234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 4,
+          "iteration": 4
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.337860107421875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 4,
+          "iteration": 4
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 6.67572021484375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 4,
+          "iteration": 4
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 1.430511474609375e-06,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 3,
+          "iteration": 3
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 1.5020370483398438e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 3,
+          "iteration": 3
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 5.245208740234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 3,
+          "iteration": 3
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.814697265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 3,
+          "iteration": 3
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 5.4836273193359375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 3,
+          "iteration": 3
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 1.430511474609375e-06,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 3,
+          "iteration": 4
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 2.002716064453125e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 3,
+          "iteration": 4
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 5.9604644775390625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 3,
+          "iteration": 4
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 4.291534423828125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 3,
+          "iteration": 4
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 5.4836273193359375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 3,
+          "iteration": 4
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 9.5367431640625e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 3,
+          "iteration": 0
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 6.67572021484375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 3,
+          "iteration": 0
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 5.7220458984375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 3,
+          "iteration": 0
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.5762786865234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 3,
+          "iteration": 0
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 4.291534423828125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 3,
+          "iteration": 0
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 1.1920928955078125e-06,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 3,
+          "iteration": 1
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 3.552436828613281e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 3,
+          "iteration": 1
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 5.7220458984375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 3,
+          "iteration": 1
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.814697265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 3,
+          "iteration": 1
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 5.7220458984375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 3,
+          "iteration": 1
+        }
+      ]
+    },
+    "duration": 0.004077911376953125
+  },
+  {
+    "config": {
+      "threads": 10,
+      "iterations": 3
+    },
+    "analysis": {
+      "summary": {
+        "total_tests": 150,
+        "successful_tests": 30,
+        "failed_tests": 120,
+        "success_rate": 20.0
+      },
+      "tools_stats": {
+        "ping": {
+          "total": 30,
+          "successful": 30,
+          "failed": 0,
+          "avg_execution_time": 9.139378865559896e-07,
+          "max_execution_time": 3.337860107421875e-06,
+          "min_execution_time": 2.384185791015625e-07,
+          "errors": []
+        },
+        "server_info": {
+          "total": 30,
+          "successful": 0,
+          "failed": 30,
+          "avg_execution_time": 9.083747863769532e-06,
+          "max_execution_time": 2.5987625122070312e-05,
+          "min_execution_time": 3.337860107421875e-06,
+          "errors": [
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting"
+          ]
+        },
+        "list_schemas": {
+          "total": 30,
+          "successful": 0,
+          "failed": 30,
+          "avg_execution_time": 4.514058430989583e-06,
+          "max_execution_time": 7.152557373046875e-06,
+          "min_execution_time": 3.337860107421875e-06,
+          "errors": [
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting"
+          ]
+        },
+        "list_tables": {
+          "total": 30,
+          "successful": 0,
+          "failed": 30,
+          "avg_execution_time": 3.981590270996094e-06,
+          "max_execution_time": 6.198883056640625e-06,
+          "min_execution_time": 3.0994415283203125e-06,
+          "errors": [
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting"
+          ]
+        },
+        "analyze_logical_data_model": {
+          "total": 30,
+          "successful": 0,
+          "failed": 30,
+          "avg_execution_time": 5.062421162923177e-06,
+          "max_execution_time": 7.3909759521484375e-06,
+          "min_execution_time": 4.0531158447265625e-06,
+          "errors": [
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting"
+          ]
+        }
+      },
+      "raw_results": [
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 7.152557373046875e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 6,
+          "iteration": 0
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 7.152557373046875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 6,
+          "iteration": 0
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 3.814697265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 6,
+          "iteration": 0
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.5762786865234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 6,
+          "iteration": 0
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 5.245208740234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 6,
+          "iteration": 0
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 1.1920928955078125e-06,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 5,
+          "iteration": 0
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 1.3828277587890625e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 5,
+          "iteration": 0
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 5.9604644775390625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 5,
+          "iteration": 0
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 4.0531158447265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 5,
+          "iteration": 0
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 5.4836273193359375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 5,
+          "iteration": 0
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 4.76837158203125e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 4,
+          "iteration": 2
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 3.5762786865234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 4,
+          "iteration": 2
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 3.5762786865234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 4,
+          "iteration": 2
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.337860107421875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 4,
+          "iteration": 2
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 4.0531158447265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 4,
+          "iteration": 2
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 7.152557373046875e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 4,
+          "iteration": 1
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 1.049041748046875e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 4,
+          "iteration": 1
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 3.5762786865234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 4,
+          "iteration": 1
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.0994415283203125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 4,
+          "iteration": 1
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 4.291534423828125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 4,
+          "iteration": 1
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 9.5367431640625e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 4,
+          "iteration": 0
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 7.867813110351562e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 4,
+          "iteration": 0
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 4.5299530029296875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 4,
+          "iteration": 0
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.5762786865234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 4,
+          "iteration": 0
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 5.0067901611328125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 4,
+          "iteration": 0
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 2.384185791015625e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 9,
+          "iteration": 0
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 3.814697265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 9,
+          "iteration": 0
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 3.337860107421875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 9,
+          "iteration": 0
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.337860107421875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 9,
+          "iteration": 0
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 5.7220458984375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 9,
+          "iteration": 0
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 9.5367431640625e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 3,
+          "iteration": 2
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 8.344650268554688e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 3,
+          "iteration": 2
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 4.291534423828125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 3,
+          "iteration": 2
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.5762786865234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 3,
+          "iteration": 2
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 4.5299530029296875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 3,
+          "iteration": 2
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 4.76837158203125e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 3,
+          "iteration": 1
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 7.62939453125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 3,
+          "iteration": 1
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 5.0067901611328125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 3,
+          "iteration": 1
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.337860107421875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 3,
+          "iteration": 1
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 6.9141387939453125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 3,
+          "iteration": 1
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 7.152557373046875e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 8,
+          "iteration": 2
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 9.059906005859375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 8,
+          "iteration": 2
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 3.814697265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 8,
+          "iteration": 2
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.5762786865234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 8,
+          "iteration": 2
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 4.76837158203125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 8,
+          "iteration": 2
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 9.5367431640625e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 7,
+          "iteration": 2
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 7.3909759521484375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 7,
+          "iteration": 2
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 3.814697265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 7,
+          "iteration": 2
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.337860107421875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 7,
+          "iteration": 2
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 5.0067901611328125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 7,
+          "iteration": 2
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 4.76837158203125e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 3,
+          "iteration": 0
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 3.337860107421875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 3,
+          "iteration": 0
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 3.814697265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 3,
+          "iteration": 0
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.337860107421875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 3,
+          "iteration": 0
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 4.0531158447265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 3,
+          "iteration": 0
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 1.6689300537109375e-06,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 1,
+          "iteration": 0
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 1.5735626220703125e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 1,
+          "iteration": 0
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 6.198883056640625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 1,
+          "iteration": 0
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 4.0531158447265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 1,
+          "iteration": 0
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 5.9604644775390625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 1,
+          "iteration": 0
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 7.152557373046875e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 8,
+          "iteration": 0
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 6.198883056640625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 8,
+          "iteration": 0
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 3.5762786865234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 8,
+          "iteration": 0
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 4.76837158203125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 8,
+          "iteration": 0
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 5.9604644775390625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 8,
+          "iteration": 0
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 3.337860107421875e-06,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 0,
+          "iteration": 0
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 2.5987625122070312e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 0
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 7.152557373046875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 0
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 4.76837158203125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 0
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 6.198883056640625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 0
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 1.1920928955078125e-06,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 8,
+          "iteration": 1
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 1.0967254638671875e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 8,
+          "iteration": 1
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 6.9141387939453125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 8,
+          "iteration": 1
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.814697265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 8,
+          "iteration": 1
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 4.5299530029296875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 8,
+          "iteration": 1
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 1.6689300537109375e-06,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 0,
+          "iteration": 1
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 1.8835067749023438e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 1
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 6.9141387939453125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 1
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 4.76837158203125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 1
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 6.198883056640625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 1
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 7.152557373046875e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 5,
+          "iteration": 2
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 7.867813110351562e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 5,
+          "iteration": 2
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 4.0531158447265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 5,
+          "iteration": 2
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 5.4836273193359375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 5,
+          "iteration": 2
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 5.0067901611328125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 5,
+          "iteration": 2
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 9.5367431640625e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 5,
+          "iteration": 1
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 1.0967254638671875e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 5,
+          "iteration": 1
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 5.7220458984375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 5,
+          "iteration": 1
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.814697265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 5,
+          "iteration": 1
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 7.3909759521484375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 5,
+          "iteration": 1
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 7.152557373046875e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 1,
+          "iteration": 2
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 3.814697265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 1,
+          "iteration": 2
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 5.0067901611328125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 1,
+          "iteration": 2
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.337860107421875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 1,
+          "iteration": 2
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 4.0531158447265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 1,
+          "iteration": 2
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 7.152557373046875e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 2,
+          "iteration": 0
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 6.9141387939453125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 2,
+          "iteration": 0
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 3.814697265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 2,
+          "iteration": 0
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 6.198883056640625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 2,
+          "iteration": 0
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 4.76837158203125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 2,
+          "iteration": 0
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 9.5367431640625e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 7,
+          "iteration": 1
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 8.821487426757812e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 7,
+          "iteration": 1
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 4.0531158447265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 7,
+          "iteration": 1
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.5762786865234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 7,
+          "iteration": 1
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 4.5299530029296875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 7,
+          "iteration": 1
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 1.430511474609375e-06,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 2,
+          "iteration": 2
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 1.52587890625e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 2,
+          "iteration": 2
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 5.9604644775390625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 2,
+          "iteration": 2
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 4.291534423828125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 2,
+          "iteration": 2
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 5.4836273193359375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 2,
+          "iteration": 2
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 4.76837158203125e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 0,
+          "iteration": 2
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 4.0531158447265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 2
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 3.5762786865234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 2
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 5.7220458984375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 2
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 4.0531158447265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 2
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 9.5367431640625e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 1,
+          "iteration": 1
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 1.3113021850585938e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 1,
+          "iteration": 1
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 3.814697265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 1,
+          "iteration": 1
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.5762786865234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 1,
+          "iteration": 1
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 5.245208740234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 1,
+          "iteration": 1
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 7.152557373046875e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 6,
+          "iteration": 1
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 1.1682510375976562e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 6,
+          "iteration": 1
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 3.814697265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 6,
+          "iteration": 1
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.5762786865234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 6,
+          "iteration": 1
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 4.291534423828125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 6,
+          "iteration": 1
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 9.5367431640625e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 2,
+          "iteration": 1
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 6.4373016357421875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 2,
+          "iteration": 1
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 3.814697265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 2,
+          "iteration": 1
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.5762786865234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 2,
+          "iteration": 1
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 4.76837158203125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 2,
+          "iteration": 1
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 7.152557373046875e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 7,
+          "iteration": 0
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 7.62939453125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 7,
+          "iteration": 0
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 4.0531158447265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 7,
+          "iteration": 0
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 4.5299530029296875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 7,
+          "iteration": 0
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 4.5299530029296875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 7,
+          "iteration": 0
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 4.76837158203125e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 6,
+          "iteration": 2
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 3.5762786865234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 6,
+          "iteration": 2
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 3.814697265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 6,
+          "iteration": 2
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.5762786865234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 6,
+          "iteration": 2
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 4.291534423828125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 6,
+          "iteration": 2
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 4.76837158203125e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 9,
+          "iteration": 1
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 5.245208740234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 9,
+          "iteration": 1
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 3.5762786865234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 9,
+          "iteration": 1
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.337860107421875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 9,
+          "iteration": 1
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 4.5299530029296875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 9,
+          "iteration": 1
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 7.152557373046875e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 9,
+          "iteration": 2
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 6.9141387939453125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 9,
+          "iteration": 2
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 4.0531158447265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 9,
+          "iteration": 2
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 4.5299530029296875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 9,
+          "iteration": 2
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 5.0067901611328125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 9,
+          "iteration": 2
+        }
+      ]
+    },
+    "duration": 0.0034880638122558594
+  },
+  {
+    "config": {
+      "threads": 20,
+      "iterations": 2
+    },
+    "analysis": {
+      "summary": {
+        "total_tests": 200,
+        "successful_tests": 40,
+        "failed_tests": 160,
+        "success_rate": 20.0
+      },
+      "tools_stats": {
+        "ping": {
+          "total": 40,
+          "successful": 40,
+          "failed": 0,
+          "avg_execution_time": 9.238719940185547e-07,
+          "max_execution_time": 2.1457672119140625e-06,
+          "min_execution_time": 2.384185791015625e-07,
+          "errors": []
+        },
+        "server_info": {
+          "total": 40,
+          "successful": 0,
+          "failed": 40,
+          "avg_execution_time": 9.059906005859375e-06,
+          "max_execution_time": 2.47955322265625e-05,
+          "min_execution_time": 3.0994415283203125e-06,
+          "errors": [
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting"
+          ]
+        },
+        "list_schemas": {
+          "total": 40,
+          "successful": 0,
+          "failed": 40,
+          "avg_execution_time": 4.5299530029296875e-06,
+          "max_execution_time": 8.58306884765625e-06,
+          "min_execution_time": 2.86102294921875e-06,
+          "errors": [
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting"
+          ]
+        },
+        "list_tables": {
+          "total": 40,
+          "successful": 0,
+          "failed": 40,
+          "avg_execution_time": 4.44650650024414e-06,
+          "max_execution_time": 2.574920654296875e-05,
+          "min_execution_time": 3.0994415283203125e-06,
+          "errors": [
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting"
+          ]
+        },
+        "analyze_logical_data_model": {
+          "total": 40,
+          "successful": 0,
+          "failed": 40,
+          "avg_execution_time": 4.851818084716797e-06,
+          "max_execution_time": 6.198883056640625e-06,
+          "min_execution_time": 3.5762786865234375e-06,
+          "errors": [
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting",
+            "the pool 'pool-1' has already 10 requests waiting"
+          ]
+        }
+      },
+      "raw_results": [
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 4.76837158203125e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 1,
+          "iteration": 0
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 4.76837158203125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 1,
+          "iteration": 0
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 7.152557373046875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 1,
+          "iteration": 0
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.814697265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 1,
+          "iteration": 0
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 5.245208740234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 1,
+          "iteration": 0
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 7.152557373046875e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 10,
+          "iteration": 0
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 3.5762786865234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 10,
+          "iteration": 0
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 2.86102294921875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 10,
+          "iteration": 0
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.337860107421875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 10,
+          "iteration": 0
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 3.5762786865234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 10,
+          "iteration": 0
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 7.152557373046875e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 9,
+          "iteration": 1
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 6.4373016357421875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 9,
+          "iteration": 1
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 3.5762786865234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 9,
+          "iteration": 1
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.814697265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 9,
+          "iteration": 1
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 4.0531158447265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 9,
+          "iteration": 1
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 7.152557373046875e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 3,
+          "iteration": 0
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 6.67572021484375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 3,
+          "iteration": 0
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 4.291534423828125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 3,
+          "iteration": 0
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.337860107421875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 3,
+          "iteration": 0
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 4.76837158203125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 3,
+          "iteration": 0
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 7.152557373046875e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 8,
+          "iteration": 0
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 6.9141387939453125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 8,
+          "iteration": 0
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 5.4836273193359375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 8,
+          "iteration": 0
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.337860107421875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 8,
+          "iteration": 0
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 4.5299530029296875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 8,
+          "iteration": 0
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 4.76837158203125e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 13,
+          "iteration": 1
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 3.814697265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 13,
+          "iteration": 1
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 3.5762786865234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 13,
+          "iteration": 1
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.337860107421875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 13,
+          "iteration": 1
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 4.0531158447265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 13,
+          "iteration": 1
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 9.5367431640625e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 4,
+          "iteration": 0
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 6.4373016357421875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 4,
+          "iteration": 0
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 3.337860107421875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 4,
+          "iteration": 0
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 4.0531158447265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 4,
+          "iteration": 0
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 6.198883056640625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 4,
+          "iteration": 0
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 9.5367431640625e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 10,
+          "iteration": 1
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 1.0967254638671875e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 10,
+          "iteration": 1
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 3.814697265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 10,
+          "iteration": 1
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 4.0531158447265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 10,
+          "iteration": 1
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 4.76837158203125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 10,
+          "iteration": 1
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 1.9073486328125e-06,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 2,
+          "iteration": 0
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 2.0742416381835938e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 2,
+          "iteration": 0
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 6.67572021484375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 2,
+          "iteration": 0
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 4.5299530029296875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 2,
+          "iteration": 0
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 5.7220458984375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 2,
+          "iteration": 0
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 4.76837158203125e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 17,
+          "iteration": 1
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 3.814697265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 17,
+          "iteration": 1
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 3.337860107421875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 17,
+          "iteration": 1
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.5762786865234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 17,
+          "iteration": 1
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 4.291534423828125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 17,
+          "iteration": 1
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 9.5367431640625e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 14,
+          "iteration": 1
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 7.3909759521484375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 14,
+          "iteration": 1
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 3.814697265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 14,
+          "iteration": 1
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 4.0531158447265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 14,
+          "iteration": 1
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 5.0067901611328125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 14,
+          "iteration": 1
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 1.6689300537109375e-06,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 5,
+          "iteration": 0
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 1.6689300537109375e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 5,
+          "iteration": 0
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 6.67572021484375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 5,
+          "iteration": 0
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 5.245208740234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 5,
+          "iteration": 0
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 5.4836273193359375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 5,
+          "iteration": 0
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 2.384185791015625e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 2,
+          "iteration": 1
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 3.0994415283203125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 2,
+          "iteration": 1
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 3.337860107421875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 2,
+          "iteration": 1
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.0994415283203125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 2,
+          "iteration": 1
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 3.814697265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 2,
+          "iteration": 1
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 1.430511474609375e-06,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 8,
+          "iteration": 1
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 1.8358230590820312e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 8,
+          "iteration": 1
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 4.76837158203125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 8,
+          "iteration": 1
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.814697265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 8,
+          "iteration": 1
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 5.245208740234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 8,
+          "iteration": 1
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 4.76837158203125e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 17,
+          "iteration": 0
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 9.059906005859375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 17,
+          "iteration": 0
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 3.814697265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 17,
+          "iteration": 0
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 4.5299530029296875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 17,
+          "iteration": 0
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 4.76837158203125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 17,
+          "iteration": 0
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 7.152557373046875e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 12,
+          "iteration": 0
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 6.4373016357421875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 12,
+          "iteration": 0
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 3.814697265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 12,
+          "iteration": 0
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.5762786865234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 12,
+          "iteration": 0
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 4.0531158447265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 12,
+          "iteration": 0
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 7.152557373046875e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 7,
+          "iteration": 0
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 3.5762786865234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 7,
+          "iteration": 0
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 3.5762786865234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 7,
+          "iteration": 0
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.5762786865234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 7,
+          "iteration": 0
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 4.0531158447265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 7,
+          "iteration": 0
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 2.1457672119140625e-06,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 0,
+          "iteration": 0
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 2.47955322265625e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 0
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 8.58306884765625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 0
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 4.5299530029296875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 0
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 6.198883056640625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 0
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 7.152557373046875e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 16,
+          "iteration": 1
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 6.67572021484375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 16,
+          "iteration": 1
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 3.814697265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 16,
+          "iteration": 1
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.814697265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 16,
+          "iteration": 1
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 4.76837158203125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 16,
+          "iteration": 1
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 1.430511474609375e-06,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 9,
+          "iteration": 0
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 1.2874603271484375e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 9,
+          "iteration": 0
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 5.245208740234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 9,
+          "iteration": 0
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.814697265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 9,
+          "iteration": 0
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 5.0067901611328125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 9,
+          "iteration": 0
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 7.152557373046875e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 1,
+          "iteration": 1
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 6.9141387939453125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 1,
+          "iteration": 1
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 3.5762786865234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 1,
+          "iteration": 1
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.5762786865234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 1,
+          "iteration": 1
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 4.5299530029296875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 1,
+          "iteration": 1
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 7.152557373046875e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 14,
+          "iteration": 0
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 8.106231689453125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 14,
+          "iteration": 0
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 4.291534423828125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 14,
+          "iteration": 0
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 5.9604644775390625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 14,
+          "iteration": 0
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 5.4836273193359375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 14,
+          "iteration": 0
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 4.76837158203125e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 15,
+          "iteration": 1
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 6.67572021484375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 15,
+          "iteration": 1
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 4.5299530029296875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 15,
+          "iteration": 1
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 4.5299530029296875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 15,
+          "iteration": 1
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 4.291534423828125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 15,
+          "iteration": 1
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 7.152557373046875e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 12,
+          "iteration": 1
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 6.198883056640625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 12,
+          "iteration": 1
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 5.245208740234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 12,
+          "iteration": 1
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.5762786865234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 12,
+          "iteration": 1
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 4.0531158447265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 12,
+          "iteration": 1
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 4.76837158203125e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 4,
+          "iteration": 1
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 3.337860107421875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 4,
+          "iteration": 1
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 3.0994415283203125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 4,
+          "iteration": 1
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 4.0531158447265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 4,
+          "iteration": 1
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 4.5299530029296875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 4,
+          "iteration": 1
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 9.5367431640625e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 11,
+          "iteration": 1
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 6.9141387939453125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 11,
+          "iteration": 1
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 3.814697265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 11,
+          "iteration": 1
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 2.574920654296875e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 11,
+          "iteration": 1
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 6.198883056640625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 11,
+          "iteration": 1
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 1.1920928955078125e-06,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 11,
+          "iteration": 0
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 1.5497207641601562e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 11,
+          "iteration": 0
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 4.76837158203125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 11,
+          "iteration": 0
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 4.0531158447265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 11,
+          "iteration": 0
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 5.0067901611328125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 11,
+          "iteration": 0
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 1.430511474609375e-06,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 6,
+          "iteration": 0
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 1.3113021850585938e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 6,
+          "iteration": 0
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 5.245208740234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 6,
+          "iteration": 0
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 4.0531158447265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 6,
+          "iteration": 0
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 5.0067901611328125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 6,
+          "iteration": 0
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 7.152557373046875e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 16,
+          "iteration": 0
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 6.4373016357421875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 16,
+          "iteration": 0
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 3.5762786865234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 16,
+          "iteration": 0
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.5762786865234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 16,
+          "iteration": 0
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 4.5299530029296875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 16,
+          "iteration": 0
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 9.5367431640625e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 6,
+          "iteration": 1
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 6.4373016357421875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 6,
+          "iteration": 1
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 5.7220458984375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 6,
+          "iteration": 1
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 4.0531158447265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 6,
+          "iteration": 1
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 6.198883056640625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 6,
+          "iteration": 1
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 1.1920928955078125e-06,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 3,
+          "iteration": 1
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 1.5020370483398438e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 3,
+          "iteration": 1
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 4.76837158203125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 3,
+          "iteration": 1
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.814697265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 3,
+          "iteration": 1
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 5.245208740234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 3,
+          "iteration": 1
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 9.5367431640625e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 7,
+          "iteration": 1
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 5.9604644775390625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 7,
+          "iteration": 1
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 3.5762786865234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 7,
+          "iteration": 1
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.5762786865234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 7,
+          "iteration": 1
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 4.76837158203125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 7,
+          "iteration": 1
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 1.9073486328125e-06,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 0,
+          "iteration": 1
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 1.9073486328125e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 1
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 6.67572021484375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 1
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 4.291534423828125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 1
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 6.198883056640625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 0,
+          "iteration": 1
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 7.152557373046875e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 13,
+          "iteration": 0
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 8.344650268554688e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 13,
+          "iteration": 0
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 3.814697265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 13,
+          "iteration": 0
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 4.0531158447265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 13,
+          "iteration": 0
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 4.291534423828125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 13,
+          "iteration": 0
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 1.1920928955078125e-06,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 5,
+          "iteration": 1
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 1.2159347534179688e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 5,
+          "iteration": 1
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 4.5299530029296875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 5,
+          "iteration": 1
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.814697265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 5,
+          "iteration": 1
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 5.4836273193359375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 5,
+          "iteration": 1
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 1.1920928955078125e-06,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 15,
+          "iteration": 0
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 1.1920928955078125e-05,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 15,
+          "iteration": 0
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 4.76837158203125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 15,
+          "iteration": 0
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 4.291534423828125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 15,
+          "iteration": 0
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 5.0067901611328125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 15,
+          "iteration": 0
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 7.152557373046875e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 18,
+          "iteration": 0
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 7.152557373046875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 18,
+          "iteration": 0
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 5.0067901611328125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 18,
+          "iteration": 0
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.5762786865234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 18,
+          "iteration": 0
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 4.5299530029296875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 18,
+          "iteration": 0
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 9.5367431640625e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 18,
+          "iteration": 1
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 7.3909759521484375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 18,
+          "iteration": 1
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 3.814697265625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 18,
+          "iteration": 1
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.337860107421875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 18,
+          "iteration": 1
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 4.291534423828125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 18,
+          "iteration": 1
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 7.152557373046875e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 19,
+          "iteration": 0
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 6.4373016357421875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 19,
+          "iteration": 0
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 3.5762786865234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 19,
+          "iteration": 0
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.5762786865234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 19,
+          "iteration": 0
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 4.5299530029296875e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 19,
+          "iteration": 0
+        },
+        {
+          "tool": "ping",
+          "success": true,
+          "execution_time": 4.76837158203125e-07,
+          "result_size": 12,
+          "error": null,
+          "thread_id": 19,
+          "iteration": 1
+        },
+        {
+          "tool": "server_info",
+          "success": false,
+          "execution_time": 6.198883056640625e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 19,
+          "iteration": 1
+        },
+        {
+          "tool": "list_schemas",
+          "success": false,
+          "execution_time": 5.245208740234375e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 19,
+          "iteration": 1
+        },
+        {
+          "tool": "list_tables",
+          "success": false,
+          "execution_time": 3.0994415283203125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 19,
+          "iteration": 1
+        },
+        {
+          "tool": "analyze_logical_data_model",
+          "success": false,
+          "execution_time": 4.291534423828125e-06,
+          "result_size": 0,
+          "error": "the pool 'pool-1' has already 10 requests waiting",
+          "thread_id": 19,
+          "iteration": 1
+        }
+      ]
+    },
+    "duration": 0.004400014877319336
+  }
+]

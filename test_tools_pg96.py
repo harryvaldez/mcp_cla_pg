@@ -3,6 +3,7 @@ import subprocess
 import sys
 import time
 import traceback
+import ast
 from typing import Any
 
 import psycopg
@@ -10,12 +11,43 @@ import psycopg
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 COMPOSE_FILE = os.path.join(ROOT, "docker-compose.yml")
+SERVER_FILE = os.path.join(ROOT, "server.py")
 SERVICE = "postgres96"
 HOST = "localhost"
 PORT = 55432
 DB = "mcp_test"
 USER = "postgres"
 PASSWORD = "postgres"
+
+EXPECTED_TOOLS = [
+    "db_pg96_analyze_indexes",
+    "db_pg96_analyze_logical_data_model",
+    "db_pg96_analyze_sessions",
+    "db_pg96_analyze_table_health",
+    "db_pg96_check_bloat",
+    "db_pg96_create_db_user",
+    "db_pg96_database_security_performance_metrics",
+    "db_pg96_db_stats",
+    "db_pg96_describe_table",
+    "db_pg96_drop_db_user",
+    "db_pg96_explain_query",
+    "db_pg96_get_db_parameters",
+    "db_pg96_index_usage",
+    "db_pg96_kill_session",
+    "db_pg96_list_databases",
+    "db_pg96_list_largest_schemas",
+    "db_pg96_list_largest_tables",
+    "db_pg96_list_schemas",
+    "db_pg96_list_tables",
+    "db_pg96_list_temp_objects",
+    "db_pg96_maintenance_stats",
+    "db_pg96_ping",
+    "db_pg96_recommend_partitioning",
+    "db_pg96_run_query",
+    "db_pg96_server_info",
+    "db_pg96_server_info_mcp",
+    "db_pg96_table_sizes",
+]
 
 
 def _run(cmd: list[str], *, check: bool = True, capture: bool = False) -> subprocess.CompletedProcess[str]:
@@ -30,6 +62,41 @@ def _run(cmd: list[str], *, check: bool = True, capture: bool = False) -> subpro
 
 def _compose(*args: str, check: bool = True, capture: bool = False) -> subprocess.CompletedProcess[str]:
     return _run(["docker", "compose", "-f", COMPOSE_FILE, *args], check=check, capture=capture)
+
+def _docker_available() -> bool:
+    try:
+        subprocess.run(["docker", "info"], cwd=ROOT, check=True, text=True, capture_output=True, timeout=5)
+        return True
+    except Exception:
+        return False
+
+def _scan_server_tools() -> list[str]:
+    with open(SERVER_FILE, "r", encoding="utf-8") as f:
+        src = f.read()
+    tree = ast.parse(src, filename=SERVER_FILE)
+    tools: list[str] = []
+    for node in tree.body:
+        if not isinstance(node, ast.FunctionDef):
+            continue
+        has_tool_decorator = False
+        for dec in node.decorator_list:
+            if isinstance(dec, ast.Attribute) and isinstance(dec.value, ast.Name) and dec.value.id == "mcp" and dec.attr == "tool":
+                has_tool_decorator = True
+                break
+            if isinstance(dec, ast.Name) and dec.id == "tool":
+                has_tool_decorator = True
+                break
+        if has_tool_decorator and node.name.startswith("db_pg96_"):
+            tools.append(node.name)
+    return sorted(set(tools))
+
+def _static_inventory_check() -> None:
+    discovered = _scan_server_tools()
+    expected = sorted(set(EXPECTED_TOOLS))
+    missing = [t for t in expected if t not in discovered]
+    extra = [t for t in discovered if t not in expected]
+    _assert(not missing, f"Expected tools missing from server.py: {missing}")
+    _assert(not extra, f"Unexpected tools found in server.py: {extra}")
 
 
 def _wait_for_db(timeout_s: int = 60) -> None:
@@ -145,32 +212,7 @@ def _call_all_tools() -> None:
 
     import server  # noqa: E402
 
-    required = [
-        "db_pg96_ping",
-        "db_pg96_server_info",
-        "db_pg96_run_query",
-        "db_pg96_explain_query",
-        "db_pg96_list_databases",
-        "db_pg96_list_schemas",
-        "db_pg96_list_tables",
-        "db_pg96_describe_table",
-        "db_pg96_db_stats",
-        "db_pg96_check_bloat",
-        "db_pg96_get_db_parameters",
-        "db_pg96_analyze_sessions",
-        "db_pg96_analyze_table_health",
-        "db_pg96_database_security_performance_metrics",
-        "db_pg96_create_db_user",
-        "db_pg96_drop_db_user",
-        "db_pg96_kill_session",
-        "db_pg96_analyze_indexes",
-        "db_pg96_list_largest_tables",
-        "db_pg96_list_temp_objects",
-        "db_pg96_table_sizes",
-        "db_pg96_index_usage",
-        "db_pg96_maintenance_stats",
-    ]
-    missing = [name for name in required if not hasattr(server, name)]
+    missing = [name for name in sorted(set(EXPECTED_TOOLS)) if not hasattr(server, name)]
     _assert(not missing, f"Missing expected tools: {missing}")
 
     result = _invoke(server, "db_pg96_ping")
@@ -178,6 +220,9 @@ def _call_all_tools() -> None:
 
     info = _invoke(server, "db_pg96_server_info")
     _assert(isinstance(info, dict) and "version" in info, "server_info missing version")
+
+    info_mcp = _invoke(server, "db_pg96_server_info_mcp")
+    _assert(isinstance(info_mcp, dict) and info_mcp.get("status") == "healthy", "server_info_mcp returned unexpected shape")
 
     params = _invoke(server, "db_pg96_get_db_parameters", {"pattern": "max_connections|shared_buffers"})
     _assert(isinstance(params, list) and len(params) >= 1, "get_db_parameters returned no rows")
@@ -211,6 +256,9 @@ def _call_all_tools() -> None:
 
     bloat = _invoke(server, "db_pg96_check_bloat", {"limit": 10})
     _assert(isinstance(bloat, list), "check_bloat did not return a list")
+
+    largest_schemas = _invoke(server, "db_pg96_list_largest_schemas", {"limit": 10})
+    _assert(isinstance(largest_schemas, list) and len(largest_schemas) > 0, "list_largest_schemas failed")
 
     sessions = _invoke(server, "db_pg96_analyze_sessions", {"min_duration_seconds": 0, "min_idle_seconds": 0})
     _assert(isinstance(sessions, dict) and "summary" in sessions, "analyze_sessions returned unexpected shape")
@@ -257,6 +305,9 @@ def _call_all_tools() -> None:
         idx_stats = _invoke(server, "db_pg96_analyze_indexes", {"schema": "public"})
         _assert(isinstance(idx_stats, dict) and "unused_indexes" in idx_stats, "analyze_indexes failed")
 
+        model = _invoke(server, "db_pg96_analyze_logical_data_model", {"schema": "public", "max_entities": 50, "include_attributes": True})
+        _assert(isinstance(model, dict) and "summary" in model, "analyze_logical_data_model failed")
+
         largest_tables = _invoke(server, "db_pg96_list_largest_tables", {"schema": "public", "limit": 5})
         _assert(isinstance(largest_tables, list) and len(largest_tables) > 0, "list_largest_tables failed")
 
@@ -271,6 +322,9 @@ def _call_all_tools() -> None:
 
         m_stats = _invoke(server, "db_pg96_maintenance_stats", {"schema": "public", "limit": 5})
         _assert(isinstance(m_stats, list) and len(m_stats) > 0, "maintenance_stats failed")
+
+        p_reco = _invoke(server, "db_pg96_recommend_partitioning", {"min_size_gb": 0.000001, "schema": "public", "limit": 10})
+        _assert(isinstance(p_reco, dict) and "candidates" in p_reco, "recommend_partitioning failed")
     finally:
         try:
             victim.close()
@@ -285,6 +339,10 @@ def _call_all_tools() -> None:
 
 def main() -> int:
     try:
+        _static_inventory_check()
+        if not _docker_available():
+            print("SKIP: Docker is not available; ran static tool inventory checks only.")
+            return 0
         _compose("up", "-d", SERVICE, check=True)
         _wait_for_db(timeout_s=90)
         _seed_sample_data()

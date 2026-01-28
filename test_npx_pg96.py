@@ -162,23 +162,41 @@ def _test_npx_stdio() -> None:
             "clientInfo": {"name": "test-client", "version": "1.0.0"}
         })
         client.send_notification("notifications/initialized")
+
+        tools_list = client.send_request("tools/list", {})
+        tools = tools_list.get("tools", [])
+        if not isinstance(tools, list) or not tools:
+            raise RuntimeError("tools/list returned no tools")
+        tool_names = {t.get("name") for t in tools if isinstance(t, dict)}
+        if "db_pg96_ping" not in tool_names:
+            raise RuntimeError("tools/list missing db_pg96_ping")
         
         # 2. Test Tools
         tools_to_test = [
             ("db_pg96_ping", {}),
             ("db_pg96_server_info", {}),
+            ("db_pg96_server_info_mcp", {}),
             ("db_pg96_list_databases", {}),
             ("db_pg96_list_schemas", {"include_system": False}),
             ("db_pg96_list_tables", {"schema": "public"}),
             ("db_pg96_describe_table", {"schema": "public", "table": "customers"}),
             ("db_pg96_run_query", {"sql": "select count(*) from public.orders"}),
-            ("db_pg96_explain_query", {"sql": "select * from public.orders", "format": "text"}),
-            ("db_pg96_db_stats", {"database": DB}),
+            ("db_pg96_explain_query", {"sql": "select * from public.orders", "output_format": "text"}),
+            ("db_pg96_db_stats", {"database": DB, "include_performance": True}),
             ("db_pg96_check_bloat", {"limit": 5}),
+            ("db_pg96_get_db_parameters", {"pattern": "max_connections|shared_buffers"}),
             ("db_pg96_list_largest_schemas", {"limit": 5}),
+            ("db_pg96_list_largest_tables", {"schema": "public", "limit": 5}),
+            ("db_pg96_list_temp_objects", {}),
+            ("db_pg96_table_sizes", {"schema": "public", "limit": 5}),
+            ("db_pg96_index_usage", {"schema": "public", "limit": 5}),
+            ("db_pg96_maintenance_stats", {"schema": "public", "limit": 5}),
             ("db_pg96_analyze_sessions", {}),
-            ("db_pg96_analyze_table_health", {"limit": 5}),
+            ("db_pg96_analyze_table_health", {"schema": "public", "limit": 5, "min_size_mb": 0}),
             ("db_pg96_database_security_performance_metrics", {}),
+            ("db_pg96_analyze_indexes", {"schema": "public"}),
+            ("db_pg96_analyze_logical_data_model", {"schema": "public", "max_entities": 50, "include_attributes": True}),
+            ("db_pg96_recommend_partitioning", {"min_size_gb": 0.000001, "schema": "public", "limit": 10}),
         ]
         
         for name, params in tools_to_test:
@@ -206,13 +224,8 @@ def _test_npx_stdio() -> None:
                 "name": "db_pg96_kill_session",
                 "arguments": {"pid": victim_pid}
             })
-            if not kill_result.get("content") or "terminated" not in str(kill_result):
-                 # Result might be in content list
-                 content = kill_result.get("content", [])
-                 text = "".join(c.get("text", "") for c in content)
-                 if "terminated" not in text.lower() and "ok" not in text.lower():
-                     # FastMCP might wrap results differently
-                     pass
+            if kill_result is None:
+                raise RuntimeError("kill_session returned empty result")
             print("  Tool kill_session OK")
         finally:
             try:

@@ -1,0 +1,48 @@
+{
+  "direct_connection": [
+    {
+      "connection_string": "postgresql://postgres_readonly:readonly123@localhost:5432/mcp_db",
+      "success": false,
+      "error": "connection timeout expired\nMultiple connection attempts failed. All failures were:\n- host: 'localhost', port: '5432', hostaddr: '::1': connection timeout expired\n- host: 'localhost', port: '5432', hostaddr: '127.0.0.1': connection timeout expired"
+    },
+    {
+      "connection_string": "postgresql://postgres:password123@localhost:5432/mcp_db",
+      "success": false,
+      "error": "connection timeout expired\nMultiple connection attempts failed. All failures were:\n- host: 'localhost', port: '5432', hostaddr: '::1': connection timeout expired\n- host: 'localhost', port: '5432', hostaddr: '127.0.0.1': connection timeout expired"
+    },
+    {
+      "connection_string": "postgresql://postgres:password123@127.0.0.1:5432/mcp_db",
+      "success": false,
+      "error": "connection timeout expired"
+    }
+  ],
+  "connection_pooling": {
+    "error": "couldn't get a connection after 5.00 sec"
+  },
+  "mcp_tools": [
+    {
+      "tool": "ping",
+      "success": true,
+      "execution_time": 1.9073486328125e-06,
+      "result_size": 12
+    },
+    {
+      "tool": "server_info",
+      "success": false,
+      "execution_time": 30.000842809677124,
+      "error": "couldn't get a connection after 30.00 sec"
+    },
+    {
+      "tool": "list_schemas",
+      "success": false,
+      "execution_time": 30.0026912689209,
+      "error": "couldn't get a connection after 30.00 sec"
+    },
+    {
+      "tool": "list_tables",
+      "success": false,
+      "execution_time": 30.00126028060913,
+      "error": "couldn't get a connection after 30.00 sec"
+    }
+  ]
+}
