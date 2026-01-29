@@ -85,7 +85,7 @@ docker run -d \
 
 ### Option 2b: Docker with SSH Tunneling
 
-To connect to a database behind a bastion host (e.g., in a private subnet), you can mount your SSH key and configure the tunnel variables:
+To connect to a database behind a bastion host (e.g., in a private subnet), you can mount your SSH key and configure the tunnel variables. Set `ALLOW_SSH_AGENT=true` to enable SSH agent forwarding if your SSH key is loaded in your SSH agent:
 
 ```bash
 docker run -d \
@@ -95,6 +95,7 @@ docker run -d \
   -e SSH_HOST=bastion.example.com \
   -e SSH_USER=ec2-user \
   -e SSH_PKEY="/root/.ssh/id_rsa" \
+  -e ALLOW_SSH_AGENT=true \
   -e MCP_TRANSPORT=http \
   -p 8000:8000 \
   harryvaldez/mcp-postgres:latest
@@ -197,6 +198,7 @@ To access a PostgreSQL database behind a bastion host, configure the following S
 | `SSH_PASSWORD` | SSH password (optional) | *None* |
 | `SSH_PKEY` | Path to private key file (optional) | *None* |
 | `SSH_PORT` | SSH port | `22` |
+| `ALLOW_SSH_AGENT` | Enable SSH agent forwarding (`true`, `1`, `yes`, `on`) | `false` |
 
 > **Note**: When SSH is enabled, the `DATABASE_URL` should point to the database host as seen from the *bastion* (e.g., internal IP or RDS endpoint).
 
