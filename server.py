@@ -2643,7 +2643,8 @@ def db_pg96_describe_table(schema: str, table: str) -> dict[str, Any]:
     """
     with pool.connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(
+            _execute_safe(
+                cur,
                 """
                 select
                   c.ordinal_position,
@@ -2660,7 +2661,8 @@ def db_pg96_describe_table(schema: str, table: str) -> dict[str, Any]:
             )
             columns = cur.fetchall()
 
-            cur.execute(
+            _execute_safe(
+                cur,
                 """
                 select
                   i.indexname as index_name,
@@ -2674,7 +2676,8 @@ def db_pg96_describe_table(schema: str, table: str) -> dict[str, Any]:
             )
             indexes = cur.fetchall()
 
-            cur.execute(
+            _execute_safe(
+                cur,
                 """
                 select
                   pg_total_relation_size(format('%%I.%%I', %(schema)s::text, %(table)s::text)) as total_size_bytes,
@@ -2684,7 +2687,8 @@ def db_pg96_describe_table(schema: str, table: str) -> dict[str, Any]:
             )
             size_row = cur.fetchone()
 
-            cur.execute(
+            _execute_safe(
+                cur,
                 """
                 select
                   reltuples::bigint as approx_rows
