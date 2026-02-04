@@ -481,6 +481,11 @@ This project has been rigorously tested against **PostgreSQL 9.6** to ensure com
 - **Protocol**: SSE (HTTP/HTTPS), Stdio (All Passed)
 - **Database**: PostgreSQL 9.6 (All Tools Verified)
 - **Auth**: Token Auth, Azure AD Auth (To be verified)
+  > **Verification Status**: End-to-end verification for **Token Auth** and **Azure AD Auth** is currently pending setup of a dedicated Azure AD tenant. While the code implements standard FastMCP patterns, these specific providers have not been validated against a live identity provider.
+  > 
+  > **Limitation**: As noted in [Security Constraints](#security-constraints), **Write Mode** requires mandatory authentication when using HTTP. Until **Token Auth** or **Azure AD Auth** is verified, use `stdio` transport or ensure strict network isolation if testing Write Mode.
+  > 
+  > **Timeline**: Verification is scheduled for the next minor release. Follow status in [Repository Issues](https://github.com/harryvaldez/mcp_cla_pg/issues).
 
 To run the full test suite locally:
 ```bash
