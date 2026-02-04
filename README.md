@@ -480,7 +480,7 @@ This project has been rigorously tested against **PostgreSQL 9.6** to ensure com
 - **Deployment**: Docker, `uv`, `npx` (All Passed)
 - **Protocol**: SSE (HTTP/HTTPS), Stdio (All Passed)
 - **Database**: PostgreSQL 9.6 (All Tools Verified)
-- **Auth**: Token Auth, Azure AD Auth (Verified)
+- **Auth**: Token Auth, Azure AD Auth (To be verified)
 
 To run the full test suite locally:
 ```bash
