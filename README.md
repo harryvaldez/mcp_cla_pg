@@ -157,7 +157,7 @@ The server is configured entirely via environment variables.
 |----------|-------------|---------|
 | `DATABASE_URL` | Full PostgreSQL connection string | *Required* |
 | `MCP_HOST` | Host to bind the server to | `0.0.0.0` |
-| `MCP_PORT` | Port to listen on | `8000` |
+| `MCP_PORT` | Port to listen on (8000 for Docker, 8085 for local) | `8085` |
 | `MCP_TRANSPORT` | Transport mode: `http` (uses SSE) or `stdio` | `http` |
 | `MCP_ALLOW_WRITE` | Enable write tools (`db_pg96_create_db_user`, etc.) | `false` |
 | `MCP_CONFIRM_WRITE` | **Required if ALLOW_WRITE=true**. Safety latch to confirm write mode. | `false` |
@@ -227,7 +227,7 @@ This server implements strict security practices for logging:
 - `db_pg96_list_objects(object_type: str, schema: str = None, owner: str = None, name_pattern: str = None, order_by: str = None, limit: int = 50)`: **(New Consolidated Tool)** Unified tool to list databases, schemas, tables, views, indexes, functions, sequences, and temporary objects. Supports filtering and sorting.
 - `db_pg96_describe_table(schema: str, table: str)`: Get detailed column and index info for a table.
 - `db_pg96_table_sizes(schema: str = None, limit: int = 20)`: List tables by size across the database.
-- `db_pg96_analyze_logical_data_model(schema: str = "public")`: Analyze foreign keys and table relationships to understand the logical data model.
+- `db_pg96_analyze_logical_data_model(schema: str = "public")`: **(Interactive)** Generates a comprehensive HTML report with a **Mermaid.js Entity Relationship Diagram (ERD)**, a **Health Score** (0-100), and detailed findings on normalization, missing keys, and naming conventions. The tool returns a URL to view the report in your browser.
 
 ### ⚡ Performance & Tuning
 - `db_pg96_analyze_table_health(schema: str = None, min_size_mb: int = 50, profile: str = "oltp")`: **(Power Tool)** Comprehensive health check for bloat, vacuum needs, and optimization.
@@ -252,21 +252,33 @@ This server implements strict security practices for logging:
 
 ---
 
-## � Session Monitor UI
-
-The server includes a built-in, real-time dashboard for monitoring database sessions.
-
-**Access**: Open `http://localhost:8000/monitor` in your browser (when running in HTTP mode).
-
-**Features**:
-- **Real-time Graph**: Visualizes active vs. idle sessions over time.
-- **Auto-Refresh**: Updates every 5 seconds without page reload.
-- **Session List**: Detailed table of current sessions including PID, User, Application, and Query duration.
-- **Zero-Config**: Works out-of-the-box with the standard `MCP_TRANSPORT=http` configuration.
-
----
-
-## � Usage Examples
+## 📊 Session Monitor & Web UI
+ 
+ The server includes built-in, real-time web interfaces for monitoring and analysis. These interfaces run on a background HTTP server, even when using the `stdio` transport (Hybrid Mode).
+ 
+ **Default Port**: `8085` (to avoid conflicts with other local services). Configurable via `MCP_PORT`.
+ 
+ ### 1. Real-time Session Monitor
+ **Access**: `http://localhost:8085/sessions-monitor`
+ 
+ **Features**:
+ - **Real-time Graph**: Visualizes active vs. idle sessions over time.
+ - **Auto-Refresh**: Updates every 5 seconds without page reload.
+ - **Session Stats**: Instant view of Active, Idle, and Total connections.
+ 
+ ### 2. Logical Data Model Report
+ Generated on-demand via the `db_pg96_analyze_logical_data_model` tool.
+ 
+ **Access**: `http://localhost:8085/data-model-analysis?id=<UUID>`
+ 
+ **Features**:
+ - **Interactive ERD**: Zoomable Mermaid.js diagram of your schema.
+ - **Health Score**: Automated grading of your schema design.
+ - **Issues List**: Detailed breakdown of missing keys, normalization risks, and naming violations.
+ 
+ ---
+ 
+ ## 🛠️ Usage Examples
 
 Here are some real-world examples of using the tools via an MCP client.
 
@@ -416,11 +428,11 @@ The analysis of the `smsadmin` schema reveals a significant lack of structural e
 
 ### 7. Real-time Session Monitor (MCP Apps)
 **Prompt:** `call db_pg96_monitor_sessions()`
-
-**Result:**
-"Monitor available at: http://localhost:8000/monitor"
-
-(Opens a dashboard with a live line graph of active vs. inactive sessions, refreshing every 5 seconds)
+ 
+ **Result:**
+ "Monitor available at: http://localhost:8085/sessions-monitor"
+ 
+ (Opens a dashboard with a live line graph of active vs. inactive sessions, refreshing every 5 seconds)
 
 
 ---

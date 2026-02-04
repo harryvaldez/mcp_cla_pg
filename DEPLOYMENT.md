@@ -233,9 +233,4 @@ To automate deployment, you can set up a GitHub Action workflow that:
 1.  Triggers on push to `main`.
 2.  Builds the Docker image.
 3.  Pushes to ACR/ECR.
-4.  Runs `az containerapp update` or updates the CloudFormation stack.
-2.  Builds the Docker image.
-3.  Pushes to ACR/ECR.
-4.  Runs `az containerapp update` or updates the CloudFormation stack.
-3.  Pushes to ACR/ECR.
 4.  Runs `az containerapp update` (with the new image tag) or updates the CloudFormation stack.
