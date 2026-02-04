@@ -224,17 +224,17 @@ This server implements strict security practices for logging:
 - `db_pg96_server_info_mcp()`: Get internal MCP server status and version.
 
 ### 🔍 Schema Discovery
-- `db_pg96_list_objects(object_type: str, schema: str = None, owner: str = None, name_pattern: str = None, order_by: str = None, limit: int = 50)`: **(New Consolidated Tool)** Unified tool to list databases, schemas, tables, views, indexes, functions, sequences, and temporary objects. Supports filtering and sorting.
+- `db_pg96_list_objects(object_type: str, schema: str = None, owner: str = None, name_pattern: str = None, order_by: str = None, limit: int = 50)`: **(Consolidated Tool)** Unified tool to list databases, schemas, tables, views, indexes, functions, sequences, and temporary objects. Supports filtering and sorting. 
+    - Use `object_type='table', order_by='size'` for table sizes.
+    - Use `object_type='table', order_by='dead_tuples'` for maintenance stats.
+    - Use `object_type='index', order_by='scans'` for index usage.
 - `db_pg96_describe_table(schema: str, table: str)`: Get detailed column and index info for a table.
-- `db_pg96_table_sizes(schema: str = None, limit: int = 20)`: List tables by size across the database.
 - `db_pg96_analyze_logical_data_model(schema: str = "public")`: **(Interactive)** Generates a comprehensive HTML report with a **Mermaid.js Entity Relationship Diagram (ERD)**, a **Health Score** (0-100), and detailed findings on normalization, missing keys, and naming conventions. The tool returns a URL to view the report in your browser.
 
 ### ⚡ Performance & Tuning
 - `db_pg96_analyze_table_health(schema: str = None, min_size_mb: int = 50, profile: str = "oltp")`: **(Power Tool)** Comprehensive health check for bloat, vacuum needs, and optimization.
 - `db_pg96_check_bloat(limit: int = 50)`: Identifies the top bloated tables and indexes and provides maintenance commands.
 - `db_pg96_analyze_indexes(schema: str = None, limit: int = 50)`: Identify unused, duplicate, or missing indexes.
-- `db_pg96_index_usage(schema: str = None, limit: int = 20)`: Show index usage statistics.
-- `db_pg96_maintenance_stats(schema: str = None, limit: int = 50)`: Show vacuum and analyze statistics.
 - `db_pg96_recommend_partitioning(min_size_gb: float = 1.0, schema: str = None)`: Suggest tables for partitioning.
 - `db_pg96_explain_query(sql: str, analyze: bool = False, output_format: str = "json")`: Get the execution plan for a query.
 

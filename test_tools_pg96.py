@@ -32,17 +32,14 @@ EXPECTED_TOOLS = [
     "db_pg96_drop_db_user",
     "db_pg96_explain_query",
     "db_pg96_get_db_parameters",
-    "db_pg96_index_usage",
     "db_pg96_kill_session",
     "db_pg96_list_objects",
-    "db_pg96_maintenance_stats",
     "db_pg96_monitor_sessions",
     "db_pg96_ping",
     "db_pg96_recommend_partitioning",
     "db_pg96_run_query",
     "db_pg96_server_info",
     "db_pg96_server_info_mcp",
-    "db_pg96_table_sizes",
 ]
 
 
@@ -311,14 +308,11 @@ def _call_all_tools() -> None:
         temp_objs = _invoke(server, "db_pg96_list_objects", {"object_type": "temp_object"})
         _assert(isinstance(temp_objs, list), "list_objects(temp_object) failed")
 
-        t_sizes = _invoke(server, "db_pg96_table_sizes", {"schema": "public", "limit": 5})
-        _assert(isinstance(t_sizes, list) and len(t_sizes) > 0, "table_sizes failed")
+        i_usage = _invoke(server, "db_pg96_list_objects", {"object_type": "index", "schema": "public", "order_by": "scans", "limit": 5})
+        _assert(isinstance(i_usage, list) and len(i_usage) > 0, "list_objects(index, scans) failed")
 
-        i_usage = _invoke(server, "db_pg96_index_usage", {"schema": "public", "limit": 5})
-        _assert(isinstance(i_usage, list) and len(i_usage) > 0, "index_usage failed")
-
-        m_stats = _invoke(server, "db_pg96_maintenance_stats", {"schema": "public", "limit": 5})
-        _assert(isinstance(m_stats, list) and len(m_stats) > 0, "maintenance_stats failed")
+        m_stats = _invoke(server, "db_pg96_list_objects", {"object_type": "table", "schema": "public", "order_by": "dead_tuples", "limit": 5})
+        _assert(isinstance(m_stats, list) and len(m_stats) > 0, "list_objects(table, dead_tuples) failed")
 
         p_reco = _invoke(server, "db_pg96_recommend_partitioning", {"min_size_gb": 0.000001, "schema": "public", "limit": 10})
         _assert(isinstance(p_reco, dict) and "candidates" in p_reco, "recommend_partitioning failed")

@@ -1880,7 +1880,7 @@ def db_pg96_list_objects(
 
     Args:
         object_type: Type of objects to list.
-                     Supported: 'database', 'schema', 'table', 'view', 'index', 'function', 'temp_object'.
+                     Supported: 'database', 'schema', 'table', 'view', 'index', 'function', 'sequence', 'temp_object'.
         schema: Filter by schema name.
                 For 'schema' type, it acts as an exact match filter.
                 For tables/views/etc., it filters by parent schema.
@@ -1888,10 +1888,12 @@ def db_pg96_list_objects(
         name_pattern: Filter object name by pattern (ILIKE).
         order_by: Column to sort by. Defaults depend on object_type.
                   Common options: 'name', 'size'.
+                  For tables: 'name', 'size', 'rows', 'dead_tuples', 'dead_ratio', 'vacuum', 'analyze'.
+                  For indexes: 'name', 'size', 'scans'.
         limit: Maximum number of results (default: 50).
 
     Returns:
-        List of objects with relevant details (name, schema, owner, size, etc.).
+        List of objects with relevant details (name, schema, owner, size, stats, etc.).
     """
     with pool.connection() as conn:
         with conn.cursor() as cur:
@@ -1957,8 +1959,136 @@ def db_pg96_list_objects(
                 if order_by == 'size':
                     sort_clause = "ORDER BY sum(pg_total_relation_size(c.oid)) DESC"
 
-            elif object_type in ('table', 'view', 'index', 'sequence', 'function'):
-                if object_type == 'function':
+            elif object_type == 'table':
+                # Comprehensive table query with stats
+                query = """
+                    SELECT
+                        n.nspname as schema,
+                        c.relname as name,
+                        r.rolname as owner,
+                        pg_size_pretty(pg_total_relation_size(c.oid)) as size_pretty,
+                        pg_total_relation_size(c.oid) as size_bytes,
+                        pg_size_pretty(pg_relation_size(c.oid)) as table_size_pretty,
+                        pg_size_pretty(pg_total_relation_size(c.oid) - pg_relation_size(c.oid)) as index_size_pretty,
+                        c.reltuples::bigint as estimated_rows,
+                        st.n_live_tup as live_rows,
+                        st.n_dead_tup as dead_rows,
+                        round((st.n_dead_tup::numeric / greatest(st.n_live_tup + st.n_dead_tup, 1)::numeric) * 100, 2) as dead_ratio,
+                        st.last_vacuum,
+                        st.last_autovacuum,
+                        st.last_analyze,
+                        st.last_autoanalyze,
+                        COALESCE(st.vacuum_count, 0) + COALESCE(st.autovacuum_count, 0) as total_vacuums,
+                        COALESCE(st.analyze_count, 0) + COALESCE(st.autoanalyze_count, 0) as total_analyzes
+                    FROM pg_class c
+                    JOIN pg_namespace n ON c.relnamespace = n.oid
+                    JOIN pg_roles r ON c.relowner = r.oid
+                    LEFT JOIN pg_stat_user_tables st ON c.oid = st.relid
+                """
+                filters.append("c.relkind = 'r'")
+                if name_pattern:
+                    filters.append("c.relname ILIKE %(name_pattern)s")
+                if schema:
+                    filters.append("n.nspname = %(schema)s")
+                else:
+                    filters.append("n.nspname NOT IN ('pg_catalog', 'information_schema')")
+                if owner:
+                    filters.append("r.rolname = %(owner)s")
+
+                sort_clause = "ORDER BY 1, 2" # schema, name
+                if order_by == 'size':
+                    sort_clause = "ORDER BY pg_total_relation_size(c.oid) DESC"
+                elif order_by == 'rows':
+                    sort_clause = "ORDER BY c.reltuples DESC"
+                elif order_by == 'dead_tuples':
+                    sort_clause = "ORDER BY st.n_dead_tup DESC NULLS LAST"
+                elif order_by == 'dead_ratio':
+                    sort_clause = "ORDER BY 11 DESC NULLS LAST" # dead_ratio column index (approx) - actually safer to use column alias in some PGs but numeric index is standard
+                elif order_by == 'vacuum':
+                    sort_clause = "ORDER BY GREATEST(st.last_vacuum, st.last_autovacuum) DESC NULLS LAST"
+                elif order_by == 'analyze':
+                    sort_clause = "ORDER BY GREATEST(st.last_analyze, st.last_autoanalyze) DESC NULLS LAST"
+
+            elif object_type == 'index':
+                query = """
+                    SELECT
+                        n.nspname as schema,
+                        t.relname as table,
+                        c.relname as name,
+                        r.rolname as owner,
+                        pg_size_pretty(pg_relation_size(c.oid)) as size_pretty,
+                        pg_relation_size(c.oid) as size_bytes,
+                        si.idx_scan as scans,
+                        si.idx_tup_read as tuples_read,
+                        si.idx_tup_fetch as tuples_fetched
+                    FROM pg_class c
+                    JOIN pg_namespace n ON c.relnamespace = n.oid
+                    JOIN pg_roles r ON c.relowner = r.oid
+                    JOIN pg_index i ON c.oid = i.indexrelid
+                    JOIN pg_class t ON i.indrelid = t.oid
+                    LEFT JOIN pg_stat_user_indexes si ON c.oid = si.indexrelid
+                """
+                filters.append("c.relkind = 'i'")
+                if name_pattern:
+                    filters.append("c.relname ILIKE %(name_pattern)s")
+                if schema:
+                    filters.append("n.nspname = %(schema)s")
+                else:
+                    filters.append("n.nspname NOT IN ('pg_catalog', 'information_schema')")
+                if owner:
+                    filters.append("r.rolname = %(owner)s")
+
+                sort_clause = "ORDER BY 1, 2, 3" # schema, table, name
+                if order_by == 'size':
+                    sort_clause = "ORDER BY pg_relation_size(c.oid) DESC"
+                elif order_by == 'scans' or order_by == 'usage':
+                    sort_clause = "ORDER BY si.idx_scan DESC NULLS LAST"
+
+            elif object_type == 'view':
+                 query = """
+                    SELECT
+                        n.nspname as schema,
+                        c.relname as name,
+                        r.rolname as owner,
+                        pg_size_pretty(pg_total_relation_size(c.oid)) as size_pretty,
+                        pg_total_relation_size(c.oid) as size_bytes
+                    FROM pg_class c
+                    JOIN pg_namespace n ON c.relnamespace = n.oid
+                    JOIN pg_roles r ON c.relowner = r.oid
+                """
+                 filters.append("c.relkind = 'v'")
+                 if name_pattern:
+                    filters.append("c.relname ILIKE %(name_pattern)s")
+                 if schema:
+                    filters.append("n.nspname = %(schema)s")
+                 else:
+                    filters.append("n.nspname NOT IN ('pg_catalog', 'information_schema')")
+                 if owner:
+                    filters.append("r.rolname = %(owner)s")
+                 sort_clause = "ORDER BY 1, 2"
+
+            elif object_type == 'sequence':
+                 query = """
+                    SELECT
+                        n.nspname as schema,
+                        c.relname as name,
+                        r.rolname as owner
+                    FROM pg_class c
+                    JOIN pg_namespace n ON c.relnamespace = n.oid
+                    JOIN pg_roles r ON c.relowner = r.oid
+                """
+                 filters.append("c.relkind = 'S'")
+                 if name_pattern:
+                    filters.append("c.relname ILIKE %(name_pattern)s")
+                 if schema:
+                    filters.append("n.nspname = %(schema)s")
+                 else:
+                    filters.append("n.nspname NOT IN ('pg_catalog', 'information_schema')")
+                 if owner:
+                    filters.append("r.rolname = %(owner)s")
+                 sort_clause = "ORDER BY 1, 2"
+
+            elif object_type == 'function':
                      query = """
                         SELECT
                             n.nspname as schema,
@@ -1972,38 +2102,14 @@ def db_pg96_list_objects(
                      """
                      if name_pattern:
                         filters.append("p.proname ILIKE %(name_pattern)s")
-                else:
-                    relkind_map = {'table': 'r', 'view': 'v', 'index': 'i', 'sequence': 'S'}
-                    relkind = relkind_map.get(object_type, 'r')
-                    query = """
-                        SELECT
-                            n.nspname as schema,
-                            c.relname as name,
-                            r.rolname as owner,
-                            pg_size_pretty(pg_total_relation_size(c.oid)) as size_pretty,
-                            pg_total_relation_size(c.oid) as size_bytes,
-                            c.reltuples::bigint as estimated_rows
-                        FROM pg_class c
-                        JOIN pg_namespace n ON c.relnamespace = n.oid
-                        JOIN pg_roles r ON c.relowner = r.oid
-                    """
-                    filters.append(f"c.relkind = '{relkind}'")
-                    if name_pattern:
-                        filters.append("c.relname ILIKE %(name_pattern)s")
-
-                if schema:
-                    filters.append("n.nspname = %(schema)s")
-                else:
-                    filters.append("n.nspname NOT IN ('pg_catalog', 'information_schema')")
-
-                if owner:
-                    filters.append("r.rolname = %(owner)s")
-
-                sort_clause = "ORDER BY 1, 2"
-                if order_by == 'size' and object_type != 'function':
-                    sort_clause = "ORDER BY pg_total_relation_size(c.oid) DESC"
-                elif order_by == 'name':
-                    sort_clause = "ORDER BY 2"
+                     if schema:
+                        filters.append("n.nspname = %(schema)s")
+                     else:
+                        filters.append("n.nspname NOT IN ('pg_catalog', 'information_schema')")
+                     if owner:
+                        filters.append("r.rolname = %(owner)s")
+                     
+                     sort_clause = "ORDER BY 1, 2"
 
             elif object_type == 'temp_object':
                  query = """
@@ -2521,114 +2627,6 @@ def db_pg96_analyze_logical_data_model(
 
 
 
-@mcp.tool
-def db_pg96_table_sizes(schema: str | None = None, limit: int = 20) -> list[dict[str, Any]]:
-    """
-    List tables by size including indexes and TOAST.
-
-    Args:
-        schema: Optional schema name to filter. If None, lists tables from all user schemas.
-        limit: Maximum number of tables to return (default: 20).
-
-    Returns:
-        List of tables with their total size, table size, index size, and approximate row count.
-    """
-    with pool.connection() as conn:
-        with conn.cursor() as cur:
-            _execute_safe(
-                cur,
-                """
-                select
-                  n.nspname as schema,
-                  c.relname as table,
-                  pg_size_pretty(pg_total_relation_size(c.oid)) as total_size,
-                  pg_size_pretty(pg_relation_size(c.oid)) as table_size,
-                  pg_size_pretty(pg_total_relation_size(c.oid) - pg_relation_size(c.oid)) as index_size,
-                  reltuples::bigint as approx_rows
-                from pg_class c
-                join pg_namespace n on n.oid = c.relnamespace
-                where c.relkind = 'r'
-                  and n.nspname not in ('pg_catalog', 'information_schema')
-                  and (%(schema)s::text is null or n.nspname = %(schema)s::text)
-                order by pg_total_relation_size(c.oid) desc
-                limit %(limit)s
-                """,
-                {"schema": schema, "limit": limit}
-            )
-            return cur.fetchall()
-
-
-@mcp.tool
-def db_pg96_index_usage(schema: str | None = None, limit: int = 20) -> list[dict[str, Any]]:
-    """
-    Show index usage statistics to identify frequently used or unused indexes.
-
-    Args:
-        schema: Optional schema name to filter. If None, lists indexes from all user schemas.
-        limit: Maximum number of indexes to return (default: 20).
-
-    Returns:
-        List of indexes with scan counts and tuple read/fetch statistics.
-    """
-    with pool.connection() as conn:
-        with conn.cursor() as cur:
-            _execute_safe(
-                cur,
-                """
-                select
-                  schemaname as schema,
-                  relname as table,
-                  indexrelname as index,
-                  idx_scan as scans,
-                  idx_tup_read as tuples_read,
-                  idx_tup_fetch as tuples_fetched
-                from pg_stat_user_indexes
-                where (%(schema)s::text is null or schemaname = %(schema)s::text)
-                order by idx_scan desc
-                limit %(limit)s
-                """,
-                {"schema": schema, "limit": limit}
-            )
-            return cur.fetchall()
-
-
-@mcp.tool
-def db_pg96_maintenance_stats(schema: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
-    """
-    Show vacuum and analyze statistics to monitor autovacuum activity and dead tuple accumulation.
-
-    Args:
-        schema: Optional schema name to filter. If None, lists tables from all user schemas.
-        limit: Maximum number of tables to return (default: 50).
-
-    Returns:
-        List of tables with dead tuple counts, last vacuum/analyze times, and total vacuum/analyze counts.
-    """
-    with pool.connection() as conn:
-        with conn.cursor() as cur:
-            _execute_safe(
-                cur,
-                """
-                select
-                  schemaname as schema,
-                  relname as table,
-                  n_live_tup as live_rows,
-                  n_dead_tup as dead_rows,
-                  round((n_dead_tup::numeric / greatest(n_live_tup + n_dead_tup, 1)::numeric) * 100, 2) as dead_ratio,
-                  last_vacuum,
-                  last_autovacuum,
-                  last_analyze,
-                  last_autoanalyze,
-                  vacuum_count + autovacuum_count as total_vacuums,
-                  analyze_count + autoanalyze_count as total_analyzes
-                from pg_stat_user_tables
-                where (%(schema)s::text is null or schemaname = %(schema)s::text)
-                order by n_dead_tup desc
-                limit %(limit)s
-                """,
-                {"schema": schema, "limit": limit}
-            )
-            return cur.fetchall()
 
 
 @mcp.tool

@@ -202,9 +202,9 @@ def _test_docker_http() -> None:
         ("db_pg96_analyze_logical_data_model", {"schema": "public", "max_entities": 50}),
         ("db_pg96_list_objects", {"object_type": "table", "schema": "public", "order_by": "size"}),
         ("db_pg96_list_objects", {"object_type": "temp_object"}),
-        ("db_pg96_table_sizes", {"schema": "public", "limit": 5}),
-        ("db_pg96_index_usage", {"schema": "public", "limit": 5}),
-        ("db_pg96_maintenance_stats", {"schema": "public", "limit": 5}),
+        ("db_pg96_list_objects", {"object_type": "table", "schema": "public", "order_by": "size", "limit": 5}),
+        ("db_pg96_list_objects", {"object_type": "index", "schema": "public", "order_by": "scans", "limit": 5}),
+        ("db_pg96_list_objects", {"object_type": "table", "schema": "public", "order_by": "dead_tuples", "limit": 5}),
         ("db_pg96_recommend_partitioning", {"min_size_gb": 0.000001, "schema": "public", "limit": 10}),
     ]
 
