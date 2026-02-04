@@ -172,8 +172,8 @@ def run_tool_stress_test(num_threads: int, iterations: int) -> Dict[str, Any]:
             tools_to_test = [
                 ("ping", server.db_pg96_ping),
                 ("server_info", server.db_pg96_server_info),
-                ("list_schemas", server.db_pg96_list_schemas, {"include_system": False}),
-                ("list_tables", server.db_pg96_list_tables, {"schema": "smsadmin"}),
+                ("list_schemas", server.db_pg96_list_objects, {"object_type": "schema"}),
+                ("list_tables", server.db_pg96_list_objects, {"object_type": "table", "schema": "smsadmin"}),
                 ("analyze_logical_data_model", server.db_pg96_analyze_logical_data_model, {"schema": "smsadmin"})
             ]
             

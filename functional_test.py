@@ -6,12 +6,8 @@ from server import (
     db_pg96_server_info,
     db_pg96_get_version,
     db_pg96_get_db_parameters,
-    db_pg96_list_databases,
-    db_pg96_list_schemas,
-    db_pg96_list_tables,
+    db_pg96_list_objects,
     db_pg96_describe_table,
-    db_pg96_list_indexes,
-    db_pg96_list_functions,
     db_pg96_run_query,
     db_pg96_explain_query,
     db_pg96_analyze_table_health,
@@ -58,26 +54,26 @@ async def run_functional_tests():
         print(f"Error: {e}")
 
     # 5. List Databases
-    print("\n5. Testing db_pg96_list_databases...")
+    print("\n5. Testing db_pg96_list_objects (database)...")
     try:
-        result = await db_pg96_list_databases.fn()
+        result = await db_pg96_list_objects.fn(object_type="database")
         print(f"Result (first 2): {json.dumps(result[:2], indent=2, default=str)}")
     except Exception as e:
         print(f"Error: {e}")
 
     # 6. List Schemas
-    print("\n6. Testing db_pg96_list_schemas...")
+    print("\n6. Testing db_pg96_list_objects (schema)...")
     try:
-        result = await db_pg96_list_schemas.fn()
-        print(f"Result (first 5): {[r['schema_name'] for r in result[:5]]}")
+        result = await db_pg96_list_objects.fn(object_type="schema")
+        print(f"Result (first 5): {[r['name'] for r in result[:5]]}")
     except Exception as e:
         print(f"Error: {e}")
 
     # 7. List Tables
-    print("\n7. Testing db_pg96_list_tables (schema='public')...")
+    print("\n7. Testing db_pg96_list_objects (table, schema='public')...")
     try:
-        result = await db_pg96_list_tables.fn(schema="public")
-        print(f"Result (first 5 tables): {[r['table_name'] for r in result[:5]]}")
+        result = await db_pg96_list_objects.fn(object_type="table", schema="public")
+        print(f"Result (first 5 tables): {[r['name'] for r in result[:5]]}")
     except Exception as e:
         print(f"Error: {e}")
 
@@ -98,17 +94,17 @@ async def run_functional_tests():
         print(f"Error: {e}")
 
     # 8c. List Indexes
-    print("\n8c. Testing db_pg96_list_indexes (pg_catalog.pg_class)...")
+    print("\n8c. Testing db_pg96_list_objects (index, pg_catalog)...")
     try:
-        result = await db_pg96_list_indexes.fn(schema_name="pg_catalog", table_name="pg_class")
+        result = await db_pg96_list_objects.fn(object_type="index", schema="pg_catalog")
         print(f"Result (first 2 indexes): {json.dumps(result[:2], indent=2, default=str)}")
     except Exception as e:
         print(f"Error: {e}")
 
     # 8d. List Functions
-    print("\n8d. Testing db_pg96_list_functions (pg_catalog)...")
+    print("\n8d. Testing db_pg96_list_objects (function, pg_catalog)...")
     try:
-        result = await db_pg96_list_functions.fn(schema_name="pg_catalog")
+        result = await db_pg96_list_objects.fn(object_type="function", schema="pg_catalog")
         print(f"Result (first 2 functions): {json.dumps(result[:2], indent=2, default=str)}")
     except Exception as e:
         print(f"Error: {e}")

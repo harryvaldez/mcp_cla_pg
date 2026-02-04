@@ -6,9 +6,12 @@ import os
 import re
 import sys
 import time
+import uuid
+import threading
 import atexit
 import signal
-from datetime import timedelta
+import decimal
+from datetime import datetime, date, timedelta
 from urllib.parse import quote, urlparse, urlunparse, urlsplit, urlunsplit
 from typing import Any
 
@@ -1864,126 +1867,167 @@ def db_pg96_get_db_parameters(pattern: str | None = None) -> list[dict[str, Any]
 
 
 @mcp.tool
-def db_pg96_list_databases() -> list[dict[str, Any]]:
+def db_pg96_list_objects(
+    object_type: str,
+    schema: str | None = None,
+    owner: str | None = None,
+    name_pattern: str | None = None,
+    order_by: str | None = None,
+    limit: int = 50
+) -> list[dict[str, Any]]:
     """
-    Lists all databases in the PostgreSQL cluster with their sizes and connection status.
+    Consolidated tool to list database objects with filtering and sorting options.
 
-    Returns:
-        List of databases with name, size in bytes, connection allowance, and template status.
-    """
-    with pool.connection() as conn:
-        with conn.cursor() as cur:
-            _execute_safe(
-                cur,
-                """
-                select
-                  datname as name,
-                  pg_database_size(datname) as size_bytes,
-                  datallowconn as allow_connections,
-                  datistemplate as is_template
-                from pg_database
-                order by pg_database_size(datname) desc
-                """
-            )
-            return cur.fetchall()
-
-
-@mcp.tool
-def db_pg96_list_schemas(include_system: bool = False) -> list[str]:
-    """
-    Lists schemas in the current database.
-    
     Args:
-        include_system: If True, includes system schemas like pg_catalog and information_schema.
+        object_type: Type of objects to list.
+                     Supported: 'database', 'schema', 'table', 'view', 'index', 'function', 'temp_object'.
+        schema: Filter by schema name.
+                For 'schema' type, it acts as an exact match filter.
+                For tables/views/etc., it filters by parent schema.
+        owner: Filter by object owner.
+        name_pattern: Filter object name by pattern (ILIKE).
+        order_by: Column to sort by. Defaults depend on object_type.
+                  Common options: 'name', 'size'.
+        limit: Maximum number of results (default: 50).
 
     Returns:
-        List of schema names.
+        List of objects with relevant details (name, schema, owner, size, etc.).
     """
     with pool.connection() as conn:
         with conn.cursor() as cur:
-            if include_system:
-                _execute_safe(
-                    cur,
+            params: dict[str, Any] = {"limit": limit}
+            filters = []
+            
+            # Helper for name filtering
+            if name_pattern:
+                params['name_pattern'] = name_pattern
+            if owner:
+                params['owner'] = owner
+            if schema:
+                params['schema'] = schema
+
+            query = ""
+            sort_clause = ""
+            group_by = ""
+
+            if object_type == 'database':
+                query = """
+                    SELECT
+                        d.datname as name,
+                        pg_size_pretty(pg_database_size(d.datname)) as size_pretty,
+                        pg_database_size(d.datname) as size_bytes,
+                        d.datallowconn as allow_connections,
+                        r.rolname as owner
+                    FROM pg_database d
+                    JOIN pg_roles r ON d.datdba = r.oid
+                """
+                if owner:
+                    filters.append("r.rolname = %(owner)s")
+                if name_pattern:
+                    filters.append("d.datname ILIKE %(name_pattern)s")
+                
+                sort_clause = "ORDER BY pg_database_size(d.datname) DESC"
+                if order_by == 'name':
+                    sort_clause = "ORDER BY d.datname"
+                elif order_by == 'size':
+                    sort_clause = "ORDER BY pg_database_size(d.datname) DESC"
+
+            elif object_type == 'schema':
+                query = """
+                    SELECT
+                        n.nspname as name,
+                        r.rolname as owner,
+                        pg_size_pretty(sum(pg_total_relation_size(c.oid))) as size_pretty,
+                        sum(pg_total_relation_size(c.oid)) as size_bytes
+                    FROM pg_namespace n
+                    JOIN pg_roles r ON n.nspowner = r.oid
+                    LEFT JOIN pg_class c ON n.oid = c.relnamespace AND c.relkind IN ('r', 'm', 'p')
+                """
+                if owner:
+                    filters.append("r.rolname = %(owner)s")
+                if name_pattern:
+                    filters.append("n.nspname ILIKE %(name_pattern)s")
+                if schema:
+                    filters.append("n.nspname = %(schema)s")
+                else:
+                    filters.append("n.nspname NOT LIKE 'pg_%%' AND n.nspname <> 'information_schema'")
+
+                group_by = "GROUP BY n.nspname, r.rolname"
+                sort_clause = "ORDER BY n.nspname"
+                if order_by == 'size':
+                    sort_clause = "ORDER BY sum(pg_total_relation_size(c.oid)) DESC"
+
+            elif object_type in ('table', 'view', 'index', 'sequence', 'function'):
+                if object_type == 'function':
+                     query = """
+                        SELECT
+                            n.nspname as schema,
+                            p.proname as name,
+                            pg_get_function_result(p.oid) as result_type,
+                            pg_get_function_arguments(p.oid) as arguments,
+                            r.rolname as owner
+                        FROM pg_proc p
+                        JOIN pg_namespace n ON p.pronamespace = n.oid
+                        JOIN pg_roles r ON p.proowner = r.oid
+                     """
+                     if name_pattern:
+                        filters.append("p.proname ILIKE %(name_pattern)s")
+                else:
+                    relkind_map = {'table': 'r', 'view': 'v', 'index': 'i', 'sequence': 'S'}
+                    relkind = relkind_map.get(object_type, 'r')
+                    query = """
+                        SELECT
+                            n.nspname as schema,
+                            c.relname as name,
+                            r.rolname as owner,
+                            pg_size_pretty(pg_total_relation_size(c.oid)) as size_pretty,
+                            pg_total_relation_size(c.oid) as size_bytes,
+                            c.reltuples::bigint as estimated_rows
+                        FROM pg_class c
+                        JOIN pg_namespace n ON c.relnamespace = n.oid
+                        JOIN pg_roles r ON c.relowner = r.oid
                     """
-                    select nspname
-                    from pg_namespace
-                    order by nspname
-                    """
-                )
+                    filters.append(f"c.relkind = '{relkind}'")
+                    if name_pattern:
+                        filters.append("c.relname ILIKE %(name_pattern)s")
+
+                if schema:
+                    filters.append("n.nspname = %(schema)s")
+                else:
+                    filters.append("n.nspname NOT IN ('pg_catalog', 'information_schema')")
+
+                if owner:
+                    filters.append("r.rolname = %(owner)s")
+
+                sort_clause = "ORDER BY 1, 2"
+                if order_by == 'size' and object_type != 'function':
+                    sort_clause = "ORDER BY pg_total_relation_size(c.oid) DESC"
+                elif order_by == 'name':
+                    sort_clause = "ORDER BY 2"
+
+            elif object_type == 'temp_object':
+                 query = """
+                    SELECT
+                      n.nspname as schema,
+                      count(*) as object_count,
+                      pg_size_pretty(sum(pg_total_relation_size(c.oid))) as total_size
+                    FROM pg_class c
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                 """
+                 filters.append("n.nspname LIKE 'pg_temp%%'")
+                 group_by = "GROUP BY n.nspname"
+                 sort_clause = "ORDER BY sum(pg_total_relation_size(c.oid)) DESC"
+
             else:
-                _execute_safe(
-                    cur,
-                    """
-                    select nspname
-                    from pg_namespace
-                    where nspname not like 'pg_%%'
-                      and nspname <> 'information_schema'
-                    order by nspname
-                    """
-                )
-            return [r["nspname"] for r in cur.fetchall()]
+                 return [{"error": f"Unsupported object_type: {object_type}"}]
 
-
-@mcp.tool
-def db_pg96_list_largest_schemas(limit: int = 30) -> list[dict[str, Any]]:
-    """
-    Lists the largest schemas in the current database ordered by total size.
-
-    Args:
-        limit: Maximum number of schemas to return (default: 30).
-
-    Returns:
-        List of schemas with their name and total size in bytes.
-    """
-    with pool.connection() as conn:
-        with conn.cursor() as cur:
-            _execute_safe(
-                cur,
-                """
-                select
-                  n.nspname as schema,
-                  sum(pg_total_relation_size(c.oid)) as size_bytes
-                from pg_catalog.pg_namespace n
-                join pg_catalog.pg_class c on n.oid = c.relnamespace
-                where n.nspname not like 'pg_%%'
-                  and n.nspname <> 'information_schema'
-                  and c.relkind in ('r', 'm', 'p') -- tables, matviews, partitioned tables
-                group by n.nspname
-                order by size_bytes desc
-                limit %(limit)s
-                """,
-                {"limit": limit},
-            )
+            where_clause = "WHERE " + " AND ".join(filters) if filters else ""
+            full_sql = f"{query} {where_clause} {group_by} {sort_clause} LIMIT %(limit)s"
+            
+            _execute_safe(cur, full_sql, params)
             return cur.fetchall()
 
 
-@mcp.tool
-def db_pg96_list_tables(schema: str = "public") -> list[dict[str, Any]]:
-    """
-    Lists tables and their types in a specific schema.
-    
-    Args:
-        schema: The schema to list tables from (default: 'public').
-
-    Returns:
-        List of tables with schema, name, and type.
-    """
-    with pool.connection() as conn:
-        with conn.cursor() as cur:
-            _execute_safe(
-                cur,
-                """
-                select
-                  table_schema,
-                  table_name,
-                  table_type
-                from information_schema.tables
-                where table_schema = %(schema)s
-                order by table_name
-                """,
-                {"schema": schema},
-            )
-            return cur.fetchall()
 
 
 @mcp.tool
@@ -2445,7 +2489,7 @@ def db_pg96_analyze_logical_data_model(
                 "issues_count": {k: len(v) for k, v in issues.items()},
             }
 
-            return {
+            result_data = {
                 "summary": summary,
                 "logical_model": {
                     "entities": list(entity_map.values()),
@@ -2454,70 +2498,27 @@ def db_pg96_analyze_logical_data_model(
                 "issues": issues,
                 "recommendations": recommendations,
             }
-
-
-@mcp.tool
-def db_pg96_list_largest_tables(schema: str = "public", limit: int = 30) -> list[dict[str, Any]]:
-    """
-    List the largest tables in a specific schema ranked by total size (including indexes and TOAST).
-    
-    Args:
-        schema: Schema name (default: 'public').
-        limit: Maximum number of tables to return (default: 30).
-    """
-    with pool.connection() as conn:
-        with conn.cursor() as cur:
-            _execute_safe(
-                cur,
-                """
-                select
-                  n.nspname as schema,
-                  c.relname as table,
-                  pg_total_relation_size(c.oid) as total_size_bytes,
-                  pg_relation_size(c.oid) as table_size_bytes,
-                  pg_total_relation_size(c.oid) - pg_relation_size(c.oid) as index_size_bytes,
-                  reltuples::bigint as approx_rows
-                from pg_class c
-                join pg_namespace n on n.oid = c.relnamespace
-                where n.nspname = %(schema)s
-                  and c.relkind = 'r'
-                order by pg_total_relation_size(c.oid) desc
-                limit %(limit)s
-                """,
-                {"schema": schema, "limit": limit}
-            )
-            return cur.fetchall()
-
-
-@mcp.tool
-def db_pg96_list_temp_objects() -> dict[str, Any]:
-    """
-    List temporary schemas with object counts and total size.
-
-    Returns:
-        Dictionary containing a list of temporary schemas and the total count of temporary objects.
-    """
-    with pool.connection() as conn:
-        with conn.cursor() as cur:
-            _execute_safe(
-                cur,
-                """
-                select
-                  n.nspname as schema,
-                  count(*) as object_count,
-                  pg_size_pretty(sum(pg_total_relation_size(c.oid))) as total_size
-                from pg_class c
-                join pg_namespace n on n.oid = c.relnamespace
-                where n.nspname like 'pg_temp%%'
-                group by n.nspname
-                order by sum(pg_total_relation_size(c.oid)) desc
-                """
-            )
-            rows = cur.fetchall()
+            
+            # Cache the result
+            analysis_id = str(uuid.uuid4())
+            DATA_MODEL_CACHE[analysis_id] = result_data
+            
+            # Construct URL
+            # Use MCP_PORT if set, otherwise default to 8085 for UI to avoid 8000 conflicts
+            port = os.environ.get("MCP_PORT", "8085")
+            host = os.environ.get("MCP_HOST", "localhost")
+            if host == "0.0.0.0":
+                host = "localhost"
+            
+            url = f"http://{host}:{port}/data-model-analysis?id={analysis_id}"
+            
             return {
-                "temp_schemas": rows,
-                "total_temp_objects": sum(r["object_count"] for r in rows) if rows else 0
+                "message": "Analysis complete. View the interactive report at the URL below.",
+                "report_url": url,
+                "summary": summary
             }
+
+
 
 
 @mcp.tool
@@ -2874,6 +2875,328 @@ def _configure_fastmcp_runtime() -> None:
         pass
 
 
+DATA_MODEL_CACHE = {}
+
+DATA_MODEL_HTML = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Data Model Analysis</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        mermaid.initialize({ startOnLoad: false, theme: 'default', maxTextSize: 1000000 });
+        window.mermaid = mermaid;
+    </script>
+    <style>
+        .mermaid { background: white; }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen p-4 md:p-8">
+    <div class="max-w-7xl mx-auto bg-white shadow-xl rounded-lg overflow-hidden">
+        <!-- Header -->
+        <div class="bg-indigo-600 p-6 text-white">
+            <h1 class="text-3xl font-bold">Logical Data Model Analysis</h1>
+            <div class="mt-2 flex items-center text-indigo-100 text-sm">
+                <span id="schemaName" class="font-mono bg-indigo-700 px-2 py-1 rounded mr-4">schema: public</span>
+                <span id="generatedAt">Generated at: ...</span>
+            </div>
+        </div>
+
+        <!-- Summary Stats -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-0 border-b border-gray-200">
+            <div class="p-6 border-r border-gray-200 text-center hover:bg-gray-50 transition">
+                <div class="text-sm text-gray-500 uppercase tracking-wide font-semibold">Entities</div>
+                <div class="text-3xl font-bold text-gray-800 mt-1" id="countEntities">-</div>
+            </div>
+            <div class="p-6 border-r border-gray-200 text-center hover:bg-gray-50 transition">
+                <div class="text-sm text-gray-500 uppercase tracking-wide font-semibold">Relationships</div>
+                <div class="text-3xl font-bold text-gray-800 mt-1" id="countRelationships">-</div>
+            </div>
+            <div class="p-6 border-r border-gray-200 text-center hover:bg-gray-50 transition">
+                <div class="text-sm text-gray-500 uppercase tracking-wide font-semibold">Issues</div>
+                <div class="text-3xl font-bold text-red-600 mt-1" id="countIssues">-</div>
+            </div>
+            <div class="p-6 text-center hover:bg-gray-50 transition" title="Score = 100 - (2 * Total Issues). A higher score indicates better adherence to database design best practices (normalization, naming conventions, indexing).">
+                <div class="text-sm text-gray-500 uppercase tracking-wide font-semibold">Score</div>
+                <div class="text-3xl font-bold text-green-600 mt-1" id="modelScore">-</div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="p-6 space-y-8">
+            
+            <!-- Diagram Section -->
+            <section>
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-xl font-bold text-gray-800 flex items-center">
+                        <svg class="w-5 h-5 mr-2 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path></svg>
+                        Entity Relationship Diagram
+                    </h2>
+                    <button onclick="renderMermaid()" class="text-sm text-indigo-600 hover:text-indigo-800 font-medium">Redraw</button>
+                </div>
+                <div class="overflow-x-auto border border-gray-200 rounded-lg bg-gray-50 p-4 min-h-[300px] flex items-center justify-center">
+                    <div class="mermaid w-full text-center" id="mermaidGraph">
+                        %% Loading diagram...
+                    </div>
+                </div>
+            </section>
+
+            <!-- Findings & Recommendations Grid -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <!-- Issues -->
+                <section class="bg-red-50 rounded-lg p-6 border border-red-100">
+                    <h2 class="text-xl font-bold text-red-800 mb-4 flex items-center">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                        Key Findings & Issues
+                    </h2>
+                    <div id="issuesList" class="space-y-3">
+                        <!-- Issues injected here -->
+                    </div>
+                </section>
+
+                <!-- Recommendations -->
+                <section class="bg-blue-50 rounded-lg p-6 border border-blue-100">
+                    <h2 class="text-xl font-bold text-blue-800 mb-4 flex items-center">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path></svg>
+                        Recommendations
+                    </h2>
+                    <div id="recommendationsList" class="space-y-3">
+                        <!-- Recommendations injected here -->
+                    </div>
+                </section>
+            </div>
+
+            <!-- Detailed Analysis -->
+            <section>
+                <h2 class="text-xl font-bold text-gray-800 mb-4">Detailed Entity Analysis</h2>
+                <div class="overflow-hidden border border-gray-200 rounded-lg shadow-sm">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Entity</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kind</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Structure</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Constraints</th>
+                            </tr>
+                        </thead>
+                        <tbody id="entityTableBody" class="bg-white divide-y divide-gray-200">
+                            <!-- Rows injected here -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const id = urlParams.get('id');
+
+        function renderMermaid(graphDefinition) {
+            const element = document.getElementById('mermaidGraph');
+            if (graphDefinition) {
+                element.textContent = graphDefinition;
+                element.removeAttribute('data-processed');
+            }
+            window.mermaid.run({
+                nodes: [element]
+            });
+        }
+
+        async function loadData() {
+            if (!id) {
+                document.body.innerHTML = '<div class="p-8 text-red-600 text-center font-bold">No analysis ID provided</div>';
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/data-model/${id}`);
+                if (!response.ok) throw new Error('Analysis not found');
+                const data = await response.json();
+                
+                renderDashboard(data);
+            } catch (err) {
+                console.error(err);
+                document.body.innerHTML = `<div class="p-8 text-red-600 text-center font-bold">Error loading analysis: ${err.message}</div>`;
+            }
+        }
+
+        function renderDashboard(data) {
+            const summary = data.summary;
+            const issues = data.issues;
+            const recommendations = data.recommendations;
+            const model = data.logical_model;
+
+            // Summary
+            document.getElementById('schemaName').textContent = `schema: ${summary.schema}`;
+            document.getElementById('generatedAt').textContent = `Generated at: ${new Date(summary.generated_at_utc).toLocaleString()}`;
+            document.getElementById('countEntities').textContent = summary.entities;
+            document.getElementById('countRelationships').textContent = summary.relationships;
+            
+            const totalIssues = Object.values(summary.issues_count).reduce((a, b) => a + b, 0);
+            document.getElementById('countIssues').textContent = totalIssues;
+            
+            // Simple Score calculation (100 - issues * 2)
+            const score = Math.max(0, 100 - (totalIssues * 2));
+            document.getElementById('modelScore').textContent = score + '/100';
+
+            // Issues List
+            const issuesContainer = document.getElementById('issuesList');
+            const allIssues = [
+                ...issues.entities, 
+                ...issues.identifiers, 
+                ...issues.normalization, 
+                ...issues.relationships, 
+                ...issues.attributes
+            ];
+            
+            if (allIssues.length === 0) {
+                issuesContainer.innerHTML = '<div class="text-green-600 italic">No significant issues found. Great job!</div>';
+            } else {
+                issuesContainer.innerHTML = allIssues.slice(0, 10).map(i => `
+                    <div class="bg-white p-3 rounded border-l-4 border-red-500 shadow-sm text-sm">
+                        <div class="font-bold text-gray-800">${i.entity || 'General'}</div>
+                        <div class="text-gray-600">${i.issue}</div>
+                    </div>
+                `).join('') + (allIssues.length > 10 ? `<div class="text-center text-sm text-gray-500 mt-2">+ ${allIssues.length - 10} more issues</div>` : '');
+            }
+
+            // Recommendations List
+            const recsContainer = document.getElementById('recommendationsList');
+            const allRecs = [
+                ...recommendations.entities,
+                ...recommendations.identifiers,
+                ...recommendations.normalization,
+                ...recommendations.relationships,
+                ...recommendations.attributes
+            ];
+
+            if (allRecs.length === 0) {
+                recsContainer.innerHTML = '<div class="text-gray-500 italic">No specific recommendations at this time.</div>';
+            } else {
+                recsContainer.innerHTML = allRecs.slice(0, 10).map(r => `
+                    <div class="bg-white p-3 rounded border-l-4 border-blue-500 shadow-sm text-sm">
+                        <div class="font-bold text-gray-800">${r.entity || 'General'}</div>
+                        <div class="text-gray-600">${r.recommendation}</div>
+                    </div>
+                `).join('') + (allRecs.length > 10 ? `<div class="text-center text-sm text-gray-500 mt-2">+ ${allRecs.length - 10} more recommendations</div>` : '');
+            }
+
+            // Detailed Entity Table
+            const entityTable = document.getElementById('entityTableBody');
+            entityTable.innerHTML = model.entities.map(e => `
+                <tr class="hover:bg-gray-50">
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${e.name}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${e.kind === 'r' ? 'Table' : e.kind === 'v' ? 'View' : e.kind}</td>
+                    <td class="px-6 py-4 text-sm text-gray-500">
+                        <div>${e.attributes.length} columns</div>
+                        <div class="text-xs text-gray-400 mt-1">${e.attributes.slice(0, 3).map(a => a.name).join(', ')}${e.attributes.length > 3 ? '...' : ''}</div>
+                    </td>
+                    <td class="px-6 py-4 text-sm text-gray-500">
+                        ${e.primary_key.length ? `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 mr-1">PK: ${e.primary_key.join(', ')}</span>` : '<span class="text-red-400 text-xs">No PK</span>'}
+                        ${e.unique_constraints.length ? `<div class="mt-1"><span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">UKs: ${e.unique_constraints.length}</span></div>` : ''}
+                    </td>
+                </tr>
+            `).join('');
+
+            // Generate Mermaid Diagram
+            const graph = generateMermaid(model);
+            renderMermaid(graph);
+        }
+
+        function generateMermaid(model) {
+            let s = 'erDiagram\\n';
+            
+            // Helper to sanitize names for Mermaid
+            const safeName = (name) => name.replace(/[^a-zA-Z0-9_]/g, '_');
+            const safeType = (type) => type.replace(/\\s+/g, '_');
+
+            // Entities
+            model.entities.forEach(e => {
+                const entityName = safeName(e.name);
+                s += `    ${entityName} {\n`;
+                // Add PKs first
+                e.attributes.forEach(a => {
+                    const isPk = e.primary_key.includes(a.name);
+                    const isFk = e.foreign_keys.some(fk => fk.local_columns.includes(a.name));
+                    
+                    let type = safeType(a.data_type);
+                    if (a.max_length) type += `(${a.max_length})`;
+                    
+                    let markers = [];
+                    if (isPk) markers.push('PK');
+                    if (isFk) markers.push('FK');
+                    
+                    // Attribute name might need quotes if it has special chars, but for ERD
+                    // Mermaid expects word-like tokens. We'll use safeName just in case.
+                    s += `        ${type} ${safeName(a.name)} ${markers.length ? '"' + markers.join(', ') + '"' : ''}\n`;
+                });
+                s += '    }\\n';
+            });
+
+            // Relationships
+            model.relationships.forEach(r => {
+                // Determine cardinality (basic assumption for now: 1 to Many)
+                // If unique constraint exists on local columns, it might be 1 to 1
+                // For now, we use ||--o{ as default
+                const from = r.to_entity.split('.')[1]; // ref table (parent)
+                const to = r.from_entity.split('.')[1]; // local table (child)
+                
+                // Avoid self-references or missing entities crashing mermaid
+                if (from && to) {
+                    const label = r.name.replace(/"/g, "'"); // Escape quotes in label
+                    s += `    ${safeName(from)} ||--o{ ${safeName(to)} : "${label}"\n`;
+                }
+            });
+
+            return s;
+        }
+
+        window.onload = loadData;
+    </script>
+</body>
+</html>
+"""
+
+@mcp.custom_route("/data-model-analysis", methods=["GET"])
+async def data_model_analysis_ui(_request: Request) -> HTMLResponse:
+    return HTMLResponse(DATA_MODEL_HTML)
+
+def _make_json_serializable(obj: Any) -> Any:
+    """Recursively convert objects to JSON-serializable types."""
+    if isinstance(obj, dict):
+        return {k: _make_json_serializable(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_make_json_serializable(v) for v in obj]
+    elif isinstance(obj, tuple):
+        return tuple(_make_json_serializable(v) for v in obj)
+    elif isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    elif isinstance(obj, decimal.Decimal):
+        return float(obj)
+    elif isinstance(obj, uuid.UUID):
+        return str(obj)
+    return obj
+
+@mcp.custom_route("/api/data-model/{result_id}", methods=["GET"])
+async def get_data_model_result(request: Request) -> JSONResponse:
+    result_id = request.path_params["result_id"]
+    data = DATA_MODEL_CACHE.get(result_id)
+    if not data:
+        return JSONResponse({"error": "Analysis not found or expired"}, status_code=404)
+    
+    try:
+        # Ensure data is serializable (handle Decimal, UUID, datetime, etc.)
+        safe_data = _make_json_serializable(data)
+        return JSONResponse(safe_data)
+    except Exception as e:
+        logger.error(f"Serialization error for result {result_id}: {e}")
+        return JSONResponse({"error": f"Internal serialization error: {str(e)}"}, status_code=500)
+
+
 SESSION_MONITOR_HTML = """
 <!DOCTYPE html>
 <html>
@@ -2884,11 +3207,31 @@ SESSION_MONITOR_HTML = """
         body { font-family: sans-serif; padding: 20px; }
         .container { max-width: 800px; margin: 0 auto; }
         h1 { text-align: center; }
+        .stats { display: flex; justify-content: space-around; margin-bottom: 20px; }
+        .stat-box { text-align: center; padding: 10px; border: 1px solid #ddd; border-radius: 5px; min-width: 100px; }
+        .stat-value { font-size: 24px; font-weight: bold; }
+        .stat-label { color: #666; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>PostgreSQL Sessions (Active vs Inactive)</h1>
+        <h1>PostgreSQL Sessions Monitor</h1>
+        
+        <div class="stats">
+            <div class="stat-box">
+                <div id="activeVal" class="stat-value">-</div>
+                <div class="stat-label">Active</div>
+            </div>
+            <div class="stat-box">
+                <div id="idleVal" class="stat-value">-</div>
+                <div class="stat-label">Idle</div>
+            </div>
+            <div class="stat-box">
+                <div id="totalVal" class="stat-value">-</div>
+                <div class="stat-label">Total</div>
+            </div>
+        </div>
+
         <canvas id="sessionsChart"></canvas>
     </div>
     <script>
@@ -2901,13 +3244,23 @@ SESSION_MONITOR_HTML = """
                     {
                         label: 'Active',
                         borderColor: 'rgb(75, 192, 192)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.1)',
                         data: [],
                         tension: 0.1,
-                        fill: false
+                        fill: true
                     },
                     {
-                        label: 'Inactive',
-                        borderColor: 'rgb(255, 99, 132)',
+                        label: 'Idle',
+                        borderColor: 'rgb(255, 205, 86)',
+                        backgroundColor: 'rgba(255, 205, 86, 0.1)',
+                        data: [],
+                        tension: 0.1,
+                        fill: true
+                    },
+                    {
+                        label: 'Total',
+                        borderColor: 'rgb(54, 162, 235)',
+                        borderDash: [5, 5],
                         data: [],
                         tension: 0.1,
                         fill: false
@@ -2915,6 +3268,7 @@ SESSION_MONITOR_HTML = """
                 ]
             },
             options: {
+                responsive: true,
                 scales: {
                     x: { title: { display: true, text: 'Time' } },
                     y: { beginAtZero: true, title: { display: true, text: 'Count' } }
@@ -2928,15 +3282,23 @@ SESSION_MONITOR_HTML = """
                 const data = await response.json();
                 const now = new Date().toLocaleTimeString();
 
+                // Update text stats
+                document.getElementById('activeVal').textContent = data.active;
+                document.getElementById('idleVal').textContent = data.idle;
+                document.getElementById('totalVal').textContent = data.total;
+
+                // Update chart
                 if (chart.data.labels.length > 20) {
                     chart.data.labels.shift();
                     chart.data.datasets[0].data.shift();
                     chart.data.datasets[1].data.shift();
+                    chart.data.datasets[2].data.shift();
                 }
 
                 chart.data.labels.push(now);
                 chart.data.datasets[0].data.push(data.active);
-                chart.data.datasets[1].data.push(data.inactive);
+                chart.data.datasets[1].data.push(data.idle);
+                chart.data.datasets[2].data.push(data.total);
                 chart.update();
             } catch (error) {
                 console.error('Error fetching data:', error);
@@ -2961,23 +3323,27 @@ async def api_sessions(_request: Request) -> JSONResponse:
         with conn.cursor() as cur:
             # Query for session counts
             # Active: state = 'active'
-            # Inactive: state != 'active' (includes idle, idle in transaction, etc.)
+            # Idle: state like 'idle%' (idle, idle in transaction, etc.)
+            # Total: count(*)
             _execute_safe(
                 cur,
                 """
                 SELECT
                     sum(case when state = 'active' then 1 else 0 end) as active,
-                    sum(case when state != 'active' then 1 else 0 end) as inactive
+                    sum(case when state like 'idle%' then 1 else 0 end) as idle,
+                    count(*) as total
                 FROM pg_stat_activity
                 """
             )
             row = cur.fetchone()
             active = row["active"] if row and row["active"] is not None else 0
-            inactive = row["inactive"] if row and row["inactive"] is not None else 0
+            idle = row["idle"] if row and row["idle"] is not None else 0
+            total = row["total"] if row and row["total"] is not None else 0
             
             return JSONResponse({
                 "active": active,
-                "inactive": inactive,
+                "idle": idle,
+                "total": total,
                 "timestamp": time.time()
             })
 
@@ -3003,7 +3369,8 @@ def main() -> None:
 
     transport = os.environ.get("MCP_TRANSPORT", "http").strip().lower()
     host = os.environ.get("MCP_HOST", "0.0.0.0")
-    port = _env_int("MCP_PORT", 8000)
+    # Default to 8085 to avoid common 8000 conflicts
+    port = _env_int("MCP_PORT", 8085)
     
     stateless = _env_bool("MCP_STATELESS", False)
     json_resp = _env_bool("MCP_JSON_RESPONSE", False)
@@ -3028,6 +3395,41 @@ def main() -> None:
         
         mcp.run(**run_kwargs)
     elif transport == "stdio":
+        # Hybrid mode: Start HTTP server in background for UI/Custom Routes
+        def run_http_background():
+            logger.info(f"Starting background HTTP server for UI on port {port}")
+            try:
+                # Suppress Uvicorn logs to prevent stdout pollution (which breaks stdio transport)
+                # Uvicorn defaults to INFO and might print to stdout
+                logging.getLogger("uvicorn").setLevel(logging.WARNING)
+                logging.getLogger("uvicorn.error").setLevel(logging.WARNING)
+                logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+                
+                # Create a new event loop for this thread
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                
+                # Run HTTP server
+                # We assume standard HTTP transport for the UI
+                # Configure to be silent to avoid breaking stdio
+                mcp.run(
+                    transport="http", 
+                    host=host, 
+                    port=port,
+                    show_banner=False,
+                    log_level="error"
+                )
+            except Exception as e:
+                logger.error(f"Background HTTP server failed: {e}")
+
+        # Start HTTP server thread
+        http_thread = threading.Thread(target=run_http_background, daemon=True)
+        http_thread.start()
+        
+        # Give it a moment to initialize
+        time.sleep(1)
+        
+        # Run stdio transport in main thread
         mcp.run(transport="stdio")
     else:
         raise ValueError(f"Unknown transport: {transport}. Supported transports: http, sse, stdio")

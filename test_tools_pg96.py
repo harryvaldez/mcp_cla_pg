@@ -34,13 +34,9 @@ EXPECTED_TOOLS = [
     "db_pg96_get_db_parameters",
     "db_pg96_index_usage",
     "db_pg96_kill_session",
-    "db_pg96_list_databases",
-    "db_pg96_list_largest_schemas",
-    "db_pg96_list_largest_tables",
-    "db_pg96_list_schemas",
-    "db_pg96_list_tables",
-    "db_pg96_list_temp_objects",
+    "db_pg96_list_objects",
     "db_pg96_maintenance_stats",
+    "db_pg96_monitor_sessions",
     "db_pg96_ping",
     "db_pg96_recommend_partitioning",
     "db_pg96_run_query",
@@ -227,15 +223,16 @@ def _call_all_tools() -> None:
     params = _invoke(server, "db_pg96_get_db_parameters", {"pattern": "max_connections|shared_buffers"})
     _assert(isinstance(params, list) and len(params) >= 1, "get_db_parameters returned no rows")
 
-    dbs = _invoke(server, "db_pg96_list_databases")
-    _assert(isinstance(dbs, list) and any(r.get("name") == DB for r in dbs), "list_databases did not include test database")
+    dbs = _invoke(server, "db_pg96_list_objects", {"object_type": "database"})
+    _assert(isinstance(dbs, list) and any(r.get("name") == DB for r in dbs), "list_objects(database) did not include test database")
 
-    schemas = _invoke(server, "db_pg96_list_schemas", {"include_system": False})
-    _assert(isinstance(schemas, list) and "public" in schemas, "list_schemas did not include public")
+    schemas = _invoke(server, "db_pg96_list_objects", {"object_type": "schema"})
+    schema_names = [s.get("name") for s in schemas]
+    _assert(isinstance(schemas, list) and "public" in schema_names, "list_objects(schema) did not include public")
 
-    tables = _invoke(server, "db_pg96_list_tables", {"schema": "public"})
-    table_names = {t.get("table_name") for t in tables}
-    _assert("customers" in table_names and "orders" in table_names, "list_tables missing sample tables")
+    tables = _invoke(server, "db_pg96_list_objects", {"object_type": "table", "schema": "public"})
+    table_names = {t.get("name") for t in tables}
+    _assert("customers" in table_names and "orders" in table_names, "list_objects(table) missing sample tables")
 
     desc = _invoke(server, "db_pg96_describe_table", {"schema": "public", "table": "customers"})
     _assert(desc.get("table") == "customers", "describe_table returned wrong table")
@@ -257,8 +254,8 @@ def _call_all_tools() -> None:
     bloat = _invoke(server, "db_pg96_check_bloat", {"limit": 10})
     _assert(isinstance(bloat, list), "check_bloat did not return a list")
 
-    largest_schemas = _invoke(server, "db_pg96_list_largest_schemas", {"limit": 10})
-    _assert(isinstance(largest_schemas, list) and len(largest_schemas) > 0, "list_largest_schemas failed")
+    largest_schemas = _invoke(server, "db_pg96_list_objects", {"object_type": "schema", "order_by": "size", "limit": 10})
+    _assert(isinstance(largest_schemas, list) and len(largest_schemas) > 0, "list_objects(schema, size) failed")
 
     sessions = _invoke(server, "db_pg96_analyze_sessions", {"min_duration_seconds": 0, "min_idle_seconds": 0})
     _assert(isinstance(sessions, dict) and "summary" in sessions, "analyze_sessions returned unexpected shape")
@@ -308,11 +305,11 @@ def _call_all_tools() -> None:
         model = _invoke(server, "db_pg96_analyze_logical_data_model", {"schema": "public", "max_entities": 50, "include_attributes": True})
         _assert(isinstance(model, dict) and "summary" in model, "analyze_logical_data_model failed")
 
-        largest_tables = _invoke(server, "db_pg96_list_largest_tables", {"schema": "public", "limit": 5})
-        _assert(isinstance(largest_tables, list) and len(largest_tables) > 0, "list_largest_tables failed")
+        largest_tables = _invoke(server, "db_pg96_list_objects", {"object_type": "table", "schema": "public", "order_by": "size", "limit": 5})
+        _assert(isinstance(largest_tables, list) and len(largest_tables) > 0, "list_objects(table, size) failed")
 
-        temp_objs = _invoke(server, "db_pg96_list_temp_objects")
-        _assert(isinstance(temp_objs, dict) and "temp_schemas" in temp_objs, "list_temp_objects failed")
+        temp_objs = _invoke(server, "db_pg96_list_objects", {"object_type": "temp_object"})
+        _assert(isinstance(temp_objs, list), "list_objects(temp_object) failed")
 
         t_sizes = _invoke(server, "db_pg96_table_sizes", {"schema": "public", "limit": 5})
         _assert(isinstance(t_sizes, list) and len(t_sizes) > 0, "table_sizes failed")

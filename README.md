@@ -224,15 +224,10 @@ This server implements strict security practices for logging:
 - `db_pg96_server_info_mcp()`: Get internal MCP server status and version.
 
 ### 🔍 Schema Discovery
-- `db_pg96_list_databases()`: List all databases and their sizes.
-- `db_pg96_list_schemas(include_system: bool = False)`: Lists schemas in the current database.
-- `db_pg96_list_tables(schema: str = "public")`: Lists tables and their types in a specific schema.
+- `db_pg96_list_objects(object_type: str, schema: str = None, owner: str = None, name_pattern: str = None, order_by: str = None, limit: int = 50)`: **(New Consolidated Tool)** Unified tool to list databases, schemas, tables, views, indexes, functions, sequences, and temporary objects. Supports filtering and sorting.
 - `db_pg96_describe_table(schema: str, table: str)`: Get detailed column and index info for a table.
-- `db_pg96_list_largest_schemas(limit: int = 30)`: Lists the largest schemas in the current database ordered by total size.
-- `db_pg96_list_largest_tables(schema: str = "public", limit: int = 30)`: List the largest tables in a specific schema ranked by total size.
 - `db_pg96_table_sizes(schema: str = None, limit: int = 20)`: List tables by size across the database.
 - `db_pg96_analyze_logical_data_model(schema: str = "public")`: Analyze foreign keys and table relationships to understand the logical data model.
-- `db_pg96_list_temp_objects()`: Monitor temporary schema usage.
 
 ### ⚡ Performance & Tuning
 - `db_pg96_analyze_table_health(schema: str = None, min_size_mb: int = 50, profile: str = "oltp")`: **(Power Tool)** Comprehensive health check for bloat, vacuum needs, and optimization.
@@ -244,6 +239,7 @@ This server implements strict security practices for logging:
 - `db_pg96_explain_query(sql: str, analyze: bool = False, output_format: str = "json")`: Get the execution plan for a query.
 
 ### 🕵️ Session & Security
+- `db_pg96_monitor_sessions(limit: int = 50)`: Real-time session monitoring data for the UI dashboard.
 - `db_pg96_analyze_sessions(include_idle: bool = True, include_locked: bool = True)`: Detailed session analysis.
 - `db_pg96_database_security_performance_metrics(profile: str = "oltp")`: Comprehensive security and performance audit.
 - `db_pg96_get_db_parameters(pattern: str = None)`: Retrieve database configuration parameters (GUCs).
@@ -256,7 +252,21 @@ This server implements strict security practices for logging:
 
 ---
 
-## 📖 Usage Examples
+## � Session Monitor UI
+
+The server includes a built-in, real-time dashboard for monitoring database sessions.
+
+**Access**: Open `http://localhost:8000/monitor` in your browser (when running in HTTP mode).
+
+**Features**:
+- **Real-time Graph**: Visualizes active vs. idle sessions over time.
+- **Auto-Refresh**: Updates every 5 seconds without page reload.
+- **Session List**: Detailed table of current sessions including PID, User, Application, and Query duration.
+- **Zero-Config**: Works out-of-the-box with the standard `MCP_TRANSPORT=http` configuration.
+
+---
+
+## � Usage Examples
 
 Here are some real-world examples of using the tools via an MCP client.
 
@@ -408,7 +418,7 @@ The analysis of the `smsadmin` schema reveals a significant lack of structural e
 **Prompt:** `call db_pg96_monitor_sessions()`
 
 **Result:**
-"Monitor available at: http://localhost:8000/sessions-monitor"
+"Monitor available at: http://localhost:8000/monitor"
 
 (Opens a dashboard with a live line graph of active vs. inactive sessions, refreshing every 5 seconds)
 

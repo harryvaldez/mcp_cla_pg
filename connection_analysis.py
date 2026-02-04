@@ -182,8 +182,8 @@ def test_mcp_tools():
         tools_to_test = [
             ("ping", server.db_pg96_ping),
             ("server_info", server.db_pg96_server_info),
-            ("list_schemas", server.db_pg96_list_schemas, {"include_system": False}),
-            ("list_tables", server.db_pg96_list_tables, {"schema": "smsadmin"})
+            ("list_schemas", server.db_pg96_list_objects, {"object_type": "schema"}),
+            ("list_tables", server.db_pg96_list_objects, {"object_type": "table", "schema": "smsadmin"})
         ]
         
         tool_results = []

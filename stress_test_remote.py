@@ -117,7 +117,7 @@ def test_mcp_tools_sequential():
                 invoke_tool(server.db_pg96_server_info)
                 
                 # Check simple query
-                invoke_tool(server.db_pg96_list_schemas, include_system=False)
+                invoke_tool(server.db_pg96_list_objects, object_type="schema")
                 
                 success_count += 1
                 if i % 10 == 0:
