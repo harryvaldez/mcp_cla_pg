@@ -269,6 +269,21 @@ if ALLOW_WRITE:
             "or use stdio transport for local access."
         )
 
+# Block 'enterprisedb' user as requested
+# Parse the DATABASE_URL to check the username
+try:
+    _parsed_url = urlparse(DATABASE_URL)
+    if _parsed_url.username == 'enterprisedb':
+        raise RuntimeError(
+            "Security Violation: The 'enterprisedb' user is explicitly disallowed from running this MCP server."
+        )
+except Exception as e:
+    # If parsing fails, we assume it's safe or handle it elsewhere, but for this specific check:
+    if "enterprisedb" in DATABASE_URL:
+         raise RuntimeError(
+            "Security Violation: The 'enterprisedb' user is explicitly disallowed from running this MCP server."
+        )
+
 DEFAULT_MAX_ROWS = _env_int("MCP_MAX_ROWS", 500)
 POOL_MIN_SIZE = _env_int("MCP_POOL_MIN_SIZE", 1)
 POOL_MAX_SIZE = _env_int("MCP_POOL_MAX_SIZE", 20)
