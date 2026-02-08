@@ -202,8 +202,41 @@ If `MCP_ALLOW_WRITE=true`, the server enforces the following additional security
 > While the implementation follows standard FastMCP patterns, end-to-end verification is pending.
 > See [Testing & Validation](#testing--validation) for current status.
 
-### Authentication (Azure AD)
-To enable Azure AD authentication, set `FASTMCP_AUTH_TYPE=azure-ad`.
+### 🔐 Authentication & OAuth2
+
+The server supports several authentication modes via `FASTMCP_AUTH_TYPE`.
+
+#### 1. Generic OAuth2 Proxy
+Bridge MCP dynamic registration with traditional OAuth2 providers.
+Set `FASTMCP_AUTH_TYPE=oauth2`.
+
+| Variable | Description |
+|----------|-------------|
+| `FASTMCP_OAUTH_AUTHORIZE_URL` | Provider's authorization endpoint |
+| `FASTMCP_OAUTH_TOKEN_URL` | Provider's token endpoint |
+| `FASTMCP_OAUTH_CLIENT_ID` | Your registered client ID |
+| `FASTMCP_OAUTH_CLIENT_SECRET` | Your registered client secret |
+| `FASTMCP_OAUTH_BASE_URL` | Public URL of this MCP server |
+| `FASTMCP_OAUTH_JWKS_URI` | Provider's JWKS endpoint (for token verification) |
+| `FASTMCP_OAUTH_ISSUER` | Expected token issuer |
+| `FASTMCP_OAUTH_AUDIENCE` | (Optional) Expected token audience |
+
+#### 2. GitHub / Google (Managed)
+Pre-configured OAuth2 providers for simplified setup.
+Set `FASTMCP_AUTH_TYPE=github` or `google`.
+
+| Variable | Description |
+|----------|-------------|
+| `FASTMCP_GITHUB_CLIENT_ID` | GitHub App/OAuth Client ID |
+| `FASTMCP_GITHUB_CLIENT_SECRET` | GitHub Client Secret |
+| `FASTMCP_GITHUB_BASE_URL` | Public URL of this MCP server |
+| `FASTMCP_GOOGLE_CLIENT_ID` | Google OAuth Client ID |
+| `FASTMCP_GOOGLE_CLIENT_SECRET` | Google Client Secret |
+| `FASTMCP_GOOGLE_BASE_URL` | Public URL of this MCP server |
+
+#### 3. Azure AD (Microsoft Entra ID)
+Simplified configuration for Azure AD.
+Set `FASTMCP_AUTH_TYPE=azure-ad`.
 
 | Variable | Description |
 |----------|-------------|
@@ -211,6 +244,27 @@ To enable Azure AD authentication, set `FASTMCP_AUTH_TYPE=azure-ad`.
 | `FASTMCP_AZURE_AD_CLIENT_ID` | Your Azure Client ID |
 | `FASTMCP_AZURE_AD_CLIENT_SECRET` | (Optional) Client secret for OIDC Proxy mode |
 | `FASTMCP_AZURE_AD_BASE_URL` | (Optional) Base URL for OIDC Proxy mode |
+
+#### 4. OpenID Connect (OIDC) Proxy
+Standard OIDC flow with discovery.
+Set `FASTMCP_AUTH_TYPE=oidc`.
+
+| Variable | Description |
+|----------|-------------|
+| `FASTMCP_OIDC_CONFIG_URL` | OIDC well-known configuration URL |
+| `FASTMCP_OIDC_CLIENT_ID` | OIDC Client ID |
+| `FASTMCP_OIDC_CLIENT_SECRET` | OIDC Client Secret |
+| `FASTMCP_OIDC_BASE_URL` | Public URL of this MCP server |
+
+#### 5. Pure JWT Verification
+Validate tokens signed by known issuers (Resource Server mode).
+Set `FASTMCP_AUTH_TYPE=jwt`.
+
+| Variable | Description |
+|----------|-------------|
+| `FASTMCP_JWT_JWKS_URI` | Provider's JWKS endpoint |
+| `FASTMCP_JWT_ISSUER` | Expected token issuer |
+| `FASTMCP_JWT_AUDIENCE` | (Optional) Expected token audience |
 
 ### HTTPS / SSL
 To enable HTTPS, provide both the certificate and key files.

@@ -105,7 +105,7 @@ def _get_auth() -> Any:
         return None
 
     auth_type_lower = auth_type.lower()
-    allowed_auth_types = {"oidc", "jwt", "azure-ad", "none"}
+    allowed_auth_types = {"oidc", "jwt", "azure-ad", "github", "google", "oauth2", "none"}
     
     if auth_type_lower not in allowed_auth_types:
         raise ValueError(
@@ -192,6 +192,83 @@ def _get_auth() -> Any:
                 issuer=issuer,
                 audience=os.environ.get("FASTMCP_AZURE_AD_AUDIENCE", client_id),
             )
+            
+    # GitHub OAuth2
+    if auth_type_lower == "github":
+        from fastmcp.server.auth.providers.github import GitHubProvider
+        
+        client_id = os.environ.get("FASTMCP_GITHUB_CLIENT_ID")
+        client_secret = os.environ.get("FASTMCP_GITHUB_CLIENT_SECRET")
+        base_url = os.environ.get("FASTMCP_GITHUB_BASE_URL")
+        
+        if not all([client_id, client_secret, base_url]):
+            raise RuntimeError(
+                "GitHub authentication requires FASTMCP_GITHUB_CLIENT_ID, "
+                "FASTMCP_GITHUB_CLIENT_SECRET, and FASTMCP_GITHUB_BASE_URL"
+            )
+            
+        return GitHubProvider(
+            client_id=client_id,
+            client_secret=client_secret,
+            base_url=base_url
+        )
+
+    # Google OAuth2
+    if auth_type_lower == "google":
+        from fastmcp.server.auth.providers.google import GoogleProvider
+        
+        client_id = os.environ.get("FASTMCP_GOOGLE_CLIENT_ID")
+        client_secret = os.environ.get("FASTMCP_GOOGLE_CLIENT_SECRET")
+        base_url = os.environ.get("FASTMCP_GOOGLE_BASE_URL")
+        
+        if not all([client_id, client_secret, base_url]):
+            raise RuntimeError(
+                "Google authentication requires FASTMCP_GOOGLE_CLIENT_ID, "
+                "FASTMCP_GOOGLE_GOOGLE_CLIENT_SECRET, and FASTMCP_GOOGLE_BASE_URL"
+            )
+            
+        return GoogleProvider(
+            client_id=client_id,
+            client_secret=client_secret,
+            base_url=base_url
+        )
+
+    # Generic OAuth2 Proxy
+    if auth_type_lower == "oauth2":
+        from fastmcp.server.auth import OAuthProxy
+        from fastmcp.server.auth.providers.jwt import JWTVerifier
+        
+        auth_url = os.environ.get("FASTMCP_OAUTH_AUTHORIZE_URL")
+        token_url = os.environ.get("FASTMCP_OAUTH_TOKEN_URL")
+        client_id = os.environ.get("FASTMCP_OAUTH_CLIENT_ID")
+        client_secret = os.environ.get("FASTMCP_OAUTH_CLIENT_SECRET")
+        base_url = os.environ.get("FASTMCP_OAUTH_BASE_URL")
+        
+        # Token verifier details
+        jwks_uri = os.environ.get("FASTMCP_OAUTH_JWKS_URI")
+        issuer = os.environ.get("FASTMCP_OAUTH_ISSUER")
+        
+        if not all([auth_url, token_url, client_id, client_secret, base_url, jwks_uri, issuer]):
+            raise RuntimeError(
+                "Generic OAuth2 requires FASTMCP_OAUTH_AUTHORIZE_URL, FASTMCP_OAUTH_TOKEN_URL, "
+                "FASTMCP_OAUTH_CLIENT_ID, FASTMCP_OAUTH_CLIENT_SECRET, FASTMCP_OAUTH_BASE_URL, "
+                "FASTMCP_OAUTH_JWKS_URI, and FASTMCP_OAUTH_ISSUER"
+            )
+            
+        token_verifier = JWTVerifier(
+            jwks_uri=jwks_uri,
+            issuer=issuer,
+            audience=os.environ.get("FASTMCP_OAUTH_AUDIENCE")
+        )
+        
+        return OAuthProxy(
+            upstream_authorization_endpoint=auth_url,
+            upstream_token_endpoint=token_url,
+            upstream_client_id=client_id,
+            upstream_client_secret=client_secret,
+            token_verifier=token_verifier,
+            base_url=base_url
+        )
             
 def _env_int(name: str, default: int) -> int:
     value = os.environ.get(name)
