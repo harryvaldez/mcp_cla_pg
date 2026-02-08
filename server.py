@@ -203,17 +203,15 @@ def _get_auth() -> Any:
             raise RuntimeError(
                 "GitHub authentication requires FASTMCP_GITHUB_CLIENT_ID and FASTMCP_GITHUB_CLIENT_SECRET"
             )
-        
-        # base_url is optional, only for GitHub Enterprise
-        provider_kwargs = {
-            "client_id": client_id,
-            "client_secret": client_secret
-        }
-        base_url = os.environ.get("FASTMCP_GITHUB_BASE_URL")
-        if base_url:
-            provider_kwargs["base_url"] = base_url
 
-        return GitHubProvider(**provider_kwargs)
+        # Default to public GitHub URL if the env var is not set
+        base_url = os.environ.get("FASTMCP_GITHUB_BASE_URL", "https://github.com")
+
+        return GitHubProvider(
+            client_id=client_id,
+            client_secret=client_secret,
+            base_url=base_url
+        )
 
     # Google OAuth2
     if auth_type_lower == "google":
