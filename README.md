@@ -33,12 +33,37 @@ For detailed deployment instructions on **Azure Container Apps**, **AWS ECS**, a
 This section explains how to configure the server for Claude Desktop and VS Code extensions.
 
 1.  **Claude Desktop Integration**:
-    Edit your `claude_desktop_config.json` (usually in `~/Library/Application Support/Claude/` on macOS or `%APPDATA%\Claude\` on Windows). This configures the server for the Claude Desktop application, which can be invoked from VS Code.
+    Edit your `claude_desktop_config.json` (usually in `~/Library/Application Support/Claude/` on macOS or `%APPDATA%\Claude\` on Windows).
 
 2.  **VS Code Extension Configuration**:
-    For extensions like Cline or Roo Code, go to the extension settings in VS Code and look for "MCP Servers" configuration. You can use the same JSON structure as below.
+    For extensions like Cline or Roo Code, go to the extension settings in VS Code and look for "MCP Servers" configuration.
 
-**Configuration JSON:**
+You can use either of the following methods to configure the server.
+
+#### Method A: Using Docker (Recommended)
+This method ensures you have all dependencies pre-installed. Note the `-i` flag (interactive) and `MCP_TRANSPORT=stdio`.
+
+```json
+{
+  "mcpServers": {
+    "postgres": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-e", "DATABASE_URL=postgresql://user:password@host.docker.internal:5432/dbname",
+        "-e", "MCP_TRANSPORT=stdio",
+        "harryvaldez/mcp-postgres:latest"
+      ]
+    }
+  }
+}
+```
+
+#### Method B: Using Local Python (uv)
+If you prefer running the Python code directly and have `uv` installed:
+
 ```json
 {
   "mcpServers": {

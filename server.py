@@ -24,6 +24,9 @@ from psycopg_pool import ConnectionPool
 from psycopg.rows import dict_row
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse, JSONResponse, HTMLResponse
+from starlette.applications import Starlette
+from starlette.routing import Route
+import uvicorn
 
 # Startup Confirmation Dialog
 # As requested: "once this MCP is loaded, it will load a dialog box asking the user's confirmation"
@@ -4137,16 +4140,17 @@ def main() -> None:
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 
-                # Run HTTP server
-                # We assume standard HTTP transport for the UI
-                # Configure to be silent to avoid breaking stdio
-                mcp.run(
-                    transport="http", 
-                    host=host, 
-                    port=port,
-                    show_banner=False,
-                    log_level="error"
-                )
+                # Create a separate Starlette app for the UI to avoid conflict with mcp.run()
+                ui_routes = [
+                    Route("/data-model-analysis", data_model_analysis_ui),
+                    Route("/api/data-model/{result_id}", get_data_model_result),
+                    Route("/sessions-monitor", sessions_monitor),
+                    Route("/api/sessions", api_sessions),
+                ]
+                ui_app = Starlette(routes=ui_routes)
+                
+                # Run Uvicorn directly
+                uvicorn.run(ui_app, host=host, port=port, log_level="error")
             except Exception as e:
                 logger.error(f"Background HTTP server failed: {e}")
 
