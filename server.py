@@ -4143,18 +4143,15 @@ def main() -> None:
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 
-                # Create a separate Starlette app for the UI to avoid conflict with mcp.run()
-                ui_routes = [
-                    Route("/health", health_check),
-                    Route("/data-model-analysis", data_model_analysis_ui),
-                    Route("/api/data-model/{result_id}", get_data_model_result),
-                    Route("/sessions-monitor", sessions_monitor),
-                    Route("/api/sessions", api_sessions),
-                ]
-                ui_app = Starlette(routes=ui_routes)
-                
-                # Run Uvicorn directly
-                uvicorn.run(ui_app, host=host, port=port, log_level="error")
+                # Run the full MCP server in the background.
+                # 'http' transport supports both regular HTTP requests (for UI) and SSE.
+                mcp.run(
+                    transport="http",
+                    host=host,
+                    port=port,
+                    show_banner=False,
+                    log_level="warning" # Use warning to suppress info-level noise
+                )
             except Exception as e:
                 logger.error(f"Background HTTP server failed: {e}")
 
