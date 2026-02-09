@@ -266,6 +266,14 @@ Set `FASTMCP_AUTH_TYPE=jwt`.
 | `FASTMCP_JWT_ISSUER` | Expected token issuer |
 | `FASTMCP_JWT_AUDIENCE` | (Optional) Expected token audience |
 
+#### 6. API Key (Static Token)
+Simple Bearer token authentication. Ideal for machine-to-machine communication (e.g., n8n, internal services).
+Set `FASTMCP_AUTH_TYPE=apikey`.
+
+| Variable | Description |
+|----------|-------------|
+| `FASTMCP_API_KEY` | The secret key clients must provide in the `Authorization: Bearer <key>` header. |
+
 ### HTTPS / SSL
 To enable HTTPS, provide both the certificate and key files.
 

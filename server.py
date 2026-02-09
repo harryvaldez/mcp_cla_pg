@@ -284,10 +284,32 @@ def _env_bool(name: str, default: bool) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
-mcp = FastMCP(
-    name=os.environ.get("MCP_SERVER_NAME", "PostgreSQL MCP Server"),
-    auth=_get_auth()
-)
+# Initialize FastMCP with optional API Key support
+auth_type = os.environ.get("FASTMCP_AUTH_TYPE", "").lower()
+mcp_kwargs = {
+    "name": os.environ.get("MCP_SERVER_NAME", "PostgreSQL MCP Server"),
+}
+
+if auth_type == "apikey":
+    from fastapi import Depends, HTTPException, Security
+    from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+    
+    security = HTTPBearer()
+    
+    async def verify_api_key(credentials: HTTPAuthorizationCredentials = Security(security)):
+        expected_key = os.environ.get("FASTMCP_API_KEY")
+        if not expected_key:
+            logger.error("FASTMCP_API_KEY not configured but auth type is apikey")
+            raise HTTPException(status_code=500, detail="Server configuration error")
+        
+        if credentials.credentials != expected_key:
+            raise HTTPException(status_code=403, detail="Invalid API Key")
+            
+    mcp_kwargs["dependencies"] = [Depends(verify_api_key)]
+else:
+    mcp_kwargs["auth"] = _get_auth()
+
+mcp = FastMCP(**mcp_kwargs)
 
 # Browser-friendly middleware to handle direct visits to the SSE endpoint
 class BrowserFriendlyMiddleware(BaseHTTPMiddleware):
