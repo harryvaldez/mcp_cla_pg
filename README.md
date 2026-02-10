@@ -11,7 +11,7 @@ This server exposes a suite of DBA-grade tools to inspect schemas, analyze perfo
 - **Performance Analysis**: Detect table bloat, missing indexes, and lock contention.
 - **Security Audits**: Analyze database privileges and security settings.
 - **Safe Execution**: Read-only by default, with optional write capabilities for specific maintenance tasks.
-- **Multiple Transports**: Supports `http` (uses SSE) and `stdio`. HTTPS is supported via SSL configuration variables.
+- **Multiple Transports**: Supports `sse` (Server-Sent Events) and `stdio`. HTTPS is supported via SSL configuration variables.
 - **Secure Authentication**: Built-in support for **Azure AD (Microsoft Entra ID)** and standard token auth.
 - **HTTPS Support**: Native SSL/TLS support for secure remote connections.
 - **SSH Tunneling**: Built-in support for connecting via SSH bastion hosts.
@@ -172,6 +172,38 @@ export FASTMCP_AUTH_TYPE=azure-ad # ⚠️ Untested / Not Production Ready
 npx .
 ```
 
+### Option 5: n8n Integration (AI Agent)
+
+You can use this MCP server as a "Remote Tool" in n8n to empower AI agents with database capabilities.
+
+1.  **Download Workflow**: Get the [n8n-mcp-workflow.json](n8n-mcp-workflow.json).
+2.  **Import to n8n**:
+    *   Open your n8n dashboard.
+    *   Go to **Workflows** -> **Import from File**.
+    *   Select `n8n-mcp-workflow.json`.
+3.  **Configure Credentials**:
+    *   Open the **AI Agent** node.
+    *   Set your **OpenAI** credentials.
+    *   If your MCP server is protected, open the **Postgres MCP** node and update the `Authorization` header in "Header Parameters".
+4.  **Run**: Click "Execute Workflow" to test the connection (defaults to `db_pg96_ping`).
+
+### Troubleshooting n8n Connection
+
+If n8n (Cloud) cannot connect to your local MCP server:
+1.  **Public Accessibility**: Your server must be reachable from the internet. `localhost` or local names won't work from n8n Cloud.
+2.  **Firewall**: Ensure your firewall allows inbound traffic on the MCP port (default 8085).
+    ```powershell
+    # Allow port 8085 on Windows
+    netsh advfirewall firewall add rule name="MCP Server 8085" dir=in action=allow protocol=TCP localport=8085
+    ```
+3.  **Quick Fix (ngrok)**: Use [ngrok](https://ngrok.com/) to tunnel your local server to the internet.
+    ```bash
+    ngrok http 8085
+    ```
+    Then use the generated `https://....ngrok-free.app/sse` URL in n8n.
+
+
+
 
 ---
 
@@ -185,9 +217,10 @@ The server is configured entirely via environment variables.
 | `DATABASE_URL` | Full PostgreSQL connection string | *Required* |
 | `MCP_HOST` | Host to bind the server to | `0.0.0.0` |
 | `MCP_PORT` | Port to listen on (8000 for Docker, 8085 for local) | `8085` |
-| `MCP_TRANSPORT` | Transport mode: `http` (uses SSE) or `stdio` | `http` |
+| `MCP_TRANSPORT` | Transport mode: `sse`, `http` (uses SSE), or `stdio` | `http` |
 | `MCP_ALLOW_WRITE` | Enable write tools (`db_pg96_create_db_user`, etc.) | `false` |
 | `MCP_CONFIRM_WRITE` | **Required if ALLOW_WRITE=true**. Safety latch to confirm write mode. | `false` |
+| `MCP_SKIP_CONFIRMATION` | Skip startup confirmation dialog (Windows). Set to `true` for automation. | `false` |
 | `MCP_STATEMENT_TIMEOUT_MS` | Query execution timeout in milliseconds | `120000` |
 | `MCP_LOG_LEVEL` | Logging level (DEBUG, INFO, WARNING, ERROR) | `INFO` |
 | `MCP_LOG_FILE` | Optional path to write logs to a file | *None* |

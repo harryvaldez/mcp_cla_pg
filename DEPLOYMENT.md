@@ -11,6 +11,28 @@ Before deploying, ensure you have:
 
 ---
 
+## 🌐 Remote Access & Networking
+
+### Exposing the Server
+By default, the server binds to `0.0.0.0` (all interfaces) when running via Docker or if `MCP_HOST` is set. To allow external tools (like n8n Cloud) to connect:
+
+1.  **Public IP / DNS**: Ensure your machine has a public IP or dynamic DNS hostname.
+2.  **Firewall Rules**: Open the port (default 8085) in your OS firewall.
+    *   **Windows (PowerShell)**:
+        ```powershell
+        netsh advfirewall firewall add rule name="MCP Server 8085" dir=in action=allow protocol=TCP localport=8085
+        ```
+    *   **Linux (ufw)**:
+        ```bash
+        sudo ufw allow 8085/tcp
+        ```
+3.  **Tunnels (Alternative)**: Use a tunneling service like [ngrok](https://ngrok.com/) to bypass firewall/NAT issues during development.
+    ```bash
+    ngrok http 8085
+    ```
+
+---
+
 ## 💻 Local Development
 
 ### Option 1: Python (uv)
@@ -130,11 +152,12 @@ When deploying to production, verify the following:
 
 Key environment variables supported by the server:
 - `DATABASE_URL` PostgreSQL connection string.
-- `MCP_TRANSPORT` Transport mode: `http` (default) or `stdio`.
+- `MCP_TRANSPORT` Transport mode: `sse`, `http` (default), or `stdio`.
 - `MCP_HOST` Host for HTTP transport, default `0.0.0.0`.
 - `MCP_PORT` Port for HTTP transport, default `8000`.
 - `MCP_ALLOW_WRITE` Allow write operations, default `false`.
 - `MCP_CONFIRM_WRITE` Require confirmation for writes, default `false`.
+- `MCP_SKIP_CONFIRMATION` Skip startup confirmation dialog, default `false`.
 - `FASTMCP_AUTH_TYPE` Authentication type (`apikey`, `github`, `google`, `azure-ad`, `oidc`, `jwt`).
 - `FASTMCP_API_KEY` Secret key for `apikey` auth.
 - `FASTMCP_GITHUB_CLIENT_ID` / `FASTMCP_GITHUB_CLIENT_SECRET` GitHub OAuth credentials.

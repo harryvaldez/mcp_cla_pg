@@ -1,0 +1,107 @@
+{
+  "name": "Postgres MCP Ping Test",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-trigger",
+      "name": "When clicking \"Execute Workflow\"",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        460,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "text": "Call the db_pg96_ping tool to check the database connection status."
+      },
+      "id": "ai-agent",
+      "name": "AI Agent",
+      "type": "n8n-nodes-base.aiAgent",
+      "typeVersion": 1,
+      "position": [
+        680,
+        340
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "OPENAI_CREDENTIAL_ID",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o",
+        "options": {}
+      },
+      "id": "openai-model",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [
+        640,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "source": "remote",
+        "remoteType": "sse",
+        "url": "http://harryv.tplinkdns.com:8085/sse",
+        "headerParameters": {
+          "parameter": [
+            {
+              "name": "Authorization",
+              "value": "Bearer testkey"
+            }
+          ]
+        }
+      },
+      "id": "mcp-tool",
+      "name": "Postgres MCP",
+      "type": "@n8n/n8n-nodes-langchain.toolMcp",
+      "typeVersion": 1,
+      "position": [
+        840,
+        560
+      ]
+    }
+  ],
+  "connections": {
+    "When clicking \"Execute Workflow\"": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres MCP": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

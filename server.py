@@ -23,8 +23,9 @@ from psycopg.errors import UndefinedTable
 from psycopg_pool import ConnectionPool
 from psycopg.rows import dict_row
 from starlette.requests import Request
-from starlette.responses import PlainTextResponse, JSONResponse, HTMLResponse
+from starlette.responses import PlainTextResponse, JSONResponse, HTMLResponse, RedirectResponse
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware import Middleware
 from starlette.applications import Starlette
 from starlette.routing import Route
 import uvicorn
@@ -52,7 +53,8 @@ if sys.platform == 'win32':
             if result != IDYES:
                 sys.exit(0)
 
-        show_startup_confirmation()
+        if os.environ.get("MCP_SKIP_CONFIRMATION", "").lower() != "true":
+            show_startup_confirmation()
     except Exception as e:
         # If dialog fails, log it but proceed (or exit? safe to proceed if UI fails, but maybe log to stderr)
         sys.stderr.write(f"Warning: Could not show startup confirmation dialog: {e}\n")
@@ -294,10 +296,22 @@ mcp = FastMCP(
 # API Key Middleware for simple static token auth
 class APIKeyMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        # Only enforce for the MCP protocol endpoint
-        # FastMCP typically uses /mcp or the root for SSE
-        if request.url.path == "/mcp":
+        path = request.url.path
+        
+        # DEBUG LOG
+        # logger.info(f"APIKeyMiddleware checking path: {path}")
+
+        # 1. Compatibility Redirect: Redirect /mcp to /sse
+        # Many users might try /mcp based on old docs or assumptions
+        if path == "/mcp":
+            return RedirectResponse(url="/sse")
+
+        # 2. Enforce API Key on SSE and Message endpoints
+        # FastMCP mounts SSE at /sse and messages at /messages
+        # We must protect both to prevent unauthorized access
+        if path.startswith("/sse") or path.startswith("/messages"):
             auth_type = os.environ.get("FASTMCP_AUTH_TYPE", "").lower()
+            logger.info(f"APIKeyMiddleware match. Auth type: {auth_type}")
             if auth_type == "apikey":
                 auth_header = request.headers.get("Authorization")
                 expected_key = os.environ.get("FASTMCP_API_KEY")
@@ -306,15 +320,20 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                     logger.error("FASTMCP_API_KEY not configured but auth type is apikey")
                     return JSONResponse({"detail": "Server configuration error"}, status_code=500)
                 
-                if not auth_header or not auth_header.startswith("Bearer "):
-                    return JSONResponse({"detail": "Missing or invalid Authorization header"}, status_code=401)
-                
-                try:
+                # Check query param for SSE as fallback (standard for EventSource in some clients)
+                token = None
+                if auth_header and auth_header.startswith("Bearer "):
                     token = auth_header.split(" ")[1]
-                    if token != expected_key:
-                        return JSONResponse({"detail": "Invalid API Key"}, status_code=403)
-                except IndexError:
-                    return JSONResponse({"detail": "Invalid Authorization header format"}, status_code=401)
+                elif "token" in request.query_params:
+                    token = request.query_params["token"]
+                elif "api_key" in request.query_params:
+                    token = request.query_params["api_key"]
+                
+                if not token:
+                    return JSONResponse({"detail": "Missing Authorization header or token"}, status_code=401)
+                
+                if token != expected_key:
+                    return JSONResponse({"detail": "Invalid API Key"}, status_code=403)
         
         return await call_next(request)
 
@@ -397,8 +416,9 @@ class BrowserFriendlyMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 # Add the middleware to the FastMCP app
-mcp.http_app().add_middleware(APIKeyMiddleware)
-mcp.http_app().add_middleware(BrowserFriendlyMiddleware)
+# MOVED to main() to ensure transport-specific app is configured correctly
+# mcp.http_app().add_middleware(APIKeyMiddleware)
+# mcp.http_app().add_middleware(BrowserFriendlyMiddleware)
 
 
 def _build_database_url_from_pg_env() -> str | None:
@@ -4394,7 +4414,11 @@ def main() -> None:
             "host": host,
             "port": port,
             "stateless_http": stateless,
-            "json_response": json_resp
+            "json_response": json_resp,
+            "middleware": [
+                Middleware(APIKeyMiddleware),
+                Middleware(BrowserFriendlyMiddleware)
+            ]
         }
         
         if ssl_cert and ssl_key:
@@ -4421,8 +4445,14 @@ def main() -> None:
                 # Run the MCP's underlying web app directly with uvicorn
                 # This avoids calling mcp.run() twice, which can cause state conflicts.
                 # mcp.http_app() contains all routes: MCP protocol (SSE) and custom UI.
+                
+                # Create app with middleware manually for background server
+                app = mcp.http_app()
+                app.add_middleware(APIKeyMiddleware)
+                app.add_middleware(BrowserFriendlyMiddleware)
+                
                 uvicorn.run(
-                    mcp.http_app(),
+                    app,
                     host=host,
                     port=port,
                     log_level="warning"
