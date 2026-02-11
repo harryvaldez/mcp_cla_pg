@@ -211,6 +211,15 @@ If n8n (Cloud) cannot connect to your local MCP server:
 
 The server is configured entirely via environment variables.
 
+### Performance Limits
+To prevent the MCP server from becoming unresponsive or overloading the database, the following safeguards are in place:
+
+*   **Statement Timeout**: Queries are automatically cancelled if they run longer than **120 seconds** (default).
+    *   **Behavior**: The MCP tool will return an error: `Query execution timed out.`
+    *   **Configuration**: Set `MCP_STATEMENT_TIMEOUT_MS` (milliseconds) to adjust this limit.
+*   **Max Rows**: Queries returning large result sets are truncated to **500 rows** (default).
+    *   **Configuration**: Set `MCP_MAX_ROWS` to adjust.
+
 ### Core Connection
 | Variable | Description | Default |
 |----------|-------------|---------|
@@ -220,8 +229,9 @@ The server is configured entirely via environment variables.
 | `MCP_TRANSPORT` | Transport mode: `sse`, `http` (uses SSE), or `stdio` | `http` |
 | `MCP_ALLOW_WRITE` | Enable write tools (`db_pg96_create_db_user`, etc.) | `false` |
 | `MCP_CONFIRM_WRITE` | **Required if ALLOW_WRITE=true**. Safety latch to confirm write mode. | `false` |
-| `MCP_SKIP_CONFIRMATION` | Skip startup confirmation dialog (Windows). Set to `true` for automation. | `false` |
-| `MCP_STATEMENT_TIMEOUT_MS` | Query execution timeout in milliseconds | `120000` |
+| `MCP_POOL_MAX_WAITING` | Max queries queued when pool is full | `20` |
+| `MCP_STATEMENT_TIMEOUT_MS` | Max execution time per query in milliseconds | `120000` (2 minutes) |
+| `MCP_SKIP_CONFIRMATION` | Set to "true" to skip startup confirmation dialog (Windows) | `false` |
 | `MCP_LOG_LEVEL` | Logging level (DEBUG, INFO, WARNING, ERROR) | `INFO` |
 | `MCP_LOG_FILE` | Optional path to write logs to a file | *None* |
 
