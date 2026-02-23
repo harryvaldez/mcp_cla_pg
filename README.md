@@ -22,6 +22,28 @@ This server exposes a suite of DBA-grade tools to inspect schemas, analyze perfo
 
 ## 📦 Installation & Usage
 
+### ⚡ Quickstart: Docker + n8n
+
+Spin up a complete environment with **PostgreSQL**, **MCP Server**, and **n8n** in one command.
+
+1.  **Download the Compose File**:
+    Save [docker-compose-n8n.yml](docker-compose-n8n.yml) to your project directory.
+
+2.  **Start the Stack**:
+    ```bash
+    docker compose -f docker-compose-n8n.yml up -d
+    ```
+
+3.  **Connect n8n**:
+    *   Open n8n at [http://localhost:5678](http://localhost:5678).
+    *   Add an **AI Agent** node.
+    *   Add an **MCP Tool** to the agent.
+    *   Set **Source** to `Remote (SSE)`.
+    *   Set **URL** to `http://mcp-postgres:8000/sse` (Note: use container name).
+    *   **Execute!** You can now ask the AI agent to "count rows in tables" or "check database stats".
+
+---
+
 For detailed deployment instructions on **Azure Container Apps**, **AWS ECS**, and **Docker**, please see our **[Deployment Guide](DEPLOYMENT.md)**.
 
 > **Note**: For details on the required database privileges for read-only and read-write modes, see the **[Database Privileges](DEPLOYMENT.md#database-privileges)** section in the Deployment Guide.
@@ -397,7 +419,7 @@ This server implements strict security practices for logging:
 ### 🕵️ Session & Security
 - `db_pg96_monitor_sessions(limit: int = 50)`: Real-time session monitoring data for the UI dashboard.
 - `db_pg96_analyze_sessions(include_idle: bool = True, include_locked: bool = True)`: Detailed session analysis.
-- `db_pg96_database_security_performance_metrics(profile: str = "oltp")`: Comprehensive security and performance audit.
+- `db_pg96_db_sec_perf_metrics(profile: str = "oltp")`: Comprehensive security and performance audit.
 - `db_pg96_get_db_parameters(pattern: str = None)`: Retrieve database configuration parameters (GUCs).
 
 ### 🔧 Maintenance (Requires `MCP_ALLOW_WRITE=true`)

@@ -197,7 +197,7 @@ def _test_docker_http() -> None:
         ("db_pg96_list_objects", {"object_type": "schema", "order_by": "size"}),
         ("db_pg96_analyze_sessions", {}),
         ("db_pg96_analyze_table_health", {"schema": "public", "limit": 5, "min_size_mb": 0}),
-        ("db_pg96_database_security_performance_metrics", {}),
+        ("db_pg96_db_sec_perf_metrics", {}),
         ("db_pg96_analyze_indexes", {"schema": "public"}),
         ("db_pg96_analyze_logical_data_model", {"schema": "public", "max_entities": 50}),
         ("db_pg96_list_objects", {"object_type": "table", "schema": "public", "order_by": "size"}),

@@ -14,7 +14,7 @@ COMPOSE_FILE = os.path.join(ROOT, "docker-compose.yml")
 SERVER_FILE = os.path.join(ROOT, "server.py")
 SERVICE = "postgres96"
 HOST = "localhost"
-PORT = 55432
+PORT = 15432
 DB = "mcp_test"
 USER = "postgres"
 PASSWORD = "postgres"
@@ -26,7 +26,10 @@ EXPECTED_TOOLS = [
     "db_pg96_analyze_table_health",
     "db_pg96_check_bloat",
     "db_pg96_create_db_user",
-    "db_pg96_database_security_performance_metrics",
+    "db_pg96_db_sec_perf_metrics",
+    "db_pg96_alter_object",
+    "db_pg96_create_object",
+    "db_pg96_drop_object",
     "db_pg96_db_stats",
     "db_pg96_describe_table",
     "db_pg96_drop_db_user",
@@ -260,8 +263,8 @@ def _call_all_tools() -> None:
     health = _invoke(server, "db_pg96_analyze_table_health", {"schema": "public", "min_size_mb": 0, "limit": 10})
     _assert(isinstance(health, dict) and "tables" in health, "analyze_table_health returned unexpected shape")
 
-    secperf = _invoke(server, "db_pg96_database_security_performance_metrics")
-    _assert(isinstance(secperf, dict) and "issues_found" in secperf, "database_security_performance_metrics returned unexpected shape")
+    secperf = _invoke(server, "db_pg96_db_sec_perf_metrics")
+    _assert(isinstance(secperf, dict) and "issues_found" in secperf, "db_sec_perf_metrics returned unexpected shape")
 
     username = f"mcp_test_user_{int(time.time())}"
     created = _invoke(

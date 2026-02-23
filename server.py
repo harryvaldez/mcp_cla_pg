@@ -120,7 +120,7 @@ def _get_auth() -> Any:
 
     # Full OIDC Proxy (handles login flow)
     if auth_type_lower == "oidc":
-        from fastmcp.server.auth.providers.oidc import OIDCProxy
+        from fastmcp.auth.providers.oidc import OIDCProxy
 
         config_url = os.environ.get("FASTMCP_OIDC_CONFIG_URL")
         client_id = os.environ.get("FASTMCP_OIDC_CLIENT_ID")
@@ -143,7 +143,7 @@ def _get_auth() -> Any:
 
     # Pure JWT Verification (resource server mode)
     if auth_type_lower == "jwt":
-        from fastmcp.server.auth.providers.jwt import JWTVerifier
+        from fastmcp.auth.providers.jwt import JWTVerifier
 
         jwks_uri = os.environ.get("FASTMCP_JWT_JWKS_URI")
         issuer = os.environ.get("FASTMCP_JWT_ISSUER")
@@ -177,7 +177,7 @@ def _get_auth() -> Any:
         config_url = f"https://login.microsoftonline.com/{tenant_id}/v2.0/.well-known/openid-configuration"
         
         if client_secret and base_url:
-            from fastmcp.server.auth.providers.oidc import OIDCProxy
+            from fastmcp.auth.providers.oidc import OIDCProxy
             return OIDCProxy(
                 config_url=config_url,
                 client_id=client_id,
@@ -186,7 +186,7 @@ def _get_auth() -> Any:
                 audience=os.environ.get("FASTMCP_AZURE_AD_AUDIENCE", client_id),
             )
         else:
-            from fastmcp.server.auth.providers.jwt import JWTVerifier
+            from fastmcp.auth.providers.jwt import JWTVerifier
             jwks_uri = f"https://login.microsoftonline.com/{tenant_id}/discovery/v2.0/keys"
             issuer = f"https://login.microsoftonline.com/{tenant_id}/v2.0"
             return JWTVerifier(
@@ -197,7 +197,7 @@ def _get_auth() -> Any:
             
     # GitHub OAuth2
     if auth_type_lower == "github":
-        from fastmcp.server.auth.providers.github import GitHubProvider
+        from fastmcp.auth.providers.github import GitHubProvider
         
         client_id = os.environ.get("FASTMCP_GITHUB_CLIENT_ID")
         client_secret = os.environ.get("FASTMCP_GITHUB_CLIENT_SECRET")
@@ -217,7 +217,7 @@ def _get_auth() -> Any:
 
     # Google OAuth2
     if auth_type_lower == "google":
-        from fastmcp.server.auth.providers.google import GoogleProvider
+        from fastmcp.auth.providers.google import GoogleProvider
         
         client_id = os.environ.get("FASTMCP_GOOGLE_CLIENT_ID")
         client_secret = os.environ.get("FASTMCP_GOOGLE_CLIENT_SECRET")
@@ -226,7 +226,7 @@ def _get_auth() -> Any:
         if not all([client_id, client_secret, base_url]):
             raise RuntimeError(
                 "Google authentication requires FASTMCP_GOOGLE_CLIENT_ID, "
-                "FASTMCP_GOOGLE_GOOGLE_CLIENT_SECRET, and FASTMCP_GOOGLE_BASE_URL"
+                "FASTMCP_GOOGLE_CLIENT_SECRET, and FASTMCP_GOOGLE_BASE_URL"
             )
             
         return GoogleProvider(
@@ -237,8 +237,8 @@ def _get_auth() -> Any:
 
     # Generic OAuth2 Proxy
     if auth_type_lower == "oauth2":
-        from fastmcp.server.auth import OAuthProxy
-        from fastmcp.server.auth.providers.jwt import JWTVerifier
+        from fastmcp.auth import OAuthProxy
+        from fastmcp.auth.providers.jwt import JWTVerifier
         
         auth_url = os.environ.get("FASTMCP_OAUTH_AUTHORIZE_URL")
         token_url = os.environ.get("FASTMCP_OAUTH_TOKEN_URL")
@@ -2084,7 +2084,7 @@ def db_pg96_analyze_table_health(
 
 
 @mcp.tool
-def db_pg96_database_security_performance_metrics(
+def db_pg96_db_sec_perf_metrics(
     cache_hit_threshold: int | None = None,
     connection_usage_threshold: float | None = None,
     profile: str = "oltp"

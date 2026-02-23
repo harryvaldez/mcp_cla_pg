@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Test script to call db_pg96_database_security_performance_metrics with profile=oltp
+Test script to call db_pg96_db_sec_perf_metrics with profile=oltp
 and analyze the results with recommendations.
 """
 

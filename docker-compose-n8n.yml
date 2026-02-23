@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  # 1. The Database to Manage
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: mydb
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d mydb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 2. The MCP Server
+  mcp-postgres:
+    image: harryvaldez/mcp-postgres:latest
+    environment:
+      DATABASE_URL: postgresql://user:password@postgres:5432/mydb
+      MCP_TRANSPORT: http
+      MCP_ALLOW_WRITE: "true"
+      MCP_LOG_LEVEL: INFO
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # 3. n8n (Automation)
+  n8n:
+    image: docker.n8n.io/n8nio/n8n
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_SECURE_COOKIE=false
+    volumes:
+      - n8n_data:/home/node/.n8n
+
+volumes:
+  n8n_data:

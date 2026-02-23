@@ -1,4 +1,4 @@
-fastmcp==2.14.3
+fastmcp>=3.0.0,<4.0.0
 psycopg[binary]==3.3.2
 psycopg-pool==3.3.0
 sshtunnel==0.4.0
