@@ -4,16 +4,24 @@ import json
 import time
 import subprocess
 import traceback
+from dotenv import load_dotenv
 
-# Add current directory to path
-sys.path.append(os.getcwd())
+# Load environment variables from .env file
+load_dotenv()
+
+# Add project root to sys.path
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, project_root)
+
+# --- Environment Configuration ---
+# Validate DATABASE_URL
+if not os.environ.get("DATABASE_URL"):
+    raise ValueError("DATABASE_URL environment variable not set. Please create a .env file or set it manually.")
 
 # Configure Environment for the Server (MUST BE DONE BEFORE IMPORTING server)
-# We use stdio transport to bypass HTTP auth checks for local script execution
-os.environ["DATABASE_URL"] = "postgresql://postgres:postgres@localhost:55432/mcp_test"
-os.environ["MCP_ALLOW_WRITE"] = "false" 
+os.environ["MCP_ALLOW_WRITE"] = "false"
 os.environ["MCP_LOG_LEVEL"] = "WARNING"
-os.environ["MCP_TRANSPORT"] = "stdio" 
+os.environ["MCP_TRANSPORT"] = "stdio"
 
 # Import the server module
 try:
@@ -37,8 +45,9 @@ def invoke_tool(tool_obj, **kwargs):
 
 def main():
     print("Starting PostgreSQL 9.6 container...")
+    compose_file = os.path.join(project_root, "docker-compose.yml")
     try:
-        subprocess.run(["docker", "compose", "-f", "docker-compose.yml", "up", "-d", "postgres96"], check=True)
+        subprocess.run(["docker", "compose", "-f", compose_file, "up", "-d", "postgres96"], check=True)
     except subprocess.CalledProcessError as e:
         print(f"Failed to start docker containers: {e}")
         sys.exit(1)
@@ -49,13 +58,12 @@ def main():
     from psycopg_pool import ConnectionPool
     from psycopg.rows import dict_row
 
-    max_retries = 10
+    max_retries = 15
     retry_delay = 2
-    
-    # Use a temporary pool to check connectivity before letting the server module take over
-    check_pool = ConnectionPool(os.environ["DATABASE_URL"], kwargs={"row_factory": dict_row})
+    check_pool = None  # Initialize to None
     
     try:
+        check_pool = ConnectionPool(os.environ["DATABASE_URL"], kwargs={"row_factory": dict_row}, timeout=5)
         for i in range(max_retries):
             try:
                 with check_pool.connection() as conn:
@@ -63,16 +71,18 @@ def main():
                         cur.execute("SELECT 1")
                         print("Database is ready!")
                         break
-            except Exception:
+            except Exception as e:
                 if i < max_retries - 1:
-                    print(f"Database not ready, retrying in {retry_delay}s... ({i+1}/{max_retries})")
+                    print(f"Database not ready ({e}), retrying in {retry_delay}s... ({i+1}/{max_retries})")
                     time.sleep(retry_delay)
                 else:
                     print("Error: Database failed to become ready after multiple attempts.")
-                    check_pool.close()
-                    sys.exit(1)
+                    sys.exit(1) # Exit here, finally will still run
     finally:
-        check_pool.close()
+        # Safely close the pool
+        if check_pool is not None:
+            check_pool.close()
+            print("Connectivity check pool closed.")
 
     try:
         # Check if we can connect to the DB

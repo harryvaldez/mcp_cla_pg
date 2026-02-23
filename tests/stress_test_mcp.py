@@ -7,9 +7,20 @@ import concurrent.futures
 from datetime import datetime
 from typing import Dict, List, Any
 import sys
+from dotenv import load_dotenv
 
-# Configuration for readonly user
-os.environ["DATABASE_URL"] = "postgresql://postgres_readonly:readonly123@localhost:5432/mcp_db"
+# Load environment variables from .env file
+load_dotenv()
+
+# --- Configuration ---
+# Construct DATABASE_URL from environment variables for security
+DB_USER = os.environ.get("MCP_DB_USER", "postgres_readonly")
+DB_PASSWORD = os.environ.get("MCP_DB_PASSWORD", "readonly123")
+DB_HOST = os.environ.get("MCP_DB_HOST", "localhost")
+DB_PORT = os.environ.get("MCP_DB_PORT", "5432")
+DB_NAME = os.environ.get("MCP_DB_NAME", "mcp_db")
+
+os.environ["DATABASE_URL"] = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 os.environ["MCP_ALLOW_WRITE"] = "false"
 
 def invoke_tool(tool_obj, **kwargs):

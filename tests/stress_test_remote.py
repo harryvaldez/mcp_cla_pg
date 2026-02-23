@@ -8,9 +8,18 @@ from typing import Dict, List, Any
 import sys
 import psycopg
 from psycopg_pool import ConnectionPool
+from dotenv import load_dotenv
+from urllib.parse import urlparse
 
-# Configuration for remote EnterpriseDB
-os.environ["DATABASE_URL"] = "postgresql://enterprisedb:ClaRitAs02@10.100.2.20:5444/lenexa"
+# Load environment variables from .env file
+load_dotenv()
+
+# --- Configuration ---
+# Get DATABASE_URL from environment
+DATABASE_URL = os.environ.get("DATABASE_URL")
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL environment variable is not set. Please configure it in your environment or a .env file.")
+
 os.environ["MCP_ALLOW_WRITE"] = "false"
 # Explicitly set pool size to default to match server behavior
 os.environ["MCP_POOL_MAX_SIZE"] = "5"
@@ -134,10 +143,22 @@ def test_mcp_tools_sequential():
     except Exception as e:
         print(f"Sequential test error: {e}")
 
+def get_safe_target_display(url: str) -> str:
+    """Safely parse the DATABASE_URL to get a display string without credentials."""
+    if not url:
+        return "<DATABASE_URL not set>"
+    try:
+        parsed = urlparse(url)
+        # Return hostname and port if available, otherwise the full URL minus password
+        return parsed.hostname + (":" + str(parsed.port) if parsed.port else "")
+    except Exception:
+        # Fallback for malformed URLs
+        return "<unable to parse DATABASE_URL>"
+
 def main():
     print("PostgreSQL MCP Server Remote Stress Test")
     print("=" * 60)
-    print(f"Target: {os.environ['DATABASE_URL'].split('@')[1]}")
+    print(f"Target: {get_safe_target_display(DATABASE_URL)}")
     
     # Test 1: Connection Pool Stress
     test_connection_pooling_remote()

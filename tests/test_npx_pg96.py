@@ -111,10 +111,11 @@ class MCPClient:
         self.proc.stdin.flush()
         
         # Read lines until we get a response with the right ID
-        while True:
+        deadline = time.time() + 15 # 15 second timeout per request
+        while time.time() < deadline:
             line = self.proc.stdout.readline()
             if not line:
-                raise RuntimeError("Server process exited prematurely")
+                raise RuntimeError(f"Server process exited prematurely while waiting for response to request {req['id']}")
             try:
                 resp = json.loads(line)
                 if resp.get("id") == req["id"]:
@@ -124,6 +125,7 @@ class MCPClient:
                 # Ignore notifications or other messages for now
             except json.JSONDecodeError:
                 continue
+        raise TimeoutError(f"Timeout waiting for response to request {req['id']}")
 
     def send_notification(self, method: str, params: Dict[str, Any] | None = None) -> None:
         notif = {
@@ -205,8 +207,8 @@ def _test_npx_stdio() -> None:
                 "name": name,
                 "arguments": params
             })
-            if not result:
-                raise RuntimeError(f"Tool {name} returned empty result")
+            if result is None:
+                raise RuntimeError(f"Tool {name} returned null/missing result")
             print(f"  Tool {name} OK")
 
         # Test kill_session
@@ -224,8 +226,8 @@ def _test_npx_stdio() -> None:
                 "name": "db_pg96_kill_session",
                 "arguments": {"pid": victim_pid}
             })
-            if kill_result is None:
-                raise RuntimeError("kill_session returned empty result")
+            if not kill_result:
+                raise RuntimeError("kill_session returned an empty result")
             print("  Tool kill_session OK")
         finally:
             try:

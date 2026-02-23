@@ -6,10 +6,12 @@ import traceback
 import ast
 from typing import Any
 
+import pytest
 import psycopg
 
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+TEST_DIR = os.path.dirname(os.path.abspath(__file__))
 COMPOSE_FILE = os.path.join(ROOT, "docker-compose.yml")
 SERVER_FILE = os.path.join(ROOT, "server.py")
 SERVICE = "postgres96"
@@ -139,6 +141,8 @@ def _seed_sample_data() -> None:
 
     create index if not exists idx_orders_customer_created_at on public.orders(customer_id, created_at desc);
     create index if not exists idx_order_items_order_id on public.order_items(order_id);
+
+    truncate public.customers, public.orders, public.order_items restart identity cascade;
     """
 
     dml = """
@@ -206,7 +210,9 @@ def _call_all_tools() -> None:
     if "server" in sys.modules:
         del sys.modules["server"]
 
+    sys.path.insert(0, ROOT)
     import server  # noqa: E402
+    sys.path.pop(0)
 
     missing = [name for name in sorted(set(EXPECTED_TOOLS)) if not hasattr(server, name)]
     _assert(not missing, f"Missing expected tools: {missing}")
@@ -331,28 +337,24 @@ def _call_all_tools() -> None:
         pass
 
 
-def main() -> int:
+@pytest.mark.skipif(not _docker_available(), reason="Docker is not available")
+def test_full_suite():
+    _static_inventory_check()
+    print("✅ Static tool inventory matches expected list")
+
+    _compose("down", "-v", "--remove-orphans", check=False)
+    _compose("up", "-d", "--build")
     try:
-        _static_inventory_check()
-        if not _docker_available():
-            print("SKIP: Docker is not available; ran static tool inventory checks only.")
-            return 0
-        _compose("up", "-d", SERVICE, check=True)
-        _wait_for_db(timeout_s=90)
+        print("Waiting for database to be ready...")
+        _wait_for_db()
+        print("✅ Database is ready")
+
+        print("Seeding sample data...")
         _seed_sample_data()
+        print("✅ Sample data seeded")
+
+        print("Running tool tests...")
         _call_all_tools()
-        print("PASS: All MCP tools executed successfully against PostgreSQL 9.6.")
-        return 0
-    except Exception as e:
-        print(f"FAIL: {e}", file=sys.stderr)
-        traceback.print_exc()
-        return 1
+        print("✅ All tools called successfully")
     finally:
-        try:
-            _compose("down", "-v", check=False)
-        except Exception:
-            pass
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+        _compose("down", "-v", "--remove-orphans")

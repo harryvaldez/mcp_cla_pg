@@ -74,7 +74,7 @@ def _seed_sample_data() -> None:
     insert into public.orders(customer_id, status, total_cents, created_at)
     select
       (random() * 49 + 1)::int,
-      (array['new','paid','shipped','cancelled'])[1 + (random()*3)::int],
+      (array['new','paid','shipped','cancelled'])[1 + floor(random() * 4)::int],
       (random() * 50000 + 100)::int,
       now() - ((random() * 30)::int || ' days')::interval
     from generate_series(1, 200) as g;
@@ -222,8 +222,8 @@ def _test_uv_stdio() -> None:
                     "name": name,
                     "arguments": params
                 })
-                if result is None:
-                    raise RuntimeError(f"Tool {name} returned empty result")
+                if not result:
+                    raise RuntimeError(f"Tool {name} returned an empty or missing result")
                 print(f"  Tool {name} OK")
 
             dsn = f"postgresql://{USER}:{PASSWORD}@{HOST}:{PORT}/{DB}"

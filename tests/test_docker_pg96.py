@@ -9,7 +9,7 @@ from typing import Any, Dict, List
 
 import psycopg
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 COMPOSE_FILE = os.path.join(ROOT, "docker-compose.yml")
 DB_SERVICE = "postgres96"
 SERVER_SERVICE = "mcp-postgres"

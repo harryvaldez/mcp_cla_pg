@@ -9,9 +9,20 @@ from typing import Dict, List, Any
 import sys
 import psycopg
 from psycopg_pool import ConnectionPool
+from dotenv import load_dotenv
 
-# Configuration for readonly user
-os.environ["DATABASE_URL"] = "postgresql://postgres_readonly:readonly123@localhost:5432/mcp_db"
+# Load environment variables from .env file
+load_dotenv()
+
+# --- Configuration ---
+# Construct DATABASE_URL from environment variables for security
+DB_USER = os.environ.get("MCP_DB_USER", "postgres_readonly")
+DB_PASSWORD = os.environ.get("MCP_DB_PASSWORD", "readonly123")
+DB_HOST = os.environ.get("MCP_DB_HOST", "localhost")
+DB_PORT = os.environ.get("MCP_DB_PORT", "5432")
+DB_NAME = os.environ.get("MCP_DB_NAME", "mcp_db")
+
+os.environ["DATABASE_URL"] = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 os.environ["MCP_ALLOW_WRITE"] = "false"
 
 def create_connection_pool():
@@ -107,57 +118,62 @@ def run_connection_pool_test(num_connections: int) -> Dict[str, Any]:
     if not pool:
         return {"error": "Failed to create connection pool"}
     
-    results = []
-    
-    def test_connection(conn_id: int) -> Dict[str, Any]:
-        try:
-            with pool.connection(timeout=5) as conn:
-                with conn.cursor() as cur:
-                    start_time = time.time()
-                    cur.execute("SELECT pg_backend_pid(), current_user, now()")
-                    result = cur.fetchone()
-                    end_time = time.time()
-                    
-                    return {
-                        "connection_id": conn_id,
-                        "success": True,
-                        "backend_pid": result[0],
-                        "user": result[1],
-                        "timestamp": str(result[2]),
-                        "execution_time": end_time - start_time
-                    }
-        except Exception as e:
-            return {
-                "connection_id": conn_id,
-                "success": False,
-                "error": str(e)
-            }
-    
-    with concurrent.futures.ThreadPoolExecutor(max_workers=num_connections) as executor:
-        futures = [executor.submit(test_connection, i) for i in range(num_connections)]
+    try:
+        results = []
         
-        for future in concurrent.futures.as_completed(futures, timeout=30):
+        def test_connection(conn_id: int) -> Dict[str, Any]:
             try:
-                result = future.result(timeout=5)
-                results.append(result)
+                with pool.connection(timeout=5) as conn:
+                    with conn.cursor() as cur:
+                        start_time = time.time()
+                        cur.execute("SELECT pg_backend_pid(), current_user, now()")
+                        result = cur.fetchone()
+                        end_time = time.time()
+                        
+                        return {
+                            "connection_id": conn_id,
+                            "success": True,
+                            "backend_pid": result[0],
+                            "user": result[1],
+                            "timestamp": str(result[2]),
+                            "execution_time": end_time - start_time
+                        }
             except Exception as e:
-                results.append({
-                    "connection_id": "timeout",
+                return {
+                    "connection_id": conn_id,
                     "success": False,
                     "error": str(e)
-                })
-    
-    # Get final pool stats
-    final_stats = pool.get_stats()
-    
-    return {
-        "num_connections": num_connections,
-        "results": results,
-        "pool_stats": final_stats,
-        "success_rate": sum(1 for r in results if r.get("success", False)) / len(results) if results else 0
-    }
+                }
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=num_connections) as executor:
+            futures = [executor.submit(test_connection, i) for i in range(num_connections)]
+            
+            for future in concurrent.futures.as_completed(futures, timeout=30):
+                try:
+                    result = future.result(timeout=5)
+                    results.append(result)
+                except Exception as e:
+                    results.append({
+                        "connection_id": "timeout",
+                        "success": False,
+                        "error": str(e)
+                    })
+        
+        # Get final pool stats
+        final_stats = pool.get_stats()
+        
+        return {
+            "num_connections": num_connections,
+            "results": results,
+            "pool_stats": final_stats,
+            "success_rate": sum(1 for r in results if r.get("success", False)) / len(results) if results else 0
+        }
+    finally:
+        if pool:
+            pool.close()
+            print("Connection pool closed.")
 
-def run_tool_stress_test(num_threads: int, iterations: int) -> Dict[str, Any]:
+def run_tool_stress_test(num_threads: int, iterations: int) -> List[Dict[str, Any]]:
     """Run stress test on MCP tools."""
     print(f"Running tool stress test with {num_threads} threads, {iterations} iterations each...")
     

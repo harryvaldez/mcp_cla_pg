@@ -5,21 +5,24 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@localhost:5432/postgres}
-      - MCP_ALLOW_WRITE=${MCP_ALLOW_WRITE:-false}
-      - MCP_CONFIRM_WRITE=${MCP_CONFIRM_WRITE:-false}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@postgres96:5432/mcp_test}
+      - MCP_ALLOW_WRITE=${MCP_ALLOW_WRITE:-true}
+      - MCP_CONFIRM_WRITE=${MCP_CONFIRM_WRITE:-true}
       - MCP_TRANSPORT=${MCP_TRANSPORT:-http}
       - MCP_STATELESS=${MCP_STATELESS:-false}
       - MCP_JSON_RESPONSE=${MCP_JSON_RESPONSE:-false}
       - MCP_HOST=0.0.0.0
       - MCP_PORT=8000
       # Optional OAuth/JWT settings
-      - FASTMCP_AUTH_TYPE=${FASTMCP_AUTH_TYPE:-}
+      - FASTMCP_AUTH_TYPE=${FASTMCP_AUTH_TYPE:-none}
       - FASTMCP_OIDC_CONFIG_URL=${FASTMCP_OIDC_CONFIG_URL:-}
       - FASTMCP_OIDC_CLIENT_ID=${FASTMCP_OIDC_CLIENT_ID:-}
       - FASTMCP_OIDC_CLIENT_SECRET=${FASTMCP_OIDC_CLIENT_SECRET:-}
       - FASTMCP_OIDC_BASE_URL=${FASTMCP_OIDC_BASE_URL:-}
     restart: unless-stopped
+    depends_on:
+      postgres96:
+        condition: service_healthy
 
   postgres96:
     image: postgres:9.6

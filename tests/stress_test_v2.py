@@ -14,12 +14,21 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
 # Configuration
 TOTAL_CLIENTS = 20
 CLIENTS_PER_BATCH = 2
 RAMP_UP_THRESHOLD = 10  # requests completed before next batch
 PARALLEL_PROMPTS = 10   # Window size of pending requests
-DATABASE_URL = "postgresql://mcp_readonly:R0_mcp@10.100.2.20:5444/lenexa"
+RAMP_UP_TIMEOUT = 60 # seconds for a batch to meet ramp up criteria
+FINAL_PHASE_TIMEOUT = 120 # seconds for all clients to complete final phase
+DATABASE_URL = os.environ.get("DATABASE_URL")
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL environment variable must be set")
 
 # Messages
 INITIALIZE_MSG = {
@@ -126,8 +135,8 @@ class ClientThread(threading.Thread):
                     if "error" in resp_json:
                         logger.error(f"Client {self.client_id} error: {resp_json['error']}")
                         self.error_occurred = True
-                    
-                    self.request_count += 1
+                    else:
+                        self.request_count += 1
                 
                 # Small sleep to prevent tight loop burning CPU too hard
                 time.sleep(0.05)
@@ -159,7 +168,7 @@ def main():
         # Ramp Up Phase
         for batch_idx in range(0, TOTAL_CLIENTS, CLIENTS_PER_BATCH):
             new_clients = []
-            logger.info(f"Starting batch {batch_idx // CLIENTS_PER_BATCH + 1} (Clients {batch_idx}-{batch_idx+1})")
+            logger.info(f"Starting batch {batch_idx // CLIENTS_PER_BATCH + 1} (Clients {batch_idx}-{batch_idx + CLIENTS_PER_BATCH - 1})")
             
             for i in range(CLIENTS_PER_BATCH):
                 client_id = batch_idx + i
@@ -167,14 +176,21 @@ def main():
                     break
                 c = ClientThread(client_id)
                 c.start()
-                c.started_event.wait(timeout=5)
-                new_clients.append(c)
-                active_clients.append(c)
+                if c.started_event.wait(timeout=10):
+                    new_clients.append(c)
+                    active_clients.append(c)
+                else:
+                    logger.error(f"Client {client_id} failed to start in time! Aborting.")
+                    raise RuntimeError(f"Client {client_id} failed to start.")
             
             # Condition: Each NEW client must process RAMP_UP_THRESHOLD requests
             # Existing clients keep running in background
             logger.info(f"Waiting for new clients to reach {RAMP_UP_THRESHOLD} requests...")
+            start_time = time.time()
             while True:
+                if time.time() - start_time > RAMP_UP_TIMEOUT:
+                    raise RuntimeError(f"Ramp-up phase timed out after {RAMP_UP_TIMEOUT} seconds.")
+
                 # Check for errors in any client
                 if any(c.error_occurred for c in active_clients):
                     logger.error("Error detected in a client! Aborting test.")
@@ -198,14 +214,20 @@ def main():
         target_increment = 10
         
         logger.info(f"Verifying all 20 clients can process {target_increment} more requests...")
+        start_time = time.time()
         while True:
+            if time.time() - start_time > FINAL_PHASE_TIMEOUT:
+                raise RuntimeError(f"Final phase timed out after {FINAL_PHASE_TIMEOUT} seconds.")
+
             if any(c.error_occurred for c in active_clients):
-                raise RuntimeError("Error during final phase")
+                logger.error("Error detected in a client! Aborting test.")
+                raise RuntimeError("Stress test failed due to client error")
             
-            completed = sum(1 for c in active_clients if c.request_count >= start_counts[c.client_id] + target_increment)
-            if completed == len(active_clients):
+            if all(c.request_count >= start_counts[c.client_id] + target_increment for c in active_clients):
+                logger.info("Final phase verification successful!")
                 break
-            time.sleep(0.5)
+            
+            time.sleep(1)
             
         logger.info("Success! All clients demonstrated sustained load.")
         

@@ -4,6 +4,10 @@ import os
 import sys
 import logging
 import time
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(
@@ -16,7 +20,11 @@ logger = logging.getLogger(__name__)
 TOTAL_CLIENTS = 20
 PROMPTS_PER_PARALLEL_BATCH = 10
 RAMP_UP_INCREMENT = 2
-DATABASE_URL = "postgresql://mcp_readonly:R0_mcp@10.100.2.20:5444/lenexa"
+DATABASE_URL = os.environ.get("DATABASE_URL")
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL environment variable not set")
+HANDSHAKE_TIMEOUT = 30  # seconds
+REQUEST_TIMEOUT = 60 # seconds
 
 # MCP JSON-RPC Messages
 INITIALIZE_MSG = {
@@ -81,7 +89,7 @@ class VirtualClient:
                 sys.executable, "server.py",
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL, # Redirect stderr to prevent deadlocks
                 env=env
             )
             
@@ -96,7 +104,7 @@ class VirtualClient:
                 self.process.stdin.write((json.dumps(INITIALIZE_MSG) + "\n").encode())
                 await self.process.stdin.drain()
             
-            await fut # Wait for handshake response
+            await asyncio.wait_for(fut, timeout=HANDSHAKE_TIMEOUT)
             
             async with self.write_lock:
                 self.process.stdin.write((json.dumps(INITIALIZED_MSG) + "\n").encode())
@@ -131,7 +139,7 @@ class VirtualClient:
                 try:
                     self.process.terminate()
                     await self.process.wait()
-                except:
+                except Exception:
                     pass
             logger.info(f"Client {self.client_id} finished. Total prompts: {self.prompts_completed}")
 
@@ -140,6 +148,7 @@ class VirtualClient:
             while True:
                 line = await self.process.stdout.readline()
                 if not line:
+                    logger.warning(f"Client {self.client_id} reader: EOF received.")
                     break
                 try:
                     resp_json = json.loads(line.decode())
@@ -149,9 +158,18 @@ class VirtualClient:
                         if not fut.done():
                             fut.set_result(resp_json)
                 except Exception as e:
-                    logger.error(f"Client {self.client_id} reader error: {e}")
+                    logger.error(f"Client {self.client_id} reader error: {e} on line: {line.decode()}")
         except asyncio.CancelledError:
             pass
+        finally:
+            # Fail any remaining requests to prevent hangs
+            remaining_ids = list(self.pending_requests.keys())
+            if remaining_ids:
+                logger.warning(f"Client {self.client_id} reader exiting. Failing {len(remaining_ids)} pending requests.")
+                for req_id in remaining_ids:
+                    fut = self.pending_requests.pop(req_id)
+                    if not fut.done():
+                        fut.set_exception(RuntimeError(f"Reader for client {self.client_id} exited prematurely."))
 
     async def send_request(self, req_id):
         try:
@@ -165,7 +183,7 @@ class VirtualClient:
                 self.process.stdin.write((json.dumps(req) + "\n").encode())
                 await self.process.stdin.drain()
             
-            resp_json = await fut
+            resp_json = await asyncio.wait_for(fut, timeout=REQUEST_TIMEOUT)
             if "error" in resp_json:
                 logger.error(f"Client {self.client_id} req {req_id} error: {resp_json['error']}")
                 return False

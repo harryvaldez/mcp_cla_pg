@@ -4,10 +4,24 @@ import json
 import threading
 import time
 
-# Set environment variable BEFORE importing server, as server.py initializes pool on import
-os.environ["DATABASE_URL"] = "postgresql://mcp_readonly:R0_mcp@10.100.2.20:5444/lenexa"
-os.environ["MCP_ALLOW_WRITE"] = "false"  # Required by server.py
-os.environ["MCP_PORT"] = "8085" # Explicitly set port
+import os
+import sys
+import json
+import threading
+import time
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+# --- Environment Configuration ---
+# Validate DATABASE_URL
+if not os.environ.get("DATABASE_URL"):
+    raise ValueError("DATABASE_URL environment variable not set. Please create a .env file or set it manually.")
+
+# Set other MCP environment variables
+os.environ.setdefault("MCP_ALLOW_WRITE", "false")
+os.environ.setdefault("MCP_PORT", "8085")
 
 try:
     import server

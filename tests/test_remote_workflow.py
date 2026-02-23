@@ -1,12 +1,16 @@
+import os
 import json
 import time
 import urllib.request
 import urllib.error
 
-# Configuration
-N8N_BASE_URL = "https://claritasllc.app.n8n.cloud/"
-API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIzMTQzYmQwNi1mZGZjLTRlYjMtYTMxYi0xZmZjZmU2Mzk3Y2YiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwiaWF0IjoxNzY3OTMxODk5fQ.a7SwDJx6Q1_xa9KsxCLDHJqJf-hm4EHBVVM8l4KX5Is"
-WORKFLOW_ID = "MyYz15IkOxsSZL82pBIkO"
+# --- Configuration ---
+# These must be set as environment variables
+N8N_BASE_URL = os.environ.get("N8N_BASE_URL", "https://claritasllc.app.n8n.cloud/")
+API_KEY = os.environ.get("N8N_API_KEY")
+WORKFLOW_ID = os.environ.get("N8N_WORKFLOW_ID", "MyYz15IkOxsSZL82pBIkO")
+
+import pytest
 
 def trigger_workflow():
     url = f"{N8N_BASE_URL.rstrip('/')}/api/v1/executions"
@@ -24,7 +28,7 @@ def trigger_workflow():
     req.add_header('Content-Type', 'application/json')
     
     try:
-        with urllib.request.urlopen(req) as response:
+        with urllib.request.urlopen(req, timeout=30) as response:
             result = json.loads(response.read().decode())
             print("✅ Workflow execution started.")
             return result
@@ -44,12 +48,13 @@ def get_execution_status(execution_id):
     req.add_header('X-N8N-API-KEY', API_KEY)
     
     try:
-        with urllib.request.urlopen(req) as response:
+        with urllib.request.urlopen(req, timeout=10) as response:
             return json.loads(response.read().decode())
     except Exception as e:
         print(f"\n❌ Error fetching execution: {e}")
         return None
 
+@pytest.mark.skipif(not API_KEY, reason="N8N_API_KEY environment variable not set.")
 def main():
     # 1. Trigger Execution
     execution_data = trigger_workflow()
@@ -92,12 +97,12 @@ def main():
                             print(f"❌ Error in node '{node_name}': {run['error']}")
                             error = True
                         if 'data' in run:
-                             # Try to extract output
-                             try:
-                                 output = run['data']['main'][0][0]['json']
-                                 print(f"📄 Output from '{node_name}': {json.dumps(output, indent=2)}")
-                             except:
-                                 pass
+                            # Try to extract output
+                            try:
+                                output = run['data']['main'][0][0]['json']
+                                print(f"📄 Output from '{node_name}': {json.dumps(output, indent=2)}")
+                            except (KeyError, IndexError, TypeError) as e:
+                                print(f"⚠️ Could not parse output from node '{node_name}': {e}")
                 
                 if not error:
                     print("🎉 Workflow executed successfully without errors.")

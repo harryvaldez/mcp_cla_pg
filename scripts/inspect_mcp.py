@@ -20,7 +20,9 @@ try:
     if hasattr(mcp, 'http_app'):
         app = mcp.http_app()
         print(f"Http App: {type(app)}")
-        print(f"App Routes: {[r.path for r in app.routes]}")
+        # Safely access the path of each route
+        route_paths = [getattr(r, 'path', f'<unnamed_route: {r.name}>') if hasattr(r, 'name') else repr(r) for r in app.routes]
+        print(f"App Routes: {route_paths}")
         # print(f"App Middleware: {len(app.middleware_stack) if hasattr(app, 'middleware_stack') else '?'}")
 
 except Exception as e:

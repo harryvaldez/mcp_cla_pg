@@ -45,7 +45,7 @@ if sys.platform == 'win32':
 
             result = ctypes.windll.user32.MessageBoxW(
                 0, 
-                "This MCP server is in Beta version.  Review all commands before running.  Do you want to proceed?", 
+                "This MCP server is in Beta version. Review all commands before running.  Do you want to proceed?", 
                 "MCP Server Confirmation", 
                 MB_YESNO | MB_ICONQUESTION | MB_TOPMOST | MB_SETFOREGROUND
             )
@@ -4430,28 +4430,26 @@ def main() -> None:
         mcp.run(**run_kwargs)
     elif transport == "stdio":
         # Hybrid mode: Start HTTP server in background for UI/Custom Routes
-        def run_http_background():
-            logger.info(f"Starting background HTTP server for UI on port {port}")
+        def run_http_background(server_ready: threading.Event, host: str, port: int):
+            """Runs the HTTP server in a background thread and signals readiness."""
+            logger.info(f"Starting background HTTP server for UI on http://{host}:{port}")
             try:
-                # Suppress Uvicorn logs to prevent stdout pollution (which breaks stdio transport)
-                # Uvicorn defaults to INFO and might print to stdout
+                # Suppress Uvicorn logs to prevent stdout pollution
                 logging.getLogger("uvicorn").setLevel(logging.WARNING)
                 logging.getLogger("uvicorn.error").setLevel(logging.WARNING)
                 logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
-                
+
                 # Create a new event loop for this thread
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
-                
-                # Run the MCP's underlying web app directly with uvicorn
-                # This avoids calling mcp.run() twice, which can cause state conflicts.
-                # mcp.http_app() contains all routes: MCP protocol (SSE) and custom UI.
-                
-                # Create app with middleware manually for background server
+
                 app = mcp.http_app()
                 app.add_middleware(APIKeyMiddleware)
                 app.add_middleware(BrowserFriendlyMiddleware)
-                
+
+                # The server is ready right before we start running it
+                server_ready.set()
+
                 uvicorn.run(
                     app,
                     host=host,
@@ -4459,16 +4457,34 @@ def main() -> None:
                     log_level="warning"
                 )
             except Exception as e:
-                logger.error(f"Background HTTP server failed: {e}")
+                logger.error(f"Background HTTP server failed to start: {e}", exc_info=True)
+                # Ensure the event is set even on failure to unblock the main thread
+                if not server_ready.is_set():
+                    server_ready.set()
 
         # Start HTTP server thread
-        http_thread = threading.Thread(target=run_http_background, daemon=True)
+        server_ready = threading.Event()
+        http_thread = threading.Thread(
+            target=run_http_background,
+            args=(server_ready, host, port),
+            daemon=False,  # Use non-daemon thread for cleaner shutdown
+            name="MCPBackgroundHttpThread"
+        )
         http_thread.start()
-        
-        # Give it a moment to initialize
-        time.sleep(1)
-        
+
+        # Wait for the server to be ready, with a timeout
+        logger.info("Waiting for background HTTP server to start...")
+        ready = server_ready.wait(timeout=15.0) # Wait up to 15 seconds
+
+        if ready:
+            # A small sleep to allow routes to fully initialize
+            time.sleep(0.5)
+            logger.info(f"Background HTTP server started. UI available at http://{host}:{port}/")
+        else:
+            logger.error("Background HTTP server failed to start within the timeout period.")
+
         # Run stdio transport in main thread
+        logger.info("Starting MCP STDIO transport...")
         mcp.run(transport="stdio")
     else:
         raise ValueError(f"Unknown transport: {transport}. Supported transports: http, sse, stdio")
