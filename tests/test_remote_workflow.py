@@ -55,47 +55,40 @@ def get_execution_status(execution_id):
         return None
 
 @pytest.mark.skipif(not API_KEY, reason="N8N_API_KEY environment variable not set.")
-def main():
+def test_remote_workflow():
     # 1. Trigger Execution
     execution_data = trigger_workflow()
-    
-    if not execution_data:
-        # Fallback: Maybe /webhook-test/{id} if it was a webhook?
-        # But for manual trigger, we rely on /executions
-        print("Could not trigger workflow. Ensure the n8n instance supports 'POST /executions'.")
-        return
+    assert execution_data, "Failed to trigger workflow execution."
 
     execution_id = execution_data.get('id')
-    if not execution_id:
-        print("No execution ID returned.")
-        return
+    assert execution_id, "No execution ID returned from workflow trigger."
 
     print(f"Execution ID: {execution_id}")
-    
+
     # 2. Poll for Completion
     max_retries = 10
     for i in range(max_retries):
         status_data = get_execution_status(execution_id)
         if status_data:
             finished = status_data.get('finished', False)
-            mode = status_data.get('mode')
             stopped_at = status_data.get('stoppedAt')
-            
+
             if finished or stopped_at:
-                print(f"\n✅ Execution finished. Mode: {mode}")
-                
+                print(f"\n✅ Execution finished. Status: {'completed' if finished else 'stopped'}")
+
                 # Analyze result
                 data = status_data.get('data', {})
                 result_data = data.get('resultData', {})
                 run_data = result_data.get('runData', {})
-                
+
                 # Check for errors in specific nodes
-                error = False
+                errors = []
                 for node_name, node_runs in run_data.items():
                     for run in node_runs:
                         if 'error' in run:
-                            print(f"❌ Error in node '{node_name}': {run['error']}")
-                            error = True
+                            error_detail = run['error']
+                            errors.append(f"Node '{node_name}': {error_detail}")
+                            print(f"❌ Error in node '{node_name}': {error_detail}")
                         if 'data' in run:
                             # Try to extract output
                             try:
@@ -103,17 +96,14 @@ def main():
                                 print(f"📄 Output from '{node_name}': {json.dumps(output, indent=2)}")
                             except (KeyError, IndexError, TypeError) as e:
                                 print(f"⚠️ Could not parse output from node '{node_name}': {e}")
-                
-                if not error:
-                    print("🎉 Workflow executed successfully without errors.")
-                else:
-                    print("⚠️ Workflow finished with errors.")
-                    
+
+                assert not errors, f"Workflow finished with errors: {'; '.join(errors)}"
+                print("🎉 Workflow executed successfully without errors.")
                 return
-        
+
         time.sleep(2)
-    
-    print("\n⏳ Timed out waiting for execution to finish.")
+
+    pytest.fail(f"Timed out after {max_retries * 2} seconds waiting for execution {execution_id} to finish.")
 
 if __name__ == "__main__":
     main()

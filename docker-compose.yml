@@ -6,7 +6,8 @@ services:
       - "8000:8000"
     environment:
       - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@postgres96:5432/mcp_test}
-      - MCP_ALLOW_WRITE=${MCP_ALLOW_WRITE:-true}
+      # Defaulting to read-only for safety. Set to 'true' for local testing if write operations are needed.
+      - MCP_ALLOW_WRITE=${MCP_ALLOW_WRITE:-false}
       - MCP_CONFIRM_WRITE=${MCP_CONFIRM_WRITE:-true}
       - MCP_TRANSPORT=${MCP_TRANSPORT:-http}
       - MCP_STATELESS=${MCP_STATELESS:-false}

@@ -4447,15 +4447,21 @@ def main() -> None:
                 app.add_middleware(APIKeyMiddleware)
                 app.add_middleware(BrowserFriendlyMiddleware)
 
-                # The server is ready right before we start running it
-                server_ready.set()
+                def startup_handler():
+                    logger.info("Background HTTP server has started.")
+                    server_ready.set()
 
-                uvicorn.run(
+                config = uvicorn.Config(
                     app,
                     host=host,
                     port=port,
-                    log_level="warning"
+                    log_level="warning",
+                    loop=loop, # Use the loop created for this thread
                 )
+                config.subscribe(uvicorn.main.Server.STARTED, startup_handler)
+                
+                server = uvicorn.Server(config)
+                loop.run_until_complete(server.serve())
             except Exception as e:
                 logger.error(f"Background HTTP server failed to start: {e}", exc_info=True)
                 # Ensure the event is set even on failure to unblock the main thread
