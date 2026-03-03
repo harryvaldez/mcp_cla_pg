@@ -10,6 +10,12 @@ This server exposes a suite of DBA-grade tools to inspect schemas, analyze perfo
 - Docker tags: `harryvaldez/mcp-postgres:latest`, `harryvaldez/mcp-postgres:v1.0.2`, `harryvaldez/mcp-postgres:6c8edcd`
 - Image digest: `sha256:53dc2f9a9f3e93e008d43c22f32f0823990c079bcf5a98ab77b6ae0feaa93dc7`
 
+### v1.0.2 Release Notes
+
+- Added explicit `idle_in_transaction` metric to session monitoring API and dashboard.
+- Updated session monitor UI to chart active, idle, idle-in-transaction, and total connections.
+- Updated documentation and examples to reflect the new session metric and API payload shape.
+
 ## 🚀 Features
 
 - **Deep Inspection**: Discover schemas, tables, indexes, and their sizes.
