@@ -1,4 +1,5 @@
 import asyncio
+import importlib
 import json
 import hashlib
 import logging
@@ -13,7 +14,7 @@ import signal
 import decimal
 from datetime import datetime, date, timedelta
 from urllib.parse import quote, urlparse, urlunparse, urlsplit, urlunsplit
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 from sshtunnel import SSHTunnelForwarder
 from fastmcp import FastMCP
@@ -64,13 +65,24 @@ log_level_str = os.environ.get("MCP_LOG_LEVEL", "INFO").upper()
 log_level = getattr(logging, log_level_str, logging.INFO)
 log_file = os.environ.get("MCP_LOG_FILE")
 
-logging.basicConfig(
-    level=log_level,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    filename=log_file,
-    filemode='a' if log_file else None
-)
+_logging_kwargs: dict[str, Any] = {
+    "level": log_level,
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    "filename": log_file,
+}
+if log_file:
+    _logging_kwargs["filemode"] = "a"
+
+logging.basicConfig(**_logging_kwargs)
 logger = logging.getLogger("mcp-postgres")
+
+
+def _import_symbol(module_path: str, symbol_name: str) -> Any:
+    module = importlib.import_module(module_path)
+    try:
+        return getattr(module, symbol_name)
+    except AttributeError as exc:
+        raise RuntimeError(f"Missing symbol '{symbol_name}' in module '{module_path}'") from exc
 
 # Patch for Windows asyncio ProactorEventLoop "ConnectionResetError" noise on shutdown
 # References:
@@ -86,16 +98,20 @@ if sys.platform == 'win32':
         try:
             from asyncio.proactor_events import _ProactorBasePipeTransport
 
-            _original_call_connection_lost = _ProactorBasePipeTransport._call_connection_lost
+            original_call_connection_lost = getattr(_ProactorBasePipeTransport, "_call_connection_lost", None)
 
-            def _silenced_call_connection_lost(self, exc):
-                try:
-                    _original_call_connection_lost(self, exc)
-                except ConnectionResetError:
-                    pass  # Benign: connection forcibly closed by remote host during shutdown
+            if callable(original_call_connection_lost):
+                original_call_connection_lost_fn = cast(Any, original_call_connection_lost)
+                def _silenced_call_connection_lost(self, exc):
+                    try:
+                        original_call_connection_lost_fn(self, exc)
+                    except ConnectionResetError:
+                        pass  # Benign: connection forcibly closed by remote host during shutdown
 
-            _ProactorBasePipeTransport._call_connection_lost = _silenced_call_connection_lost
-            logger.debug("Applied workaround for asyncio ProactorEventLoop ConnectionResetError")
+                setattr(_ProactorBasePipeTransport, "_call_connection_lost", _silenced_call_connection_lost)
+                logger.debug("Applied workaround for asyncio ProactorEventLoop ConnectionResetError")
+            else:
+                logger.debug("Skipping asyncio workaround: _call_connection_lost not found")
         except ImportError:
             logger.info("Could not import asyncio.proactor_events._ProactorBasePipeTransport; skipping workaround")
     else:
@@ -120,7 +136,7 @@ def _get_auth() -> Any:
 
     # Full OIDC Proxy (handles login flow)
     if auth_type_lower == "oidc":
-        from fastmcp.auth.providers.oidc import OIDCProxy
+        OIDCProxy = _import_symbol("fastmcp.auth.providers.oidc", "OIDCProxy")
 
         config_url = os.environ.get("FASTMCP_OIDC_CONFIG_URL")
         client_id = os.environ.get("FASTMCP_OIDC_CLIENT_ID")
@@ -143,7 +159,7 @@ def _get_auth() -> Any:
 
     # Pure JWT Verification (resource server mode)
     if auth_type_lower == "jwt":
-        from fastmcp.auth.providers.jwt import JWTVerifier
+        JWTVerifier = _import_symbol("fastmcp.auth.providers.jwt", "JWTVerifier")
 
         jwks_uri = os.environ.get("FASTMCP_JWT_JWKS_URI")
         issuer = os.environ.get("FASTMCP_JWT_ISSUER")
@@ -177,7 +193,7 @@ def _get_auth() -> Any:
         config_url = f"https://login.microsoftonline.com/{tenant_id}/v2.0/.well-known/openid-configuration"
         
         if client_secret and base_url:
-            from fastmcp.auth.providers.oidc import OIDCProxy
+            OIDCProxy = _import_symbol("fastmcp.auth.providers.oidc", "OIDCProxy")
             return OIDCProxy(
                 config_url=config_url,
                 client_id=client_id,
@@ -186,7 +202,7 @@ def _get_auth() -> Any:
                 audience=os.environ.get("FASTMCP_AZURE_AD_AUDIENCE", client_id),
             )
         else:
-            from fastmcp.auth.providers.jwt import JWTVerifier
+            JWTVerifier = _import_symbol("fastmcp.auth.providers.jwt", "JWTVerifier")
             jwks_uri = f"https://login.microsoftonline.com/{tenant_id}/discovery/v2.0/keys"
             issuer = f"https://login.microsoftonline.com/{tenant_id}/v2.0"
             return JWTVerifier(
@@ -197,7 +213,7 @@ def _get_auth() -> Any:
             
     # GitHub OAuth2
     if auth_type_lower == "github":
-        from fastmcp.auth.providers.github import GitHubProvider
+        GitHubProvider = _import_symbol("fastmcp.auth.providers.github", "GitHubProvider")
         
         client_id = os.environ.get("FASTMCP_GITHUB_CLIENT_ID")
         client_secret = os.environ.get("FASTMCP_GITHUB_CLIENT_SECRET")
@@ -217,7 +233,7 @@ def _get_auth() -> Any:
 
     # Google OAuth2
     if auth_type_lower == "google":
-        from fastmcp.auth.providers.google import GoogleProvider
+        GoogleProvider = _import_symbol("fastmcp.auth.providers.google", "GoogleProvider")
         
         client_id = os.environ.get("FASTMCP_GOOGLE_CLIENT_ID")
         client_secret = os.environ.get("FASTMCP_GOOGLE_CLIENT_SECRET")
@@ -237,8 +253,8 @@ def _get_auth() -> Any:
 
     # Generic OAuth2 Proxy
     if auth_type_lower == "oauth2":
-        from fastmcp.auth import OAuthProxy
-        from fastmcp.auth.providers.jwt import JWTVerifier
+        OAuthProxy = _import_symbol("fastmcp.auth", "OAuthProxy")
+        JWTVerifier = _import_symbol("fastmcp.auth.providers.jwt", "JWTVerifier")
         
         auth_url = os.environ.get("FASTMCP_OAUTH_AUTHORIZE_URL")
         token_url = os.environ.get("FASTMCP_OAUTH_TOKEN_URL")
@@ -899,7 +915,10 @@ def db_pg96_create_db_user(
         with conn.cursor() as cur:
             # Resolve database if not provided
             cur.execute("SELECT current_database()")
-            current_db = cur.fetchone()['current_database']
+            current_db_row = cur.fetchone() or {"current_database": None}
+            current_db = current_db_row["current_database"]
+            if current_db is None:
+                raise RuntimeError("Unable to resolve current_database() before creating user")
             
             target_db = database if database is not None else current_db
             is_same_db = target_db == current_db
@@ -1062,9 +1081,21 @@ def db_pg96_alter_object(
     if obj_type == 'procedure':
         obj_type = 'function' # PG 9.6 treats procedures as functions
     
+    object_tokens = {
+        "database": sql.SQL("DATABASE"),
+        "schema": sql.SQL("SCHEMA"),
+        "table": sql.SQL("TABLE"),
+        "view": sql.SQL("VIEW"),
+        "index": sql.SQL("INDEX"),
+        "function": sql.SQL("FUNCTION"),
+        "trigger": sql.SQL("TRIGGER"),
+        "server": sql.SQL("SERVER"),
+    }
+
     with pool.connection() as conn:
         with conn.cursor() as cur:
             query = None
+            object_token = object_tokens.get(obj_type)
             
             # Base object identifier construction
             if schema and obj_type not in ('database', 'server', 'schema'):
@@ -1105,8 +1136,10 @@ def db_pg96_alter_object(
                         sql.Identifier(new_name)
                     )
                 else:
+                    if object_token is None:
+                        raise ValueError(f"Unsupported object_type for rename: {obj_type}")
                     query = sql.SQL("ALTER {} {} RENAME TO {}").format(
-                        sql.SQL(obj_type.upper()),
+                        object_token,
                         obj_id,
                         sql.Identifier(new_name)
                     )
@@ -1117,9 +1150,11 @@ def db_pg96_alter_object(
                 
                 if obj_type == 'trigger':
                     raise ValueError("Triggers do not have owners (tables do).")
+                if object_token is None:
+                    raise ValueError(f"Unsupported object_type for owner_to: {obj_type}")
                 
                 query = sql.SQL("ALTER {} {} OWNER TO {}").format(
-                    sql.SQL(obj_type.upper()),
+                    object_token,
                     obj_id,
                     sql.Identifier(owner)
                 )
@@ -1131,9 +1166,11 @@ def db_pg96_alter_object(
                 
                 if obj_type in ('database', 'server', 'schema'):
                     raise ValueError(f"Cannot set schema for {obj_type}.")
+                if object_token is None:
+                    raise ValueError(f"Unsupported object_type for set_schema: {obj_type}")
                 
                 query = sql.SQL("ALTER {} {} SET SCHEMA {}").format(
-                    sql.SQL(obj_type.upper()),
+                    object_token,
                     obj_id,
                     sql.Identifier(new_schema)
                 )
@@ -1488,16 +1525,22 @@ def db_pg96_create_object(
             else:
                 raise ValueError(f"Creation of object type '{obj_type}' not supported.")
 
-            logger.info(f"Executing CREATE: {query.as_string(conn)}")
+            logger.info(f"Executing CREATE: {str(query)}")
             _execute_safe(cur, query)
             
             # Post-creation steps (like owner)
             if owner and obj_type in ('table', 'view', 'function', 'sequence'):
                  # Apply ownership if provided and not handled in create
-                 owner_query = sql.SQL("ALTER {} {}.{} OWNER TO {}").format(
-                     sql.SQL(obj_type.upper()),
-                     sql.Identifier(schema),
-                     sql.Identifier(object_name),
+                 object_token = {
+                     'table': sql.SQL("TABLE"),
+                     'view': sql.SQL("VIEW"),
+                     'function': sql.SQL("FUNCTION"),
+                     'sequence': sql.SQL("SEQUENCE"),
+                 }[obj_type]
+                 qualified_name = sql.Identifier(schema, object_name) if schema else sql.Identifier(object_name)
+                 owner_query = sql.SQL("ALTER {} {} OWNER TO {}").format(
+                     object_token,
+                     qualified_name,
                      sql.Identifier(owner)
                  )
                  _execute_safe(cur, owner_query)
@@ -2028,7 +2071,7 @@ def db_pg96_analyze_table_health(
                         select current_setting('autovacuum_freeze_max_age')::bigint as freeze_max_age
                         """
                     )
-                    freeze_settings = cur.fetchone()
+                    freeze_settings = cur.fetchone() or {"freeze_max_age": 0}
                     freeze_max_age = freeze_settings["freeze_max_age"]
                     
                     age_percent = (table["frozenxid_age"] / freeze_max_age * 100) if freeze_max_age > 0 else 0
@@ -2285,7 +2328,12 @@ def db_pg96_db_sec_perf_metrics(
                 where state != 'idle'
                 """
             )
-            connection_metrics = cur.fetchone()
+            connection_metrics = cur.fetchone() or {
+                "max_connections": 0,
+                "reserved_connections": 0,
+                "active_connections": 0,
+                "available_connections": 0,
+            }
             results["performance_metrics"]["connection_usage"] = connection_metrics
 
             if connection_metrics["active_connections"] > connection_metrics["max_connections"] * conn_usage_limit:
@@ -2312,7 +2360,16 @@ def db_pg96_db_sec_perf_metrics(
                 from pg_stat_bgwriter
                 """
             )
-            checkpoint_metrics = cur.fetchone()
+            checkpoint_metrics = cur.fetchone() or {
+                "checkpoints_timed": 0,
+                "checkpoints_req": 0,
+                "checkpoint_write_time": 0,
+                "checkpoint_sync_time": 0,
+                "buffers_checkpoint": 0,
+                "buffers_clean": 0,
+                "buffers_backend": 0,
+                "checkpoint_request_ratio": 0,
+            }
             results["performance_metrics"]["checkpoint_stats"] = checkpoint_metrics
 
             if checkpoint_metrics["checkpoint_request_ratio"] > checkpoint_req_threshold:
@@ -2332,7 +2389,12 @@ def db_pg96_db_sec_perf_metrics(
                 where datname = current_database()
                 """
             )
-            lock_metrics = cur.fetchone()
+            lock_metrics = cur.fetchone() or {
+                "deadlocks": 0,
+                "conflicts": 0,
+                "temp_files": 0,
+                "temp_bytes": 0,
+            }
             results["performance_metrics"]["lock_stats"] = lock_metrics
 
             if lock_metrics["deadlocks"] > 0:
@@ -3252,7 +3314,7 @@ def db_pg96_analyze_logical_data_model(
             _execute_safe(cur, "select now() at time zone 'utc' as generated_at_utc")
             generated_at_row = cur.fetchone() or {}
             generated_at = generated_at_row.get("generated_at_utc")
-            generated_at_iso = generated_at.isoformat() if hasattr(generated_at, "isoformat") else str(generated_at)
+            generated_at_iso = generated_at.isoformat() if isinstance(generated_at, (datetime, date)) else str(generated_at)
 
             relkinds = ["r", "p"]
             if include_views:
@@ -4495,21 +4557,35 @@ def main() -> None:
                 app.add_middleware(APIKeyMiddleware)
                 app.add_middleware(BrowserFriendlyMiddleware)
 
-                def startup_handler():
-                    logger.info("Background HTTP server has started.")
-                    server_ready.set()
-
                 config = uvicorn.Config(
                     app,
                     host=host,
                     port=port,
                     log_level="warning",
-                    loop=loop, # Use the loop created for this thread
+                    loop="asyncio",
                 )
-                config.subscribe(uvicorn.main.Server.STARTED, startup_handler)
-                
+
                 server = uvicorn.Server(config)
-                loop.run_until_complete(server.serve())
+
+                async def _monitor_startup() -> None:
+                    for _ in range(300):
+                        if getattr(server, "started", False):
+                            logger.info("Background HTTP server has started.")
+                            server_ready.set()
+                            return
+                        await asyncio.sleep(0.05)
+                    if not server_ready.is_set():
+                        logger.warning("Background HTTP server startup monitor timed out.")
+                        server_ready.set()
+
+                async def _serve_with_monitor() -> None:
+                    monitor_task = asyncio.create_task(_monitor_startup())
+                    try:
+                        await server.serve()
+                    finally:
+                        monitor_task.cancel()
+
+                loop.run_until_complete(_serve_with_monitor())
             except Exception as e:
                 logger.error(f"Background HTTP server failed to start: {e}", exc_info=True)
                 # Ensure the event is set even on failure to unblock the main thread

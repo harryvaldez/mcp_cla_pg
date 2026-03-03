@@ -203,12 +203,14 @@ def _assert(cond: bool, msg: str) -> None:
 def _invoke(server_module: Any, tool_name: str, kwargs: dict[str, Any] | None = None) -> Any:
     kwargs = kwargs or {}
     tool_obj = getattr(server_module, tool_name)
-    if callable(tool_obj):
-        return tool_obj(**kwargs)
+    # Prefer explicit wrapped callables to avoid version-dependent __call__ behavior
+    # on FastMCP tool wrapper objects.
     for attr in ("fn", "func", "function", "_fn", "callable"):
         inner = getattr(tool_obj, attr, None)
         if callable(inner):
             return inner(**kwargs)
+    if callable(tool_obj):
+        return tool_obj(**kwargs)
     run = getattr(tool_obj, "run", None)
     if callable(run):
         try:
@@ -216,6 +218,19 @@ def _invoke(server_module: Any, tool_name: str, kwargs: dict[str, Any] | None = 
         except TypeError:
             return run(kwargs)
     raise TypeError(f"Tool {tool_name} is not callable and has no known callable attribute")
+
+
+def _coerce_rows(value: Any) -> list[Any]:
+    if isinstance(value, list):
+        return value
+    if isinstance(value, tuple):
+        return list(value)
+    if isinstance(value, dict):
+        for key in ("rows", "data", "result", "items"):
+            nested = value.get(key)
+            if isinstance(nested, list):
+                return nested
+    return []
 
 
 def _call_all_tools() -> None:
@@ -244,9 +259,11 @@ def _call_all_tools() -> None:
     _assert(isinstance(info_mcp, dict) and info_mcp.get("status") == "healthy", "server_info_mcp returned unexpected shape")
 
     params = _invoke(server, "db_pg96_get_db_parameters", {"pattern": "max_connections|shared_buffers"})
-    if not isinstance(params, list) or len(params) == 0:
+    param_rows = _coerce_rows(params)
+    if len(param_rows) == 0:
         params = _invoke(server, "db_pg96_get_db_parameters")
-    _assert(isinstance(params, list) and len(params) >= 1, "get_db_parameters returned no rows")
+        param_rows = _coerce_rows(params)
+    _assert(len(param_rows) >= 1, f"get_db_parameters returned no rows (type={type(params).__name__})")
 
     dbs = _invoke(server, "db_pg96_list_objects", {"object_type": "database"})
     _assert(isinstance(dbs, list) and any(r.get("name") == DB for r in dbs), "list_objects(database) did not include test database")

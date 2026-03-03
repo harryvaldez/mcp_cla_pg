@@ -11,9 +11,8 @@ os.environ["MCP_CONFIRM_WRITE"] = "true"
 os.environ["FASTMCP_AUTH_TYPE"] = "none"
 
 import json
-import os
 import sys
-import server as server_module
+import importlib
 
 
 
@@ -24,6 +23,11 @@ def test_security_perf_oltp(mocker):
     Tests the analysis and recommendation logic of the security and performance
     metrics tool for the OLTP profile.
     """
+    if "server" in sys.modules:
+        server_module = importlib.reload(sys.modules["server"])
+    else:
+        server_module = importlib.import_module("server")
+
     # 1. Mock the tool's output
     mock_results = {
         "profile_applied": "oltp",
@@ -64,8 +68,9 @@ def test_security_perf_oltp(mocker):
             "Review and reduce the number of superuser roles.",
         ],
     }
-    mocker.patch(
-        "server.db_pg96_database_security_performance_metrics.fn",
+    mocker.patch.object(
+        server_module.db_pg96_db_sec_perf_metrics,
+        "fn",
         return_value=mock_results,
     )
 
