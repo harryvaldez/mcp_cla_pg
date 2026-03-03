@@ -73,6 +73,11 @@ docker build -t harryvaldez/mcp-postgres:latest .
 docker push harryvaldez/mcp-postgres:latest
 ```
 
+Current published tags:
+- `harryvaldez/mcp-postgres:latest`
+- `harryvaldez/mcp-postgres:v1.0.1`
+- `harryvaldez/mcp-postgres:bf1b5a2`
+
 Notes:
 - The base image is python:3.13-slim.
 - System packages and Python tooling are upgraded during build to reduce CVE exposure.
@@ -166,7 +171,7 @@ Key environment variables supported by the server:
 - `MCP_SSL_CERT` Path to TLS certificate for HTTPS.
 - `MCP_SSL_KEY` Path to TLS private key for HTTPS.
 
-These are exemplified in [docker-compose.yml](file:///c:/Users/HarryValdez/OneDrive/Documents/trae/mcp-postgres/docker-compose.yml#L5-L20).
+These are exemplified in [docker-compose.yml](docker-compose.yml).
 
 ---
 
@@ -175,6 +180,10 @@ These are exemplified in [docker-compose.yml](file:///c:/Users/HarryValdez/OneDr
 Use Docker Compose tests to validate the image locally:
 ```bash
 python test_docker_pg96.py
+```
+For the default local validation path used in this repository:
+```bash
+python -m pytest -q
 ```
 If port 8000 is in use, stop conflicting services or run:
 ```bash

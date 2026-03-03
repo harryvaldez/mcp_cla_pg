@@ -4,6 +4,12 @@ A powerful Model Context Protocol (MCP) server for PostgreSQL database administr
 
 This server exposes a suite of DBA-grade tools to inspect schemas, analyze performance, check security, and troubleshoot issues—all through a safe, controlled interface.
 
+## 📌 Current Release
+
+- Git tag: `v1.0.1`
+- Docker tags: `harryvaldez/mcp-postgres:latest`, `harryvaldez/mcp-postgres:v1.0.1`, `harryvaldez/mcp-postgres:bf1b5a2`
+- Image digest: `sha256:71f5fd5a8f40e479f883244b7d76510995b19e4aaf7ddcd471a24956bb2fb529`
+
 ## 🚀 Features
 
 - **Deep Inspection**: Discover schemas, tables, indexes, and their sizes.
@@ -17,6 +23,25 @@ This server exposes a suite of DBA-grade tools to inspect schemas, analyze perfo
 - **SSH Tunneling**: Built-in support for connecting via SSH bastion hosts.
 - **Python 3.13**: Built on the latest Python runtime for improved performance and security.
 - **Broad Compatibility**: Fully tested with **PostgreSQL 9.6+**. (Note: PostgreSQL 9.6 reached EOL in Nov 2021; we recommend using supported releases, e.g., PostgreSQL 12+, for production.)
+
+---
+
+## 🧾 LLM Calling Cheat Sheet
+
+Use these prompt patterns to minimize tokens and expand only when needed.
+
+- **List largest tables (compact first)**
+  - `using postgres_readonly, call db_pg96_list_objects(object_type='table', order_by='size', limit=20, detail_level='compact', max_items=10, response_format='envelope')`
+- **Table health triage**
+  - `using postgres_readonly, call db_pg96_analyze_table_health(schema='public', profile='oltp', detail_level='compact', max_tables=10, response_format='envelope')`
+- **Security/perf triage**
+  - `using postgres_readonly, call db_pg96_db_sec_perf_metrics(profile='oltp', detail_level='compact', max_items_per_list=10, response_format='envelope')`
+- **Index triage**
+  - `using postgres_readonly, call db_pg96_analyze_indexes(schema='public', limit=20, detail_level='compact', max_items_per_category=10, response_format='envelope')`
+- **Logical model triage**
+  - `using postgres_readonly, call db_pg96_analyze_logical_data_model(schema='public', max_entities=50, detail_level='compact', response_format='envelope')`
+
+If the response has `truncated=true`, increase only the relevant max parameter and re-run.
 
 ---
 
@@ -400,27 +425,28 @@ This server implements strict security practices for logging:
 
 ### 🔍 Schema Discovery
 - `db_pg96_list_objects`: **(Consolidated Tool)** Unified tool to list databases, schemas, tables, views, indexes, functions, sequences, and temporary objects.
-    - **Signature**: `db_pg96_list_objects(object_type: str, schema: str = None, owner: str = None, name_pattern: str = None, order_by: str = None, limit: int = 50)`
+  - **Signature**: `db_pg96_list_objects(object_type: str, schema: str = None, owner: str = None, name_pattern: str = None, order_by: str = None, limit: int = 50, detail_level: str = "full", max_items: int = None, response_format: str = "legacy")`
+  - **Token controls**: Use `detail_level="compact"` to return reduced fields; use `max_items` to cap returned rows; use `response_format="envelope"` for summary/truncation metadata.
     - **Common Use Cases**:
         - **Table Sizes**: `object_type='table', order_by='size'`
         - **Maintenance Stats**: `object_type='table', order_by='dead_tuples'`
         - **Index Usage**: `object_type='index', order_by='scans'`
         - **Find Function**: `object_type='function', name_pattern='%my_func%'`
 - `db_pg96_describe_table(schema: str, table: str)`: Get detailed column and index info for a table.
-- `db_pg96_analyze_logical_data_model(schema: str = "public")`: **(Interactive)** Generates a comprehensive HTML report with a **Mermaid.js Entity Relationship Diagram (ERD)**, a **Health Score** (0-100), and detailed findings on normalization, missing keys, and naming conventions. The tool returns a URL to view the report in your browser.
+- `db_pg96_analyze_logical_data_model(schema: str = "public", include_views: bool = False, max_entities: int = None, include_attributes: bool = True, detail_level: str = "full", response_format: str = "legacy")`: **(Interactive)** Generates a comprehensive HTML report with a **Mermaid.js Entity Relationship Diagram (ERD)**, a **Health Score** (0-100), and detailed findings on normalization, missing keys, and naming conventions. The tool returns a URL to view the report in your browser.
 
 ### ⚡ Performance & Tuning
-- `db_pg96_analyze_table_health(schema: str = None, min_size_mb: int = 50, profile: str = "oltp")`: **(Power Tool)** Comprehensive health check for bloat, vacuum needs, and optimization.
+- `db_pg96_analyze_table_health(schema: str = None, min_size_mb: int = 50, profile: str = "oltp", detail_level: str = "full", max_tables: int = None, response_format: str = "legacy")`: **(Power Tool)** Comprehensive health check for bloat, vacuum needs, and optimization.
 - `db_pg96_check_bloat(limit: int = 50)`: Identifies the top bloated tables and indexes and provides maintenance commands.
-- `db_pg96_analyze_indexes(schema: str = None, limit: int = 50)`: Identify unused, duplicate, or missing indexes.
+- `db_pg96_analyze_indexes(schema: str = None, limit: int = 50, detail_level: str = "full", max_items_per_category: int = None, response_format: str = "legacy")`: Identify unused, duplicate, or missing indexes.
 - `db_pg96_recommend_partitioning(min_size_gb: float = 1.0, schema: str = None)`: Suggest tables for partitioning.
 - `db_pg96_explain_query(sql: str, analyze: bool = False, output_format: str = "json")`: Get the execution plan for a query.
 
 ### 🕵️ Session & Security
 - `db_pg96_monitor_sessions(limit: int = 50)`: Real-time session monitoring data for the UI dashboard.
 - `db_pg96_analyze_sessions(include_idle: bool = True, include_locked: bool = True)`: Detailed session analysis.
-- `db_pg96_db_sec_perf_metrics(profile: str = "oltp")`: Comprehensive security and performance audit.
-- `db_pg96_database_security_performance_metrics(profile: str = "oltp")`: Alias of `db_pg96_db_sec_perf_metrics` for clients using expanded naming.
+- `db_pg96_db_sec_perf_metrics(profile: str = "oltp", detail_level: str = "full", max_items_per_list: int = None, response_format: str = "legacy")`: Comprehensive security and performance audit.
+- `db_pg96_database_security_performance_metrics(profile: str = "oltp", detail_level: str = "full", max_items_per_list: int = None, response_format: str = "legacy")`: Alias of `db_pg96_db_sec_perf_metrics` for clients using expanded naming.
 - `db_pg96_get_db_parameters(pattern: str = None)`: Retrieve database configuration parameters (GUCs).
 
 ### 🔧 Maintenance (Requires `MCP_ALLOW_WRITE=true`)
@@ -459,6 +485,32 @@ This server implements strict security practices for logging:
  - **Issues List**: Detailed breakdown of missing keys, normalization risks, and naming violations.
  
  ---
+
+## 🧠 Token-Efficient Call Patterns
+
+Use a compact-first workflow to keep context windows small and avoid large responses.
+
+### Recommended Pattern
+1. **Start compact** with `detail_level="compact"` and small limits.
+2. **Request envelope metadata** with `response_format="envelope"` to inspect `summary` and `truncated`.
+3. **Expand only what is needed** by increasing `max_items` / `max_tables` / `max_items_per_list`.
+
+### Compact-First Examples
+- **Object discovery**
+  - `db_pg96_list_objects(object_type="table", order_by="size", limit=20, detail_level="compact", max_items=10, response_format="envelope")`
+- **Table health triage**
+  - `db_pg96_analyze_table_health(schema="public", profile="oltp", detail_level="compact", max_tables=10, response_format="envelope")`
+- **Security/perf triage**
+  - `db_pg96_db_sec_perf_metrics(profile="oltp", detail_level="compact", max_items_per_list=10, response_format="envelope")`
+- **Index triage**
+  - `db_pg96_analyze_indexes(schema="public", limit=20, detail_level="compact", max_items_per_category=10, response_format="envelope")`
+- **Logical model triage**
+  - `db_pg96_analyze_logical_data_model(schema="public", max_entities=50, detail_level="compact", response_format="envelope")`
+
+### When to Expand
+- If `truncated=true`, increase the relevant max parameter incrementally (for example `+10`).
+- Switch to `detail_level="full"` only for the specific tool output you need to inspect deeply.
+- For logical model analysis, prefer opening `report_url` rather than requesting full inline payloads.
  
  ## 🛠️ Usage Examples
 
@@ -652,7 +704,7 @@ The analysis of the `smsadmin` schema reveals a significant lack of structural e
 
 This project has been rigorously tested against **PostgreSQL 9.6** to ensure compatibility with legacy and modern environments.
 
-### Test Results (2026-01-27)
+### Test Results (2026-03-03)
 - **Deployment**: Docker, `uv`, `npx` (All Passed)
 - **Protocol**: SSE (HTTP/HTTPS), Stdio (All Passed)
 - **Database**: PostgreSQL 9.6 (All Tools Verified)
@@ -665,8 +717,13 @@ This project has been rigorously tested against **PostgreSQL 9.6** to ensure com
 
 To run the full test suite locally:
 ```bash
-# Provisions a Postgres 9.6 container and runs all tools
-python test_docker_pg96.py
+# Uses pytest discovery scoped to ./tests via pytest.ini
+python -m pytest -q
+```
+
+To run the primary integration checks used for release validation:
+```bash
+python -m pytest -q tests/test_security_perf_oltp.py tests/test_tools_pg96.py tests/functional_test.py
 ```
 
 ---

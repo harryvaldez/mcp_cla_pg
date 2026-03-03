@@ -712,6 +712,29 @@ def _fetch_limited(cur, max_rows: int) -> list[dict[str, Any]]:
     return rows
 
 
+def _trim_list(items: list[Any], max_items: int | None) -> tuple[list[Any], bool]:
+    if max_items is None or max_items < 0 or len(items) <= max_items:
+        return items, False
+    return items[:max_items], True
+
+
+def _build_response_envelope(
+    *,
+    tool: str,
+    payload: Any,
+    summary: dict[str, Any] | None = None,
+    truncated: bool = False,
+    hints_for_next_call: list[str] | None = None,
+) -> dict[str, Any]:
+    return {
+        "tool": tool,
+        "summary": summary or {},
+        "truncated": truncated,
+        "hints_for_next_call": hints_for_next_call or [],
+        "data": payload,
+    }
+
+
 def _rollback_cursor_connection(cur) -> None:
     conn = getattr(cur, "connection", None)
     if conn is None:
@@ -1896,7 +1919,10 @@ def db_pg96_analyze_table_health(
     include_maintenance: bool = True,
     include_autovacuum: bool = True,
     limit: int = 30,
-    profile: str = "oltp"
+    profile: str = "oltp",
+    detail_level: str = "full",
+    max_tables: int | None = None,
+    response_format: str = "legacy",
 ) -> dict[str, Any]:
     """
     Comprehensive table health analysis combining bloat detection, maintenance needs, and autovacuum recommendations.
@@ -2161,14 +2187,67 @@ def db_pg96_analyze_table_health(
             if results["overall_health_score"] < 70:
                 results["summary"]["recommendations"].append("Overall database health is concerning - prioritize maintenance operations")
 
-            return results
+            detail = (detail_level or "full").lower()
+            if detail not in {"full", "compact"}:
+                raise ValueError("detail_level must be 'full' or 'compact'")
+
+            tables = results.get("tables", [])
+            max_table_count = max_tables if max_tables is not None else limit
+            trimmed_tables, tables_truncated = _trim_list(tables, max_table_count)
+
+            if detail == "compact":
+                compact_tables: list[dict[str, Any]] = []
+                for row in trimmed_tables:
+                    compact_tables.append(
+                        {
+                            "schema": row.get("schema"),
+                            "table": row.get("table"),
+                            "size_mb": row.get("size_mb"),
+                            "health_score": row.get("health_score"),
+                            "issues_count": len(row.get("issues", [])),
+                            "recommendations_count": len(row.get("recommendations", [])),
+                        }
+                    )
+                results["tables"] = compact_tables
+            else:
+                results["tables"] = trimmed_tables
+
+            if response_format == "legacy":
+                results["_meta"] = {
+                    "detail_level": detail,
+                    "tables_returned": len(results.get("tables", [])),
+                    "tables_truncated": tables_truncated,
+                }
+                return results
+            if response_format != "envelope":
+                raise ValueError("response_format must be 'legacy' or 'envelope'")
+
+            return _build_response_envelope(
+                tool="db_pg96_analyze_table_health",
+                payload=results,
+                summary={
+                    "detail_level": detail,
+                    "tables_returned": len(results.get("tables", [])),
+                    "overall_health_score": results.get("overall_health_score"),
+                    "tables_with_issues": results.get("summary", {}).get("tables_with_issues", 0),
+                    "critical_issues": results.get("summary", {}).get("critical_issues", 0),
+                },
+                truncated=tables_truncated,
+                hints_for_next_call=[
+                    "Increase max_tables to inspect more tables.",
+                    "Use detail_level='full' for per-table issue/recommendation detail.",
+                ],
+            )
 
 
 @mcp.tool
 def db_pg96_db_sec_perf_metrics(
     cache_hit_threshold: int | None = None,
     connection_usage_threshold: float | None = None,
-    profile: str = "oltp"
+    profile: str = "oltp",
+    detail_level: str = "full",
+    max_items_per_list: int | None = None,
+    response_format: str = "legacy",
 ) -> dict[str, Any]:
     """
     Analyzes database security and performance metrics, identifying issues and providing optimization commands.
@@ -2455,14 +2534,83 @@ def db_pg96_db_sec_perf_metrics(
                 results["recommended_fixes"].append("# Increase work_mem (use caution, affects per-operation memory):")
                 results["recommended_fixes"].append("# work_mem = 64MB  # Adjust based on concurrent connections")
 
-            return results
+            detail = (detail_level or "full").lower()
+            if detail not in {"full", "compact"}:
+                raise ValueError("detail_level must be 'full' or 'compact'")
+
+            list_cap = max_items_per_list if max_items_per_list is not None else 10
+
+            truncated = False
+
+            cache_list = results["performance_metrics"].get("cache_hit_ratios", [])
+            cache_trimmed, cache_truncated = _trim_list(cache_list, list_cap)
+            results["performance_metrics"]["cache_hit_ratios"] = cache_trimmed
+            truncated = truncated or cache_truncated
+
+            ext_list = results["security_metrics"].get("installed_extensions", [])
+            ext_trimmed, ext_truncated = _trim_list(ext_list, list_cap)
+            results["security_metrics"]["installed_extensions"] = ext_trimmed
+            truncated = truncated or ext_truncated
+
+            issues = results.get("issues_found", [])
+            issues_trimmed, issues_truncated = _trim_list(issues, list_cap)
+            results["issues_found"] = issues_trimmed
+            truncated = truncated or issues_truncated
+
+            fixes = results.get("recommended_fixes", [])
+            fixes_trimmed, fixes_truncated = _trim_list(fixes, list_cap)
+            results["recommended_fixes"] = fixes_trimmed
+            truncated = truncated or fixes_truncated
+
+            if detail == "compact":
+                results["security_metrics"] = {
+                    "ssl_enabled": ssl_enabled,
+                    "user_accounts_summary": results["security_metrics"].get("user_accounts_summary", {}),
+                    "installed_extensions_count": len(ext_list),
+                    "installed_extensions_sample": results["security_metrics"].get("installed_extensions", []),
+                }
+                results["performance_metrics"] = {
+                    "connection_usage": results["performance_metrics"].get("connection_usage", {}),
+                    "checkpoint_stats": results["performance_metrics"].get("checkpoint_stats", {}),
+                    "lock_stats": results["performance_metrics"].get("lock_stats", {}),
+                    "cache_hit_ratios_sample": results["performance_metrics"].get("cache_hit_ratios", []),
+                }
+
+            if response_format == "legacy":
+                results["_meta"] = {
+                    "detail_level": detail,
+                    "max_items_per_list": list_cap,
+                    "truncated": truncated,
+                }
+                return results
+            if response_format != "envelope":
+                raise ValueError("response_format must be 'legacy' or 'envelope'")
+
+            return _build_response_envelope(
+                tool="db_pg96_db_sec_perf_metrics",
+                payload=results,
+                summary={
+                    "detail_level": detail,
+                    "issues_count": len(results.get("issues_found", [])),
+                    "profile_applied": results.get("profile_applied"),
+                    "ssl_enabled": ssl_enabled,
+                },
+                truncated=truncated,
+                hints_for_next_call=[
+                    "Increase max_items_per_list to inspect more list entries.",
+                    "Use detail_level='full' for expanded metric payloads.",
+                ],
+            )
 
 
 @mcp.tool
 def db_pg96_database_security_performance_metrics(
     cache_hit_threshold: int | None = None,
     connection_usage_threshold: float | None = None,
-    profile: str = "oltp"
+    profile: str = "oltp",
+    detail_level: str = "full",
+    max_items_per_list: int | None = None,
+    response_format: str = "legacy",
 ) -> dict[str, Any]:
     """
     Alias for db_pg96_db_sec_perf_metrics to support clients expecting full-name tool convention.
@@ -2471,6 +2619,9 @@ def db_pg96_database_security_performance_metrics(
         cache_hit_threshold=cache_hit_threshold,
         connection_usage_threshold=connection_usage_threshold,
         profile=profile,
+        detail_level=detail_level,
+        max_items_per_list=max_items_per_list,
+        response_format=response_format,
     )
 
 
@@ -2939,8 +3090,11 @@ def db_pg96_list_objects(
     owner: str | None = None,
     name_pattern: str | None = None,
     order_by: str | None = None,
-    limit: int = 50
-) -> list[dict[str, Any]]:
+    limit: int = 50,
+    detail_level: str = "full",
+    max_items: int | None = None,
+    response_format: str = "legacy",
+) -> list[dict[str, Any]] | dict[str, Any]:
     """
     Consolidated tool to list database objects with filtering and sorting options.
 
@@ -3197,13 +3351,65 @@ def db_pg96_list_objects(
             full_sql = f"{query} {where_clause} {group_by} {sort_clause} LIMIT %(limit)s"
             
             _execute_safe(cur, full_sql, params)
-            return cur.fetchall()
+            rows = cur.fetchall()
+
+            detail = (detail_level or "full").lower()
+            if detail not in {"full", "compact"}:
+                raise ValueError("detail_level must be 'full' or 'compact'")
+
+            max_rows = max_items if max_items is not None else limit
+            trimmed_rows, rows_truncated = _trim_list(rows, max_rows)
+
+            if detail == "compact":
+                compact_map: dict[str, list[str]] = {
+                    "database": ["name", "size_pretty", "owner"],
+                    "schema": ["name", "owner", "size_pretty"],
+                    "table": ["schema", "name", "size_pretty", "estimated_rows", "dead_ratio"],
+                    "index": ["schema", "table", "name", "size_pretty", "scans"],
+                    "view": ["schema", "name", "size_pretty"],
+                    "sequence": ["schema", "name", "owner"],
+                    "function": ["schema", "name", "arguments", "result_type"],
+                    "temp_object": ["schema", "object_count", "total_size"],
+                }
+                keep_fields = compact_map.get(object_type, [])
+                if keep_fields:
+                    trimmed_rows = [
+                        {k: row.get(k) for k in keep_fields if k in row}
+                        for row in trimmed_rows
+                    ]
+
+            if response_format == "legacy":
+                return trimmed_rows
+            if response_format != "envelope":
+                raise ValueError("response_format must be 'legacy' or 'envelope'")
+
+            return _build_response_envelope(
+                tool="db_pg96_list_objects",
+                payload=trimmed_rows,
+                summary={
+                    "object_type": object_type,
+                    "detail_level": detail,
+                    "returned": len(trimmed_rows),
+                    "limit_requested": limit,
+                },
+                truncated=rows_truncated,
+                hints_for_next_call=[
+                    "Increase max_items to inspect more results.",
+                    "Use detail_level='full' for all object fields.",
+                ],
+            )
 
 
 
 
 @mcp.tool
-def db_pg96_analyze_indexes(schema: str | None = None, limit: int = 50) -> dict[str, Any]:
+def db_pg96_analyze_indexes(
+    schema: str | None = None,
+    limit: int = 50,
+    detail_level: str = "full",
+    max_items_per_category: int | None = None,
+    response_format: str = "legacy",
+) -> dict[str, Any]:
     """
     Identify unused and duplicate indexes.
     
@@ -3216,7 +3422,7 @@ def db_pg96_analyze_indexes(schema: str | None = None, limit: int = 50) -> dict[
     """
     with pool.connection() as conn:
         with conn.cursor() as cur:
-            results = {
+            results: dict[str, Any] = {
                 "unused_indexes": [],
                 "duplicate_indexes": [],
                 "missing_indexes": [],
@@ -3272,7 +3478,68 @@ def db_pg96_analyze_indexes(schema: str | None = None, limit: int = 50) -> dict[
             results["missing_indexes"] = []
             results["redundant_indexes"] = []
 
-            return results
+            detail = (detail_level or "full").lower()
+            if detail not in {"full", "compact"}:
+                raise ValueError("detail_level must be 'full' or 'compact'")
+
+            list_cap = max_items_per_category if max_items_per_category is not None else limit
+            truncated = False
+
+            for key in ("unused_indexes", "duplicate_indexes", "missing_indexes", "redundant_indexes"):
+                trimmed, was_truncated = _trim_list(results.get(key, []), list_cap)
+                truncated = truncated or was_truncated
+                if detail == "compact":
+                    compact_rows = []
+                    for row in trimmed:
+                        if key == "unused_indexes":
+                            compact_rows.append(
+                                {
+                                    "schema": row.get("schema"),
+                                    "table": row.get("table"),
+                                    "index": row.get("index"),
+                                    "size": row.get("size"),
+                                    "scans": row.get("scans"),
+                                }
+                            )
+                        elif key == "duplicate_indexes":
+                            compact_rows.append(
+                                {
+                                    "schema": row.get("schema"),
+                                    "table": row.get("table"),
+                                    "dup_count": row.get("dup_count"),
+                                    "indexes": row.get("indexes"),
+                                }
+                            )
+                        else:
+                            compact_rows.append(row)
+                    results[key] = compact_rows
+                else:
+                    results[key] = trimmed
+
+            if response_format == "legacy":
+                results["_meta"] = {
+                    "detail_level": detail,
+                    "max_items_per_category": list_cap,
+                    "truncated": truncated,
+                }
+                return results
+            if response_format != "envelope":
+                raise ValueError("response_format must be 'legacy' or 'envelope'")
+
+            return _build_response_envelope(
+                tool="db_pg96_analyze_indexes",
+                payload=results,
+                summary={
+                    "detail_level": detail,
+                    "unused_indexes": len(results.get("unused_indexes", [])),
+                    "duplicate_indexes": len(results.get("duplicate_indexes", [])),
+                },
+                truncated=truncated,
+                hints_for_next_call=[
+                    "Increase max_items_per_category to inspect more index entries.",
+                    "Use detail_level='full' for complete rows.",
+                ],
+            )
 
 
 @mcp.tool
@@ -3280,7 +3547,9 @@ def db_pg96_analyze_logical_data_model(
     schema: str = "public",
     include_views: bool = False,
     max_entities: Optional[int] = None,
-    include_attributes: bool = True
+    include_attributes: bool = True,
+    detail_level: str = "full",
+    response_format: str = "legacy",
 ) -> dict[str, Any]:
     """
     Generate a logical data model (LDM) for a schema and produce issues and recommendations.
@@ -3661,6 +3930,10 @@ def db_pg96_analyze_logical_data_model(
                 "issues_count": {k: len(v) for k, v in issues.items()},
             }
 
+            detail = (detail_level or "full").lower()
+            if detail not in {"full", "compact"}:
+                raise ValueError("detail_level must be 'full' or 'compact'")
+
             result_data = {
                 "summary": summary,
                 "logical_model": {
@@ -3669,6 +3942,30 @@ def db_pg96_analyze_logical_data_model(
                 },
                 "issues": issues,
                 "recommendations": recommendations,
+            }
+
+            compact_preview = {
+                "entities": [
+                    {
+                        "schema": e.get("schema"),
+                        "name": e.get("name"),
+                        "kind": e.get("kind"),
+                        "attributes_count": len(e.get("attributes", [])),
+                        "primary_key": e.get("primary_key", []),
+                        "foreign_keys_count": len(e.get("foreign_keys", [])),
+                    }
+                    for e in result_data["logical_model"]["entities"][:20]
+                ],
+                "relationships": [
+                    {
+                        "name": r.get("name"),
+                        "from_entity": r.get("from_entity"),
+                        "to_entity": r.get("to_entity"),
+                    }
+                    for r in result_data["logical_model"]["relationships"][:20]
+                ],
+                "issues_sample": {k: v[:10] for k, v in issues.items()},
+                "recommendations_sample": {k: v[:10] for k, v in recommendations.items()},
             }
             
             # Cache the result
@@ -3684,11 +3981,41 @@ def db_pg96_analyze_logical_data_model(
             
             url = f"http://{host}:{port}/data-model-analysis?id={analysis_id}"
             
-            return {
+            legacy_response = {
                 "message": "Analysis complete. View the interactive report at the URL below.",
                 "report_url": url,
                 "summary": summary
             }
+
+            if response_format == "legacy":
+                legacy_response["_meta"] = {
+                    "detail_level": detail,
+                    "analysis_id": analysis_id,
+                }
+                return legacy_response
+            if response_format != "envelope":
+                raise ValueError("response_format must be 'legacy' or 'envelope'")
+
+            return _build_response_envelope(
+                tool="db_pg96_analyze_logical_data_model",
+                payload={
+                    "message": legacy_response["message"],
+                    "report_url": legacy_response["report_url"],
+                    "summary": summary,
+                    "analysis_id": analysis_id,
+                    "preview": compact_preview if detail == "compact" else None,
+                },
+                summary={
+                    "detail_level": detail,
+                    "entities": summary.get("entities"),
+                    "relationships": summary.get("relationships"),
+                },
+                truncated=(detail == "compact"),
+                hints_for_next_call=[
+                    "Open report_url for full interactive analysis details.",
+                    "Use detail_level='compact' for lightweight preview fields.",
+                ],
+            )
 
 
 
