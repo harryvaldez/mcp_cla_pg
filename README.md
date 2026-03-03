@@ -6,15 +6,16 @@ This server exposes a suite of DBA-grade tools to inspect schemas, analyze perfo
 
 ## 📌 Current Release
 
-- Git tag: `v1.0.2`
-- Docker tags: `harryvaldez/mcp-postgres:latest`, `harryvaldez/mcp-postgres:v1.0.2`, `harryvaldez/mcp-postgres:c7eefae`
-- Image digest: `sha256:f5a0b81f1639144dec0f9a38a4c86d3ce04cd4aeabf289bffefba46a3fa6a8e2`
+- Git tag: `v1.0.3`
+- Docker tags: `harryvaldez/mcp-postgres:latest`, `harryvaldez/mcp-postgres:v1.0.3`, `harryvaldez/mcp-postgres:71703f4`
+- Image digest: `sha256:ca03612267f9a34fc30b28277a999e703441c9a4e6374a05ec0d47e3ce0a2430`
 
-### v1.0.2 Release Notes
+### v1.0.3 Release Notes
 
-- Added explicit `idle_in_transaction` metric to session monitoring API and dashboard.
-- Updated session monitor UI to chart active, idle, idle-in-transaction, and total connections.
-- Updated documentation and examples to reflect the new session metric and API payload shape.
+- Upgraded server and dependencies to **FastMCP v3** compatibility (`>=3.0.0,<4`).
+- Migrated auth provider imports to FastMCP v3 module paths under `fastmcp.server.auth...`.
+- Updated tool alias invocation and tests for v3 decorator behavior (direct callable usage).
+- Completed end-to-end validation and fixed deterministic pool teardown in integration tests.
 
 ## 🚀 Features
 
