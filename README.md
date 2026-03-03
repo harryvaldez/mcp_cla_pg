@@ -470,9 +470,9 @@ This server implements strict security practices for logging:
  **Access**: `http://localhost:8085/sessions-monitor`
  
  **Features**:
- - **Real-time Graph**: Visualizes active vs. idle sessions over time.
+- **Real-time Graph**: Visualizes active, idle, idle-in-transaction, and total sessions over time.
  - **Auto-Refresh**: Updates every 5 seconds without page reload.
- - **Session Stats**: Instant view of Active, Idle, and Total connections.
+- **Session Stats**: Instant view of Active, Idle, Idle in TXN, and Total connections.
  
  ### 2. Logical Data Model Report
  Generated on-demand via the `db_pg96_analyze_logical_data_model` tool.
@@ -666,7 +666,18 @@ The analysis of the `smsadmin` schema reveals a significant lack of structural e
  **Result:**
  "Monitor available at: http://localhost:8085/sessions-monitor"
  
- (Opens a dashboard with a live line graph of active vs. inactive sessions, refreshing every 5 seconds)
+(Opens a dashboard with a live line graph of active, idle, idle-in-transaction, and total sessions, refreshing every 5 seconds)
+
+**Sessions API Sample (`/api/sessions`):**
+```json
+{
+  "active": 1,
+  "idle": 2,
+  "idle_in_transaction": 0,
+  "total": 291,
+  "timestamp": 1772552472.276911
+}
+```
 
 
 ### 8. List Top 10 Largest Tables (Consolidated Tool)

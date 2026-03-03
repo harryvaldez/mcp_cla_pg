@@ -4671,7 +4671,7 @@ SESSION_MONITOR_HTML = """
         body { font-family: sans-serif; padding: 20px; }
         .container { max-width: 800px; margin: 0 auto; }
         h1 { text-align: center; }
-        .stats { display: flex; justify-content: space-around; margin-bottom: 20px; }
+        .stats { display: flex; justify-content: space-around; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
         .stat-box { text-align: center; padding: 10px; border: 1px solid #ddd; border-radius: 5px; min-width: 100px; }
         .stat-value { font-size: 24px; font-weight: bold; }
         .stat-label { color: #666; }
@@ -4689,6 +4689,10 @@ SESSION_MONITOR_HTML = """
             <div class="stat-box">
                 <div id="idleVal" class="stat-value">-</div>
                 <div class="stat-label">Idle</div>
+            </div>
+            <div class="stat-box">
+                <div id="idleTxnVal" class="stat-value">-</div>
+                <div class="stat-label">Idle in TXN</div>
             </div>
             <div class="stat-box">
                 <div id="totalVal" class="stat-value">-</div>
@@ -4722,6 +4726,14 @@ SESSION_MONITOR_HTML = """
                         fill: true
                     },
                     {
+                        label: 'Idle in TXN',
+                        borderColor: 'rgb(255, 99, 132)',
+                        backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                        data: [],
+                        tension: 0.1,
+                        fill: true
+                    },
+                    {
                         label: 'Total',
                         borderColor: 'rgb(54, 162, 235)',
                         borderDash: [5, 5],
@@ -4749,6 +4761,7 @@ SESSION_MONITOR_HTML = """
                 // Update text stats
                 document.getElementById('activeVal').textContent = data.active;
                 document.getElementById('idleVal').textContent = data.idle;
+                document.getElementById('idleTxnVal').textContent = data.idle_in_transaction;
                 document.getElementById('totalVal').textContent = data.total;
 
                 // Update chart
@@ -4757,12 +4770,14 @@ SESSION_MONITOR_HTML = """
                     chart.data.datasets[0].data.shift();
                     chart.data.datasets[1].data.shift();
                     chart.data.datasets[2].data.shift();
+                    chart.data.datasets[3].data.shift();
                 }
 
                 chart.data.labels.push(now);
                 chart.data.datasets[0].data.push(data.active);
                 chart.data.datasets[1].data.push(data.idle);
-                chart.data.datasets[2].data.push(data.total);
+                chart.data.datasets[2].data.push(data.idle_in_transaction);
+                chart.data.datasets[3].data.push(data.total);
                 chart.update();
             } catch (error) {
                 console.error('Error fetching data:', error);
@@ -4787,14 +4802,16 @@ async def api_sessions(_request: Request) -> JSONResponse:
         with conn.cursor() as cur:
             # Query for session counts
             # Active: state = 'active'
-            # Idle: state like 'idle%' (idle, idle in transaction, etc.)
+            # Idle: state = 'idle' only
+            # Idle in TXN: state in ('idle in transaction', 'idle in transaction (aborted)')
             # Total: count(*)
             _execute_safe(
                 cur,
                 """
                 SELECT
                     sum(case when state = 'active' then 1 else 0 end) as active,
-                    sum(case when state like 'idle%' then 1 else 0 end) as idle,
+                    sum(case when state = 'idle' then 1 else 0 end) as idle,
+                    sum(case when state in ('idle in transaction', 'idle in transaction (aborted)') then 1 else 0 end) as idle_in_transaction,
                     count(*) as total
                 FROM pg_stat_activity
                 """
@@ -4802,11 +4819,13 @@ async def api_sessions(_request: Request) -> JSONResponse:
             row = cur.fetchone()
             active = row["active"] if row and row["active"] is not None else 0
             idle = row["idle"] if row and row["idle"] is not None else 0
+            idle_in_transaction = row["idle_in_transaction"] if row and row["idle_in_transaction"] is not None else 0
             total = row["total"] if row and row["total"] is not None else 0
             
             return JSONResponse({
                 "active": active,
                 "idle": idle,
+                "idle_in_transaction": idle_in_transaction,
                 "total": total,
                 "timestamp": time.time()
             })
