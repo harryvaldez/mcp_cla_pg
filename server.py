@@ -293,6 +293,9 @@ mcp = FastMCP(
     auth=_get_auth() if auth_type != "apikey" else None
 )
 
+# Backward-compatibility alias for tests/clients expecting `server` as the FastMCP app object.
+server = mcp
+
 # API Key Middleware for simple static token auth
 class APIKeyMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -693,6 +696,16 @@ def _fetch_limited(cur, max_rows: int) -> list[dict[str, Any]]:
     return rows
 
 
+def _rollback_cursor_connection(cur) -> None:
+    conn = getattr(cur, "connection", None)
+    if conn is None:
+        return
+    try:
+        conn.rollback()
+    except Exception as rollback_error:
+        logger.debug(f"Rollback after query error failed: {rollback_error}")
+
+
 def _execute_safe(cur, sql: Any, params: Any = None) -> None:
     """Executes a query with session-level timeouts and sanitized error handling."""
     try:
@@ -707,6 +720,7 @@ def _execute_safe(cur, sql: Any, params: Any = None) -> None:
         cur.execute(f"SET statement_timeout = {STATEMENT_TIMEOUT_MS}")
         cur.execute(sql, params)
     except PsycopgError as e:
+        _rollback_cursor_connection(cur)
         logger.error(f"Database error: {str(e)}")
         # Sanitize error message to prevent leaking schema details
         # We only return the main error message if it's safe or a generic one
@@ -714,8 +728,32 @@ def _execute_safe(cur, sql: Any, params: Any = None) -> None:
             raise RuntimeError("Query execution timed out.") from e
         raise RuntimeError(f"Database operation failed: {e.diag.message_primary if hasattr(e, 'diag') and e.diag else 'Internal error'}") from e
     except Exception as e:
+        _rollback_cursor_connection(cur)
         logger.exception("Unexpected error during query execution")
         raise RuntimeError("An unexpected error occurred while processing the query.") from e
+
+
+def _execute_safe_with_fallback(
+    cur,
+    primary_sql: Any,
+    fallback_sql: Any,
+    primary_params: Any = None,
+    fallback_params: Any = None,
+) -> bool:
+    """
+    Execute a primary query and fallback query when the primary fails.
+
+    Returns:
+        True when the primary query succeeded, False when fallback was used.
+    """
+    try:
+        _execute_safe(cur, primary_sql, primary_params)
+        return True
+    except RuntimeError as primary_error:
+        logger.warning(f"Primary query failed, attempting fallback query: {primary_error}")
+        _rollback_cursor_connection(cur)
+        _execute_safe(cur, fallback_sql, fallback_params)
+        return False
 
 
 @mcp.custom_route("/health", methods=["GET"])
@@ -2150,47 +2188,41 @@ def db_pg96_db_sec_perf_metrics(
                 results["recommended_fixes"].append("Enable SSL by setting ssl = on in postgresql.conf and configure certificates")
 
             # 2. Authentication and Connection Security
-            try:
-                _execute_safe(
-                    cur,
-                    """
-                    select
-                      r.rolname as user,
-                      r.oid as usesysid,
-                      r.rolcreatedb as usecreatedb,
-                      r.rolsuper as usesuper,
-                      r.rolreplication as userepl,
-                      r.rolbypassrls as usebypassrls,
-                      s.passwd is not null as has_password,
-                      s.valuntil as password_expiry,
-                      s.valuntil - now() as time_until_expiry
-                    from pg_roles r
-                    left join pg_shadow s on s.usename = r.rolname
-                    where r.rolname not like 'pg_%'
-                    order by r.rolname
-                    """
-                )
-                user_security = cur.fetchall()
-            except RuntimeError:
-                _execute_safe(
-                    cur,
-                    """
-                    select
-                      r.rolname as user,
-                      r.oid as usesysid,
-                      r.rolcreatedb as usecreatedb,
-                      r.rolsuper as usesuper,
-                      r.rolreplication as userepl,
-                      r.rolbypassrls as usebypassrls,
-                      null::boolean as has_password,
-                      null::timestamptz as password_expiry,
-                      null::interval as time_until_expiry
-                    from pg_roles r
-                    where r.rolname not like 'pg_%'
-                    order by r.rolname
-                    """
-                )
-                user_security = cur.fetchall()
+            _execute_safe_with_fallback(
+                                cur,
+                                """
+                                select
+                                    r.rolname as user,
+                                    r.oid as usesysid,
+                                    r.rolcreatedb as usecreatedb,
+                                    r.rolsuper as usesuper,
+                                    r.rolreplication as userepl,
+                                    r.rolbypassrls as usebypassrls,
+                                    s.passwd is not null as has_password,
+                                    s.valuntil as password_expiry,
+                                    s.valuntil - now() as time_until_expiry
+                                from pg_roles r
+                                left join pg_shadow s on s.usename = r.rolname
+                                where r.rolname not like 'pg_%'
+                                order by r.rolname
+                                """,
+                                """
+                                select
+                                    r.rolname as user,
+                                    r.oid as usesysid,
+                                    r.rolcreatedb as usecreatedb,
+                                    r.rolsuper as usesuper,
+                                    r.rolreplication as userepl,
+                                    r.rolbypassrls as usebypassrls,
+                                    null::boolean as has_password,
+                                    null::timestamptz as password_expiry,
+                                    null::interval as time_until_expiry
+                                from pg_roles r
+                                where r.rolname not like 'pg_%'
+                                order by r.rolname
+                                """,
+            )
+            user_security = cur.fetchall()
             
             # Summarize users to avoid truncation
             superusers = [u for u in user_security if u["usesuper"]]
@@ -2362,6 +2394,22 @@ def db_pg96_db_sec_perf_metrics(
                 results["recommended_fixes"].append("# work_mem = 64MB  # Adjust based on concurrent connections")
 
             return results
+
+
+@mcp.tool
+def db_pg96_database_security_performance_metrics(
+    cache_hit_threshold: int | None = None,
+    connection_usage_threshold: float | None = None,
+    profile: str = "oltp"
+) -> dict[str, Any]:
+    """
+    Alias for db_pg96_db_sec_perf_metrics to support clients expecting full-name tool convention.
+    """
+    return db_pg96_db_sec_perf_metrics.fn(
+        cache_hit_threshold=cache_hit_threshold,
+        connection_usage_threshold=connection_usage_threshold,
+        profile=profile,
+    )
 
 
 @mcp.tool

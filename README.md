@@ -420,6 +420,7 @@ This server implements strict security practices for logging:
 - `db_pg96_monitor_sessions(limit: int = 50)`: Real-time session monitoring data for the UI dashboard.
 - `db_pg96_analyze_sessions(include_idle: bool = True, include_locked: bool = True)`: Detailed session analysis.
 - `db_pg96_db_sec_perf_metrics(profile: str = "oltp")`: Comprehensive security and performance audit.
+- `db_pg96_database_security_performance_metrics(profile: str = "oltp")`: Alias of `db_pg96_db_sec_perf_metrics` for clients using expanded naming.
 - `db_pg96_get_db_parameters(pattern: str = None)`: Retrieve database configuration parameters (GUCs).
 
 ### 🔧 Maintenance (Requires `MCP_ALLOW_WRITE=true`)

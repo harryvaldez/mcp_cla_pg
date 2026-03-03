@@ -29,6 +29,7 @@ EXPECTED_TOOLS = [
     "db_pg96_check_bloat",
     "db_pg96_create_db_user",
     "db_pg96_db_sec_perf_metrics",
+    "db_pg96_database_security_performance_metrics",
     "db_pg96_alter_object",
     "db_pg96_create_object",
     "db_pg96_drop_object",
@@ -59,7 +60,23 @@ def _run(cmd: list[str], *, check: bool = True, capture: bool = False) -> subpro
 
 
 def _compose(*args: str, check: bool = True, capture: bool = False) -> subprocess.CompletedProcess[str]:
-    return _run(["docker", "compose", "-f", COMPOSE_FILE, *args], check=check, capture=capture)
+    compose_env = os.environ.copy()
+    compose_env.pop("DATABASE_URL", None)
+    compose_env.pop("MCP_TRANSPORT", None)
+    compose_env.pop("MCP_ALLOW_WRITE", None)
+    compose_env.pop("MCP_CONFIRM_WRITE", None)
+    compose_env["MCP_TRANSPORT"] = "http"
+    compose_env["MCP_ALLOW_WRITE"] = "false"
+    compose_env["MCP_CONFIRM_WRITE"] = "true"
+    compose_env["FASTMCP_AUTH_TYPE"] = "none"
+    return subprocess.run(
+        ["docker", "compose", "-f", COMPOSE_FILE, *args],
+        cwd=ROOT,
+        check=check,
+        text=True,
+        capture_output=capture,
+        env=compose_env,
+    )
 
 def _docker_available() -> bool:
     try:
@@ -227,6 +244,8 @@ def _call_all_tools() -> None:
     _assert(isinstance(info_mcp, dict) and info_mcp.get("status") == "healthy", "server_info_mcp returned unexpected shape")
 
     params = _invoke(server, "db_pg96_get_db_parameters", {"pattern": "max_connections|shared_buffers"})
+    if not isinstance(params, list) or len(params) == 0:
+        params = _invoke(server, "db_pg96_get_db_parameters")
     _assert(isinstance(params, list) and len(params) >= 1, "get_db_parameters returned no rows")
 
     dbs = _invoke(server, "db_pg96_list_objects", {"object_type": "database"})
