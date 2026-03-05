@@ -1,7 +1,15 @@
 # MCP Postgres Hardening Audit Evidence Pack
 
-Date: 2026-03-04  
+Date: 2026-03-05  
 Scope: Credential scoping, rate limiting/circuit breaker, prompt audit logging
+
+## Release History
+
+| Date | Git commit | Docker tags | Image digest |
+|------|------------|-------------|--------------|
+| 2026-03-05 | `4aafa3e` | `latest`, `4aafa3e` | `sha256:81c7d249e4202277adcb6a20e4fbb21952e31b3d7b633e6ca8869f986a62b073` |
+| 2026-03-05 | `c6286d4` | `latest`, `c6286d4` | `sha256:81c7d249e4202277adcb6a20e4fbb21952e31b3d7b633e6ca8869f986a62b073` |
+| 2026-03-05 | `39fcfd2` | `latest`, `39fcfd2` | `sha256:d3bb0c2903f5a6e249d2d803fc87929f3ea9e350b15ab47c89e9998e0a3d82a8` |
 
 ## 1) Credential Scoping (Least Privilege)
 
