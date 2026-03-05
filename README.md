@@ -14,6 +14,12 @@ For hardening-audit artifacts (credential scoping, rate limiting/circuit breaker
 - Docker tags: `harryvaldez/mcp-postgres:latest`, `harryvaldez/mcp-postgres:v1.0.3`, `harryvaldez/mcp-postgres:71703f4`
 - Image digest: `sha256:ca03612267f9a34fc30b28277a999e703441c9a4e6374a05ec0d47e3ce0a2430`
 
+### Latest Publish Snapshot (2026-03-05)
+
+- Git commit: `39fcfd2` (pushed to `main`)
+- Docker tags pushed: `harryvaldez/mcp-postgres:latest`, `harryvaldez/mcp-postgres:39fcfd2`
+- Docker image digest: `sha256:d3bb0c2903f5a6e249d2d803fc87929f3ea9e350b15ab47c89e9998e0a3d82a8`
+
 ### v1.0.3 Release Notes
 
 - Upgraded server and dependencies to **FastMCP v3** compatibility (`>=3.0.0,<4`).
