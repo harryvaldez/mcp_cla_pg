@@ -2,6 +2,7 @@ import importlib
 import sys
 from types import ModuleType
 from unittest.mock import MagicMock
+import builtins
 
 import pytest
 
@@ -19,6 +20,7 @@ def _build_fake_psycopg_pool(fetch_rows=None):
 
 
 def _import_server_with_fake_pool(monkeypatch, pool_instance):
+    monkeypatch.setenv("MCP_SKIP_CONFIRMATION", "true")
     fake_psycopg_pool = ModuleType("psycopg_pool")
     fake_psycopg_pool.ConnectionPool = MagicMock(return_value=pool_instance)
     monkeypatch.setitem(sys.modules, "psycopg_pool", fake_psycopg_pool)
@@ -92,5 +94,35 @@ def test_audit_policy_requires_source_prompt(monkeypatch, mocker):
 
         with pytest.raises(ValueError, match="requires source_prompt"):
             server.db_pg96_run_query("SELECT 1")
+    finally:
+        sys.modules.pop("server", None)
+
+
+def test_audit_writer_oserror_is_non_fatal(monkeypatch, mocker):
+    monkeypatch.setenv("DATABASE_URL", "postgres://test:test@localhost:5432/testdb")
+    monkeypatch.setenv("MCP_ALLOW_WRITE", "false")
+
+    pool_instance = _build_fake_psycopg_pool()
+    server = _import_server_with_fake_pool(monkeypatch, pool_instance)
+
+    try:
+        mock_warning = mocker.patch.object(server.logger, "warning")
+
+        def _raise_oserror(*args, **kwargs):
+            raise OSError("disk full")
+
+        mocker.patch.object(builtins, "open", side_effect=_raise_oserror)
+
+        server._write_audit_event(
+            tool_name="db_pg96_run_query",
+            sql_text="SELECT 1",
+            source_prompt="list users",
+            params_json=None,
+        )
+
+        assert mock_warning.called, "Expected warning log on audit log write failure"
+        warning_msg = mock_warning.call_args.args[0]
+        assert "Non-fatal audit log write failure" in warning_msg
+        assert server.AUDIT_LOG_FILE in warning_msg
     finally:
         sys.modules.pop("server", None)

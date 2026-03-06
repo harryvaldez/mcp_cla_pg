@@ -165,13 +165,30 @@ Key environment variables supported by the server:
 - `MCP_SKIP_CONFIRMATION` Skip startup confirmation dialog, default `false`.
 - `FASTMCP_AUTH_TYPE` Authentication type (`apikey`, `github`, `google`, `azure-ad`, `oidc`, `jwt`).
 - `FASTMCP_API_KEY` Secret key for `apikey` auth.
+- `FASTMCP_TASKS_ENABLED` Optional FastMCP background tasks toggle (`true`/`false`).
+- `MCP_TASKS_ENABLED` Backward-compatible alias for `FASTMCP_TASKS_ENABLED`.
+- `MCP_SKILLS_RESOURCES_ENABLED` Optional toggle for local skills resources (`skills://index`, `skills://{skill_id}`).
+- `MCP_SKILLS_DIRS` Optional semicolon/comma-separated skills roots (`<root>/<skill>/SKILL.md`).
+- `FASTMCP_SKILLS_DIRS` Alias for `MCP_SKILLS_DIRS`.
+- `FASTMCP_INCLUDE_TAGS` Optional allow-list for visibility filtering by tags.
+- `MCP_INCLUDE_TAGS` Alias for `FASTMCP_INCLUDE_TAGS`.
+- `FASTMCP_EXCLUDE_TAGS` Optional block-list for visibility filtering by tags.
+- `MCP_EXCLUDE_TAGS` Alias for `FASTMCP_EXCLUDE_TAGS`.
+- `FASTMCP_INCLUDE_META` Optional toggle for FastMCP metadata visibility.
+- `MCP_INCLUDE_META` Alias for `FASTMCP_INCLUDE_META`.
 - `FASTMCP_GITHUB_CLIENT_ID` / `FASTMCP_GITHUB_CLIENT_SECRET` GitHub OAuth credentials.
 - `FASTMCP_GOOGLE_CLIENT_ID` / `FASTMCP_GOOGLE_CLIENT_SECRET` Google OAuth credentials.
 - `FASTMCP_AZURE_AD_TENANT_ID` / `FASTMCP_AZURE_AD_CLIENT_ID` Azure AD credentials.
+- `FASTMCP_CLIENT_STORAGE_BACKEND` Optional OAuth client storage backend (`memory`, `disk`/`file`, `redis`).
+- `FASTMCP_CLIENT_STORAGE_PATH` Directory for `disk` client storage (default `.fastmcp-client-storage`).
+- `FASTMCP_CLIENT_STORAGE_REDIS_URL` Redis URL for client storage (or use host/port/db/password vars).
+- `FASTMCP_CLIENT_STORAGE_ENCRYPTION_KEY` Optional Fernet key for encrypting client storage values.
 - `MCP_SSL_CERT` Path to TLS certificate for HTTPS.
 - `MCP_SSL_KEY` Path to TLS private key for HTTPS.
 
 These are exemplified in [docker-compose.yml](docker-compose.yml).
+
+For Background Tasks support, install `fastmcp[auth,tasks]` (already reflected in this repository dependency manifests).
 
 ---
 

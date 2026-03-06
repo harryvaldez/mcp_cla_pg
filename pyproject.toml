@@ -7,7 +7,7 @@ authors = [
     { name = "Harry Valdez" }
 ]
 dependencies = [
-    "fastmcp>=3.0.0,<4",
+    "fastmcp[auth,tasks]>=3.0.0,<4",
     "psycopg[binary,pool]>=3.2.0",
     "starlette>=0.36.0",
 ]

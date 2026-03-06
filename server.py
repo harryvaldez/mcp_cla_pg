@@ -84,6 +84,63 @@ def _import_symbol(module_path: str, symbol_name: str) -> Any:
     except AttributeError as exc:
         raise RuntimeError(f"Missing symbol '{symbol_name}' in module '{module_path}'") from exc
 
+
+def _env_optional_int(name: str) -> int | None:
+    value = os.environ.get(name)
+    if value is None or value == "":
+        return None
+    return int(value)
+
+
+def _build_auth_client_storage() -> Any:
+    """Build optional FastMCP OAuth/OIDC client storage from environment variables."""
+    backend = (os.environ.get("FASTMCP_CLIENT_STORAGE_BACKEND") or "").strip().lower()
+    if not backend:
+        return None
+
+    default_collection = os.environ.get("FASTMCP_CLIENT_STORAGE_COLLECTION")
+
+    if backend == "memory":
+        MemoryStore = _import_symbol("key_value.aio.stores.memory", "MemoryStore")
+        store = MemoryStore(default_collection=default_collection)
+    elif backend in {"disk", "file"}:
+        DiskStore = _import_symbol("key_value.aio.stores.disk", "DiskStore")
+        store = DiskStore(
+            directory=os.environ.get("FASTMCP_CLIENT_STORAGE_PATH", ".fastmcp-client-storage"),
+            max_size=_env_optional_int("FASTMCP_CLIENT_STORAGE_MAX_SIZE"),
+            default_collection=default_collection,
+        )
+    elif backend == "redis":
+        RedisStore = _import_symbol("key_value.aio.stores.redis", "RedisStore")
+        redis_url = os.environ.get("FASTMCP_CLIENT_STORAGE_REDIS_URL")
+        if redis_url:
+            store = RedisStore(url=redis_url, default_collection=default_collection)
+        else:
+            store = RedisStore(
+                host=os.environ.get("FASTMCP_CLIENT_STORAGE_REDIS_HOST", "localhost"),
+                port=int(os.environ.get("FASTMCP_CLIENT_STORAGE_REDIS_PORT", "6379")),
+                db=int(os.environ.get("FASTMCP_CLIENT_STORAGE_REDIS_DB", "0")),
+                password=os.environ.get("FASTMCP_CLIENT_STORAGE_REDIS_PASSWORD"),
+                default_collection=default_collection,
+            )
+    else:
+        raise ValueError(
+            "Invalid FASTMCP_CLIENT_STORAGE_BACKEND. Accepted values are: memory, disk, redis"
+        )
+
+    encryption_key = os.environ.get("FASTMCP_CLIENT_STORAGE_ENCRYPTION_KEY")
+    if encryption_key:
+        FernetEncryptionWrapper = _import_symbol(
+            "key_value.aio.wrappers.encryption", "FernetEncryptionWrapper"
+        )
+        Fernet = _import_symbol("cryptography.fernet", "Fernet")
+        store = FernetEncryptionWrapper(
+            key_value=store,
+            fernet=Fernet(encryption_key.encode("utf-8")),
+        )
+
+    return store
+
 # Patch for Windows asyncio ProactorEventLoop "ConnectionResetError" noise on shutdown
 # References:
 # - https://bugs.python.org/issue39232 (bpo-39232)
@@ -134,6 +191,8 @@ def _get_auth() -> Any:
     if auth_type_lower == "none":
         return None
 
+    client_storage = _build_auth_client_storage()
+
     # Full OIDC Proxy (handles login flow)
     if auth_type_lower == "oidc":
         OIDCProxy = _import_symbol("fastmcp.server.auth.oidc_proxy", "OIDCProxy")
@@ -155,6 +214,7 @@ def _get_auth() -> Any:
             client_secret=client_secret,
             base_url=base_url,
             audience=os.environ.get("FASTMCP_OIDC_AUDIENCE"),
+            client_storage=client_storage,
         )
 
     # Pure JWT Verification (resource server mode)
@@ -200,6 +260,7 @@ def _get_auth() -> Any:
                 client_secret=client_secret,
                 base_url=base_url,
                 audience=os.environ.get("FASTMCP_AZURE_AD_AUDIENCE", client_id),
+                client_storage=client_storage,
             )
         else:
             JWTVerifier = _import_symbol("fastmcp.server.auth.providers.jwt", "JWTVerifier")
@@ -228,7 +289,8 @@ def _get_auth() -> Any:
         return GitHubProvider(
             client_id=client_id,
             client_secret=client_secret,
-            base_url=base_url
+            base_url=base_url,
+            client_storage=client_storage,
         )
 
     # Google OAuth2
@@ -248,7 +310,8 @@ def _get_auth() -> Any:
         return GoogleProvider(
             client_id=client_id,
             client_secret=client_secret,
-            base_url=base_url
+            base_url=base_url,
+            client_storage=client_storage,
         )
 
     # Generic OAuth2 Proxy
@@ -285,7 +348,8 @@ def _get_auth() -> Any:
             upstream_client_id=client_id,
             upstream_client_secret=client_secret,
             token_verifier=token_verifier,
-            base_url=base_url
+            base_url=base_url,
+            client_storage=client_storage,
         )
             
 def _env_int(name: str, default: int) -> int:
@@ -302,12 +366,149 @@ def _env_bool(name: str, default: bool) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
+def _env_optional_bool(name: str) -> bool | None:
+    value = os.environ.get(name)
+    if value is None or value == "":
+        return None
+    return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _env_optional_tag_set(name: str) -> set[str] | None:
+    value = os.environ.get(name)
+    if value is None or value.strip() == "":
+        return None
+    parts = [segment.strip() for segment in re.split(r"[;,]", value) if segment.strip()]
+    if not parts:
+        return None
+    return set(parts)
+
+
+def _resolve_skills_roots() -> list[str]:
+    raw = os.environ.get("MCP_SKILLS_DIRS") or os.environ.get("FASTMCP_SKILLS_DIRS")
+    if raw:
+        candidates = [segment.strip() for segment in re.split(r"[;,]", raw) if segment.strip()]
+    else:
+        candidates = [os.path.join(os.getcwd(), ".trae", "skills")]
+
+    resolved: list[str] = []
+    for candidate in candidates:
+        full = os.path.abspath(os.path.expanduser(candidate))
+        if os.path.isdir(full) and full not in resolved:
+            resolved.append(full)
+    return resolved
+
+
+def _build_skill_index() -> dict[str, str]:
+    roots = _resolve_skills_roots()
+    if not roots:
+        return {}
+
+    grouped: dict[str, list[tuple[str, str]]] = {}
+    for root in roots:
+        root_alias = os.path.basename(root.rstrip("/\\")) or "skills"
+        try:
+            entries = sorted(os.scandir(root), key=lambda entry: entry.name.lower())
+        except OSError:
+            continue
+
+        for entry in entries:
+            if not entry.is_dir():
+                continue
+            skill_md = os.path.join(entry.path, "SKILL.md")
+            if not os.path.isfile(skill_md):
+                continue
+            grouped.setdefault(entry.name, []).append((root_alias, skill_md))
+
+    index: dict[str, str] = {}
+    for name, locations in grouped.items():
+        if len(locations) == 1:
+            index[name] = locations[0][1]
+            continue
+        for alias, skill_md in locations:
+            index[f"{alias}/{name}"] = skill_md
+    return index
+
+
+def _register_skills_resources() -> None:
+    enabled = _env_bool("MCP_SKILLS_RESOURCES_ENABLED", False)
+    if not enabled:
+        return
+
+    @mcp.resource(
+        "skills://index",
+        name="skills_index",
+        description="List available local SKILL.md resources exposed by this server.",
+        mime_type="text/markdown",
+    )
+    def skills_index_resource() -> str:
+        skill_map = _build_skill_index()
+        roots = _resolve_skills_roots()
+
+        lines = ["# Skills Index", ""]
+        if roots:
+            lines.append("Configured roots:")
+            for root in roots:
+                lines.append(f"- `{root}`")
+            lines.append("")
+
+        if not skill_map:
+            lines.append("No `SKILL.md` files found in configured roots.")
+            return "\n".join(lines)
+
+        lines.append("Available skill resources:")
+        for skill_id in sorted(skill_map.keys()):
+            lines.append(f"- `skills://{skill_id}`")
+        return "\n".join(lines)
+
+    @mcp.resource(
+        "skills://{skill_id}",
+        name="skill_resource",
+        description="Read a local skill document (SKILL.md) by id from the skills index.",
+        mime_type="text/markdown",
+    )
+    def skill_resource(skill_id: str) -> str:
+        skill_map = _build_skill_index()
+        skill_path = skill_map.get(skill_id)
+        if not skill_path:
+            available = ", ".join(sorted(skill_map.keys())[:20])
+            if len(skill_map) > 20:
+                available = f"{available}, ..."
+            raise ValueError(
+                f"Unknown skill id '{skill_id}'. Read 'skills://index' for available ids. "
+                f"Visible ids: {available or '(none)'}"
+            )
+
+        try:
+            with open(skill_path, "r", encoding="utf-8") as handle:
+                return handle.read()
+        except OSError as exc:
+            raise RuntimeError(f"Failed to read skill file '{skill_path}': {exc}") from exc
+
+
 # Initialize FastMCP
 auth_type = os.environ.get("FASTMCP_AUTH_TYPE", "").lower()
+tasks_enabled = _env_optional_bool("FASTMCP_TASKS_ENABLED")
+if tasks_enabled is None:
+    tasks_enabled = _env_optional_bool("MCP_TASKS_ENABLED")
+include_tags = _env_optional_tag_set("FASTMCP_INCLUDE_TAGS")
+if include_tags is None:
+    include_tags = _env_optional_tag_set("MCP_INCLUDE_TAGS")
+exclude_tags = _env_optional_tag_set("FASTMCP_EXCLUDE_TAGS")
+if exclude_tags is None:
+    exclude_tags = _env_optional_tag_set("MCP_EXCLUDE_TAGS")
+include_fastmcp_meta = _env_optional_bool("FASTMCP_INCLUDE_META")
+if include_fastmcp_meta is None:
+    include_fastmcp_meta = _env_optional_bool("MCP_INCLUDE_META")
 mcp = FastMCP(
     name=os.environ.get("MCP_SERVER_NAME", "PostgreSQL MCP Server"),
-    auth=_get_auth() if auth_type != "apikey" else None
+    auth=_get_auth() if auth_type != "apikey" else None,
+    tasks=tasks_enabled,
+    include_tags=include_tags,
+    exclude_tags=exclude_tags,
+    include_fastmcp_meta=include_fastmcp_meta,
 )
+
+_register_skills_resources()
 
 # Backward-compatibility alias for tests/clients expecting `server` as the FastMCP app object.
 server = mcp
@@ -652,9 +853,17 @@ def _parse_allowed_tables(raw_value: str) -> set[str]:
 
 def _validate_table_scope() -> None:
     if not ENFORCE_TABLE_SCOPE:
+        logger.warning(
+            "Least-privilege table scope enforcement is DISABLED "
+            "(MCP_ENFORCE_TABLE_SCOPE=false)."
+        )
         return
 
     allowed_tables = _parse_allowed_tables(ALLOWED_TABLES_RAW)
+    logger.info(
+        "Least-privilege table scope enforcement is ENABLED "
+        f"(allowed_tables_configured={len(allowed_tables)})."
+    )
     if not allowed_tables:
         raise RuntimeError(
             "MCP_ENFORCE_TABLE_SCOPE=true requires MCP_ALLOWED_TABLES (comma-separated schema.table list)."
@@ -808,8 +1017,19 @@ def _write_audit_event(
         event["sql"] = sql_text
 
     with _audit_log_lock:
-        with open(AUDIT_LOG_FILE, "a", encoding="utf-8") as f:
-            f.write(json.dumps(event, ensure_ascii=False) + "\n")
+        try:
+            with open(AUDIT_LOG_FILE, "a", encoding="utf-8") as f:
+                f.write(json.dumps(event, ensure_ascii=False) + "\n")
+        except OSError as exc:
+            logger.warning(
+                f"Non-fatal audit log write failure for '{AUDIT_LOG_FILE}': {exc}"
+            )
+            return
+        except Exception as exc:
+            logger.warning(
+                f"Non-fatal unexpected audit log write failure for '{AUDIT_LOG_FILE}': {exc}"
+            )
+            return
 
 
 _SINGLE_QUOTED = re.compile(r"'(?:''|[^'])*'")
@@ -1084,7 +1304,7 @@ async def root(_request: Request) -> HTMLResponse:
     """)
 
 
-@mcp.tool
+@mcp.tool(tags={"public"})
 def db_pg96_create_db_user(
     username: str,
     password: str,
@@ -1211,7 +1431,7 @@ def db_pg96_create_db_user(
                 )
 
 
-@mcp.tool
+@mcp.tool(tags={"public"})
 def db_pg96_drop_db_user(username: str) -> str:
     """
     Drops a database user (role).
@@ -1243,7 +1463,7 @@ def db_pg96_drop_db_user(username: str) -> str:
             return f"User '{username}' dropped successfully."
 
 
-@mcp.tool
+@mcp.tool(tags={"public"})
 def db_pg96_alter_object(
     object_type: str,
     object_name: str,
@@ -1509,7 +1729,7 @@ def db_pg96_alter_object(
             return f"Operation '{op}' on {obj_type} '{object_name}' completed successfully."
 
 
-@mcp.tool
+@mcp.tool(tags={"public"})
 def db_pg96_create_object(
     object_type: str,
     object_name: str,
@@ -1756,7 +1976,7 @@ def db_pg96_create_object(
             return f"{obj_type.capitalize()} '{object_name}' created successfully."
 
 
-@mcp.tool
+@mcp.tool(tags={"public"})
 def db_pg96_drop_object(
     object_type: str,
     object_name: str,
@@ -1881,7 +2101,7 @@ def db_pg96_drop_object(
             return f"{obj_type.capitalize()} '{object_name}' dropped successfully."
 
 
-@mcp.tool
+@mcp.tool(tags={"public"})
 def db_pg96_check_bloat(limit: int = 50) -> list[dict[str, Any]]:
     """
     Identifies the top bloated tables and indexes and provides maintenance commands.
@@ -1994,7 +2214,7 @@ def db_pg96_check_bloat(limit: int = 50) -> list[dict[str, Any]]:
             return cur.fetchall()
 
 
-@mcp.tool
+@mcp.tool(tags={"public"})
 def db_pg96_db_stats(database: str | None = None, include_performance: bool = False) -> list[dict[str, Any]] | dict[str, Any]:
     """
     Get database-level statistics including commits, rollbacks, temp files, and deadlocks.
@@ -2096,7 +2316,7 @@ def db_pg96_db_stats(database: str | None = None, include_performance: bool = Fa
                 return results
 
 
-@mcp.tool
+@mcp.tool(tags={"public"})
 def db_pg96_analyze_table_health(
     schema: str | None = None,
     min_size_mb: int = 50,
@@ -2425,7 +2645,7 @@ def db_pg96_analyze_table_health(
             )
 
 
-@mcp.tool
+@mcp.tool(tags={"public"})
 def db_pg96_db_sec_perf_metrics(
     cache_hit_threshold: int | None = None,
     connection_usage_threshold: float | None = None,
@@ -2788,7 +3008,7 @@ def db_pg96_db_sec_perf_metrics(
             )
 
 
-@mcp.tool
+@mcp.tool(tags={"public"})
 def db_pg96_database_security_performance_metrics(
     cache_hit_threshold: int | None = None,
     connection_usage_threshold: float | None = None,
@@ -2810,7 +3030,7 @@ def db_pg96_database_security_performance_metrics(
     )
 
 
-@mcp.tool
+@mcp.tool(tags={"public"})
 def db_pg96_recommend_partitioning(
     min_size_gb: float = 1.0,
     schema: str | None = None,
@@ -2966,7 +3186,7 @@ def db_pg96_recommend_partitioning(
             return results
 
 
-@mcp.tool
+@mcp.tool(tags={"public"})
 def db_pg96_analyze_sessions(
     include_idle: bool = True,
     include_active: bool = True,
@@ -3135,7 +3355,7 @@ def db_pg96_analyze_sessions(
             return results
 
 
-@mcp.tool
+@mcp.tool(tags={"public"})
 def db_pg96_kill_session(pid: int) -> dict[str, Any]:
     """
     Terminates a database session by its process ID (PID).
@@ -3169,7 +3389,7 @@ def db_pg96_kill_session(pid: int) -> dict[str, Any]:
 
 
 
-@mcp.tool
+@mcp.tool(tags={"public"})
 def db_pg96_server_info() -> dict[str, Any]:
     """
     Retrieves information about the current PostgreSQL server connection and version.
@@ -3206,7 +3426,7 @@ def db_pg96_server_info() -> dict[str, Any]:
             }
 
 
-@mcp.tool
+@mcp.tool(tags={"public"})
 def db_pg96_get_db_parameters(pattern: str | None = None) -> list[dict[str, Any]]:
     """
     Retrieves database configuration parameters (GUCs).
@@ -3268,7 +3488,7 @@ def db_pg96_get_db_parameters(pattern: str | None = None) -> list[dict[str, Any]
             return cur.fetchall()
 
 
-@mcp.tool
+@mcp.tool(tags={"public"})
 def db_pg96_list_objects(
     object_type: str,
     schema: str | None = None,
@@ -3587,7 +3807,7 @@ def db_pg96_list_objects(
 
 
 
-@mcp.tool
+@mcp.tool(tags={"public"})
 def db_pg96_analyze_indexes(
     schema: str | None = None,
     limit: int = 50,
@@ -3727,7 +3947,7 @@ def db_pg96_analyze_indexes(
             )
 
 
-@mcp.tool
+@mcp.tool(tags={"public"})
 def db_pg96_analyze_logical_data_model(
     schema: str = "public",
     include_views: bool = False,
@@ -4207,7 +4427,7 @@ def db_pg96_analyze_logical_data_model(
 
 
 
-@mcp.tool
+@mcp.tool(tags={"public"})
 def db_pg96_describe_table(schema: str, table: str) -> dict[str, Any]:
     """
     Get detailed information about a table's structure, including columns, indexes, and size.
@@ -4288,7 +4508,7 @@ def db_pg96_describe_table(schema: str, table: str) -> dict[str, Any]:
             }
 
 
-@mcp.tool
+@mcp.tool(tags={"public"})
 def db_pg96_run_query(
     sql: str,
     params_json: str | None = None,
@@ -4356,7 +4576,7 @@ def db_pg96_run_query(
             }
 
 
-@mcp.tool
+@mcp.tool(tags={"public"})
 def db_pg96_explain_query(
     sql: str,
     analyze: bool = False,
@@ -4418,7 +4638,7 @@ def db_pg96_explain_query(
             return {"format": "text", "plan": text}
 
 
-@mcp.tool
+@mcp.tool(tags={"public"})
 def db_pg96_ping() -> dict[str, Any]:
     """
     Check if the MCP server is responsive.
@@ -4429,7 +4649,7 @@ def db_pg96_ping() -> dict[str, Any]:
     return {"ok": True}
 
 
-@mcp.tool
+@mcp.tool(tags={"public"})
 def db_pg96_server_info_mcp() -> dict[str, Any]:
     """
     Get information about the MCP server configuration and status.
@@ -5035,7 +5255,7 @@ async def api_sessions(_request: Request) -> JSONResponse:
 async def health_check(_request: Request) -> JSONResponse:
     return JSONResponse({"status": "healthy"})
 
-@mcp.tool
+@mcp.tool(tags={"public"})
 def db_pg96_monitor_sessions() -> str:
     """
     Get the link to the real-time database sessions monitor dashboard.
@@ -5170,3 +5390,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+

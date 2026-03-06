@@ -54,6 +54,7 @@ For hardening-audit artifacts (credential scoping, rate limiting/circuit breaker
 - This server targets **FastMCP v3** (`>=3.0.0,<4`).
 - Decorated exports such as `db_pg96_*` are regular callables in FastMCP v3. If you are writing tests or scripts, call functions directly (for example, `db_pg96_ping()`), rather than expecting wrapper attributes like `.fn` on decorated results.
 - For auth provider extensions, use FastMCP v3 module paths under `fastmcp.server.auth...`.
+- Background Tasks support follows FastMCP v3 task protocol features. Server-level task support can be toggled with `FASTMCP_TASKS_ENABLED` (or `MCP_TASKS_ENABLED`).
 
 ---
 
@@ -321,6 +322,53 @@ To prevent the MCP server from becoming unresponsive or overloading the database
 | `MCP_SKIP_CONFIRMATION` | Set to "true" to skip startup confirmation dialog (Windows) | `false` |
 | `MCP_LOG_LEVEL` | Logging level (DEBUG, INFO, WARNING, ERROR) | `INFO` |
 | `MCP_LOG_FILE` | Optional path to write logs to a file | *None* |
+| `FASTMCP_TASKS_ENABLED` | Optional FastMCP task protocol toggle (`true`/`false`). If unset, FastMCP default behavior is used. | *Unset* |
+| `MCP_TASKS_ENABLED` | Backward-compatible alias for `FASTMCP_TASKS_ENABLED` when the latter is unset. | *Unset* |
+| `MCP_SKILLS_RESOURCES_ENABLED` | Enable local "skills as resources" endpoints (`skills://index`, `skills://{skill_id}`) | `false` |
+| `MCP_SKILLS_DIRS` | Optional semicolon/comma-separated skill root directories (each containing `<skill>/SKILL.md`) | `.trae/skills` (if present) |
+| `FASTMCP_SKILLS_DIRS` | Alias for `MCP_SKILLS_DIRS` | *Unset* |
+| `FASTMCP_INCLUDE_TAGS` | Optional server-level visibility allow-list (comma/semicolon tags) | *Unset* |
+| `MCP_INCLUDE_TAGS` | Alias for `FASTMCP_INCLUDE_TAGS` | *Unset* |
+| `FASTMCP_EXCLUDE_TAGS` | Optional server-level visibility block-list (comma/semicolon tags) | *Unset* |
+| `MCP_EXCLUDE_TAGS` | Alias for `FASTMCP_EXCLUDE_TAGS` | *Unset* |
+| `FASTMCP_INCLUDE_META` | Optional FastMCP metadata visibility toggle (`true`/`false`) | *Unset* |
+| `MCP_INCLUDE_META` | Alias for `FASTMCP_INCLUDE_META` | *Unset* |
+
+### Background Tasks (FastMCP)
+
+FastMCP Background Tasks (SEP-1686) are supported by the runtime when enabled.
+
+- Install dependency support: `fastmcp[auth,tasks]` (already configured in this repository manifests).
+- Server-wide toggle: set `FASTMCP_TASKS_ENABLED=true` (or `MCP_TASKS_ENABLED=true`).
+- Tool-level behavior still requires decorator support (for example, `@mcp.tool(task=True)` on async tools).
+- `task=True` requires async tool functions in FastMCP.
+
+### Skills As Resources (FastMCP Pattern)
+
+This server supports the FastMCP "skills as resources" pattern as an opt-in feature.
+
+- Enable with `MCP_SKILLS_RESOURCES_ENABLED=true`.
+- Use `skills://index` to list discovered skills.
+- Read a skill with `skills://{skill_id}`.
+- Skill files are discovered as `<root>/<skill-name>/SKILL.md` from `MCP_SKILLS_DIRS` (or `FASTMCP_SKILLS_DIRS`).
+
+Security note:
+- This feature is disabled by default because it exposes local markdown files from configured skill directories.
+
+### Visibility Controls (FastMCP)
+
+This server supports FastMCP visibility filtering through tag-based controls.
+
+- Use `FASTMCP_INCLUDE_TAGS` to include only components with matching tags.
+- Use `FASTMCP_EXCLUDE_TAGS` to hide components with matching tags.
+- Use `FASTMCP_INCLUDE_META` to control FastMCP metadata visibility.
+- Each setting also has an `MCP_*` alias for convenience.
+- All MCP tools in this server are registered with the `public` tag by default.
+- To expose only this server's tool surface, set `FASTMCP_INCLUDE_TAGS=public`.
+
+Format examples:
+- `FASTMCP_INCLUDE_TAGS=public,readonly`
+- `FASTMCP_EXCLUDE_TAGS=experimental;internal`
 
 ### Security Constraints
 If `MCP_ALLOW_WRITE=true`, the server enforces the following additional security checks at startup:
@@ -340,6 +388,28 @@ Additional hardening controls:
 ### 🔐 Authentication & OAuth2
 
 The server supports several authentication modes via `FASTMCP_AUTH_TYPE`.
+
+### OAuth Client Storage Backends (FastMCP)
+
+For OAuth/OIDC providers, you can configure persistent `client_storage` (used for auth state and token-related metadata) via environment variables. This maps to FastMCP storage backend support documented at `https://gofastmcp.com/servers/storage-backends`.
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `FASTMCP_CLIENT_STORAGE_BACKEND` | Storage backend for OAuth client storage: `memory`, `disk` (or `file`), `redis` | Not set (FastMCP default behavior) |
+| `FASTMCP_CLIENT_STORAGE_COLLECTION` | Optional collection/namespace name | *None* |
+| `FASTMCP_CLIENT_STORAGE_PATH` | Directory path for `disk` backend | `.fastmcp-client-storage` |
+| `FASTMCP_CLIENT_STORAGE_MAX_SIZE` | Optional max size in bytes for `disk` backend | *None* |
+| `FASTMCP_CLIENT_STORAGE_REDIS_URL` | Redis URL (if set, overrides host/port/db settings) | *None* |
+| `FASTMCP_CLIENT_STORAGE_REDIS_HOST` | Redis host when URL is not provided | `localhost` |
+| `FASTMCP_CLIENT_STORAGE_REDIS_PORT` | Redis port when URL is not provided | `6379` |
+| `FASTMCP_CLIENT_STORAGE_REDIS_DB` | Redis DB index when URL is not provided | `0` |
+| `FASTMCP_CLIENT_STORAGE_REDIS_PASSWORD` | Redis password when URL is not provided | *None* |
+| `FASTMCP_CLIENT_STORAGE_ENCRYPTION_KEY` | Optional Fernet key to encrypt storage values at rest | *None* |
+
+Notes:
+- Storage backend settings apply to `oidc`, `oauth2`, `github`, and `google` auth providers.
+- `jwt` verification mode does not use OAuth client storage.
+- For production with persistent storage, set `FASTMCP_CLIENT_STORAGE_ENCRYPTION_KEY`.
 
 #### 1. Generic OAuth2 Proxy
 Bridge MCP dynamic registration with traditional OAuth2 providers.
@@ -485,7 +555,7 @@ This server implements strict security practices for logging:
 - `db_pg96_check_bloat(limit: int = 50)`: Identifies the top bloated tables and indexes and provides maintenance commands.
 - `db_pg96_analyze_indexes(schema: str = None, limit: int = 50, detail_level: str = "full", max_items_per_category: int = None, response_format: str = "legacy")`: Identify unused, duplicate, or missing indexes.
 - `db_pg96_recommend_partitioning(min_size_gb: float = 1.0, schema: str = None)`: Suggest tables for partitioning.
-- `db_pg96_explain_query(sql: str, analyze: bool = False, output_format: str = "json", source_prompt: str | None = None)`: Get the execution plan for a query with optional prompt audit logging.
+- `db_pg96_explain_query(sql: str, analyze: bool = False, buffers: bool = False, verbose: bool = False, settings: bool = False, output_format: str = "json", source_prompt: str | None = None)`: Get the execution plan for a query with optional prompt audit logging. `buffers` includes buffer usage, `verbose` adds detailed plan fields, and `settings` includes planner configuration values (all default to `False`).
 
 ### 🕵️ Session & Security
 - `db_pg96_monitor_sessions(limit: int = 50)`: Real-time session monitoring data for the UI dashboard.
