@@ -134,9 +134,19 @@ def _build_auth_client_storage() -> Any:
             "key_value.aio.wrappers.encryption", "FernetEncryptionWrapper"
         )
         Fernet = _import_symbol("cryptography.fernet", "Fernet")
+        try:
+            fernet = Fernet(encryption_key.encode("ascii"))
+        except ValueError as exc:
+            logger.error(
+                "Invalid FASTMCP_CLIENT_STORAGE_ENCRYPTION_KEY. "
+                "Expected a URL-safe base64-encoded Fernet key."
+            )
+            raise RuntimeError(
+                "Invalid FASTMCP_CLIENT_STORAGE_ENCRYPTION_KEY format."
+            ) from exc
         store = FernetEncryptionWrapper(
             key_value=store,
-            fernet=Fernet(encryption_key.encode("utf-8")),
+            fernet=fernet,
         )
 
     return store
@@ -503,10 +513,16 @@ mcp = FastMCP(
     name=os.environ.get("MCP_SERVER_NAME", "PostgreSQL MCP Server"),
     auth=_get_auth() if auth_type != "apikey" else None,
     tasks=tasks_enabled,
-    include_tags=include_tags,
-    exclude_tags=exclude_tags,
-    include_fastmcp_meta=include_fastmcp_meta,
 )
+
+if include_tags:
+    mcp.enable(tags=include_tags, only=True)
+if exclude_tags:
+    mcp.disable(tags=exclude_tags)
+if include_fastmcp_meta is not None:
+    logger.warning(
+        "FASTMCP_INCLUDE_META/MCP_INCLUDE_META is not supported by this FastMCP version and will be ignored."
+    )
 
 _register_skills_resources()
 
@@ -734,6 +750,7 @@ ALLOWED_TABLES_RAW = os.environ.get("MCP_ALLOWED_TABLES", "")
 AUDIT_LOG_FILE = os.environ.get("MCP_AUDIT_LOG_FILE", "mcp_audit.log")
 AUDIT_LOG_SQL_TEXT = _env_bool("MCP_AUDIT_LOG_SQL_TEXT", False)
 AUDIT_REQUIRE_PROMPT = _env_bool("MCP_AUDIT_REQUIRE_PROMPT", False)
+AUDIT_LOG_REQUIRED = _env_bool("MCP_AUDIT_LOG_REQUIRED", False)
 
 
 # SSH Tunnel Configuration
@@ -1021,11 +1038,25 @@ def _write_audit_event(
             with open(AUDIT_LOG_FILE, "a", encoding="utf-8") as f:
                 f.write(json.dumps(event, ensure_ascii=False) + "\n")
         except OSError as exc:
+            if AUDIT_LOG_REQUIRED:
+                logger.error(
+                    f"Fatal audit log write failure for '{AUDIT_LOG_FILE}': {exc}"
+                )
+                raise RuntimeError(
+                    f"Audit log write failed for '{AUDIT_LOG_FILE}': {exc}"
+                ) from exc
             logger.warning(
                 f"Non-fatal audit log write failure for '{AUDIT_LOG_FILE}': {exc}"
             )
             return
         except Exception as exc:
+            if AUDIT_LOG_REQUIRED:
+                logger.error(
+                    f"Fatal unexpected audit log write failure for '{AUDIT_LOG_FILE}': {exc}"
+                )
+                raise RuntimeError(
+                    f"Unexpected audit log write failure for '{AUDIT_LOG_FILE}': {exc}"
+                ) from exc
             logger.warning(
                 f"Non-fatal unexpected audit log write failure for '{AUDIT_LOG_FILE}': {exc}"
             )
@@ -1953,7 +1984,7 @@ def db_pg96_create_object(
             else:
                 raise ValueError(f"Creation of object type '{obj_type}' not supported.")
 
-            logger.info(f"Executing CREATE: {str(query)}")
+            logger.info(f"Executing CREATE: {query.as_string(conn)}")
             _execute_safe(cur, query)
             
             # Post-creation steps (like owner)

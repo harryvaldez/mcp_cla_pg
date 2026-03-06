@@ -181,7 +181,7 @@ Key environment variables supported by the server:
 - `FASTMCP_AZURE_AD_TENANT_ID` / `FASTMCP_AZURE_AD_CLIENT_ID` Azure AD credentials.
 - `FASTMCP_CLIENT_STORAGE_BACKEND` Optional OAuth client storage backend (`memory`, `disk`/`file`, `redis`).
 - `FASTMCP_CLIENT_STORAGE_PATH` Directory for `disk` client storage (default `.fastmcp-client-storage`).
-- `FASTMCP_CLIENT_STORAGE_REDIS_URL` Redis URL for client storage (or use host/port/db/password vars).
+- `FASTMCP_CLIENT_STORAGE_REDIS_URL` Redis URL for client storage. If unset, configure `FASTMCP_CLIENT_STORAGE_REDIS_HOST` (default `localhost`), `FASTMCP_CLIENT_STORAGE_REDIS_PORT` (default `6379`), `FASTMCP_CLIENT_STORAGE_REDIS_DB` (default `0`), and optional `FASTMCP_CLIENT_STORAGE_REDIS_PASSWORD`.
 - `FASTMCP_CLIENT_STORAGE_ENCRYPTION_KEY` Optional Fernet key for encrypting client storage values.
 - `MCP_SSL_CERT` Path to TLS certificate for HTTPS.
 - `MCP_SSL_KEY` Path to TLS private key for HTTPS.

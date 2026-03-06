@@ -79,6 +79,26 @@ If the response has `truncated=true`, increase only the relevant max parameter a
 
 ## 📦 Installation & Usage
 
+### Quick Start with `.env`
+
+Use the provided environment template to bootstrap local configuration.
+
+PowerShell:
+```powershell
+Copy-Item .env.sample .env
+```
+
+bash:
+```bash
+cp .env.sample .env
+```
+
+Then edit `.env` (at minimum set `DATABASE_URL`, `MCP_ALLOW_WRITE`, and `MCP_CONFIRM_WRITE`) and run:
+
+```bash
+uv run mcp-postgres
+```
+
 ### ⚡ Quickstart: Docker + n8n
 
 Spin up a complete environment with **PostgreSQL**, **MCP Server**, and **n8n** in one command.
@@ -325,11 +345,11 @@ To prevent the MCP server from becoming unresponsive or overloading the database
 | `FASTMCP_TASKS_ENABLED` | Optional FastMCP task protocol toggle (`true`/`false`). If unset, FastMCP default behavior is used. | *Unset* |
 | `MCP_TASKS_ENABLED` | Backward-compatible alias for `FASTMCP_TASKS_ENABLED` when the latter is unset. | *Unset* |
 | `MCP_SKILLS_RESOURCES_ENABLED` | Enable local "skills as resources" endpoints (`skills://index`, `skills://{skill_id}`) | `false` |
-| `MCP_SKILLS_DIRS` | Optional semicolon/comma-separated skill root directories (each containing `<skill>/SKILL.md`) | `.trae/skills` (if present) |
+| `MCP_SKILLS_DIRS` | Optional skill root directories (comma-separated; semicolon also supported), each containing `<skill>/SKILL.md` | `.trae/skills` (if present) |
 | `FASTMCP_SKILLS_DIRS` | Alias for `MCP_SKILLS_DIRS` | *Unset* |
-| `FASTMCP_INCLUDE_TAGS` | Optional server-level visibility allow-list (comma/semicolon tags) | *Unset* |
-| `MCP_INCLUDE_TAGS` | Alias for `FASTMCP_INCLUDE_TAGS` | *Unset* |
-| `FASTMCP_EXCLUDE_TAGS` | Optional server-level visibility block-list (comma/semicolon tags) | *Unset* |
+| `FASTMCP_INCLUDE_TAGS` | Optional server-level visibility allow-list tags (comma-separated; semicolon also supported) | *Unset* |
+| `MCP_INCLUDE_TAGS` | Alias for `FASTMCP_INCLUDE_TAGS` (comma-separated; semicolon also supported) | *Unset* |
+| `FASTMCP_EXCLUDE_TAGS` | Optional server-level visibility block-list tags (comma-separated; semicolon also supported) | *Unset* |
 | `MCP_EXCLUDE_TAGS` | Alias for `FASTMCP_EXCLUDE_TAGS` | *Unset* |
 | `FASTMCP_INCLUDE_META` | Optional FastMCP metadata visibility toggle (`true`/`false`) | *Unset* |
 | `MCP_INCLUDE_META` | Alias for `FASTMCP_INCLUDE_META` | *Unset* |

@@ -95,10 +95,16 @@ def _scan_server_tools() -> list[str]:
             continue
         has_tool_decorator = False
         for dec in node.decorator_list:
-            if isinstance(dec, ast.Attribute) and isinstance(dec.value, ast.Name) and dec.value.id == "mcp" and dec.attr == "tool":
+            target = dec.func if isinstance(dec, ast.Call) else dec
+            if (
+                isinstance(target, ast.Attribute)
+                and isinstance(target.value, ast.Name)
+                and target.value.id == "mcp"
+                and target.attr == "tool"
+            ):
                 has_tool_decorator = True
                 break
-            if isinstance(dec, ast.Name) and dec.id == "tool":
+            if isinstance(target, ast.Name) and target.id == "tool":
                 has_tool_decorator = True
                 break
         if has_tool_decorator and node.name.startswith("db_pg96_"):
