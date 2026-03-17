@@ -344,6 +344,14 @@ To prevent the MCP server from becoming unresponsive or overloading the database
 | `MCP_LOG_FILE` | Optional path to write logs to a file | *None* |
 | `FASTMCP_TASKS_ENABLED` | Optional FastMCP task protocol toggle (`true`/`false`). If unset, FastMCP default behavior is used. | *Unset* |
 | `MCP_TASKS_ENABLED` | Backward-compatible alias for `FASTMCP_TASKS_ENABLED` when the latter is unset. | *Unset* |
+| `FASTMCP_LIST_PAGE_SIZE` | Optional FastMCP pagination size for `tools/list`, `resources/list`, `resources/templates/list`, and `prompts/list` (must be positive integer) | *Unset* |
+| `MCP_LIST_PAGE_SIZE` | Backward-compatible alias for `FASTMCP_LIST_PAGE_SIZE` when the latter is unset. | *Unset* |
+| `FASTMCP_SAMPLING_HANDLER` | Optional FastMCP sampling fallback provider: `openai`, `anthropic`, or `none` | *Unset* |
+| `MCP_SAMPLING_HANDLER` | Backward-compatible alias for `FASTMCP_SAMPLING_HANDLER` when the latter is unset. | *Unset* |
+| `FASTMCP_SAMPLING_HANDLER_BEHAVIOR` | Sampling handler mode: `fallback` (default) or `always` | `fallback` |
+| `MCP_SAMPLING_HANDLER_BEHAVIOR` | Backward-compatible alias for `FASTMCP_SAMPLING_HANDLER_BEHAVIOR` when the latter is unset. | *Unset* |
+| `FASTMCP_SAMPLING_DEFAULT_MODEL` | Optional default model hint for sampling handler (for example, `gpt-4o-mini`) | *Unset* |
+| `MCP_SAMPLING_DEFAULT_MODEL` | Backward-compatible alias for `FASTMCP_SAMPLING_DEFAULT_MODEL` when the latter is unset. | *Unset* |
 | `MCP_SKILLS_RESOURCES_ENABLED` | Enable local "skills as resources" endpoints (`skills://index`, `skills://{skill_id}`) | `false` |
 | `MCP_SKILLS_DIRS` | Optional skill root directories (comma-separated; semicolon also supported), each containing `<skill>/SKILL.md` | `.trae/skills` (if present) |
 | `FASTMCP_SKILLS_DIRS` | Alias for `MCP_SKILLS_DIRS` | *Unset* |
@@ -389,6 +397,57 @@ This server supports FastMCP visibility filtering through tag-based controls.
 Format examples:
 - `FASTMCP_INCLUDE_TAGS=public,readonly`
 - `FASTMCP_EXCLUDE_TAGS=experimental;internal`
+
+### Pagination (FastMCP)
+
+When `FASTMCP_LIST_PAGE_SIZE` (or `MCP_LIST_PAGE_SIZE`) is set, FastMCP paginates:
+
+- `tools/list`
+- `resources/list`
+- `resources/templates/list`
+- `prompts/list`
+
+Behavior notes:
+
+- Clients should treat `nextCursor` as an opaque value and pass it back unchanged.
+- `Client.list_tools()` automatically fetches all pages.
+- `Client.list_tools_mcp(cursor=...)` gives manual page-by-page control.
+
+Manual pagination example:
+
+```python
+from fastmcp import Client
+
+async with Client(server) as client:
+  result = await client.list_tools_mcp()
+  print(f"Page size: {len(result.tools)}")
+
+  while result.nextCursor:
+    result = await client.list_tools_mcp(cursor=result.nextCursor)
+    print(f"Next page size: {len(result.tools)}")
+```
+
+  ### Sampling (FastMCP)
+
+  Sampling lets tools call `ctx.sample(...)` / `ctx.sample_step(...)` for LLM generation.
+
+  - By default, sampling is routed to the MCP client model when supported.
+  - Configure `FASTMCP_SAMPLING_HANDLER` to use a server-side fallback provider.
+  - Set `FASTMCP_SAMPLING_HANDLER_BEHAVIOR=fallback` to use provider only when client sampling is unavailable.
+  - Set `FASTMCP_SAMPLING_HANDLER_BEHAVIOR=always` to force server-side provider usage for all sampling requests.
+
+  Provider prerequisites:
+
+  - OpenAI handler: install `fastmcp[openai]` and set provider credentials expected by the OpenAI SDK.
+  - Anthropic handler: install `fastmcp[anthropic]` and set provider credentials expected by the Anthropic SDK.
+
+  Example environment:
+
+  ```bash
+  export FASTMCP_SAMPLING_HANDLER=openai
+  export FASTMCP_SAMPLING_HANDLER_BEHAVIOR=fallback
+  export FASTMCP_SAMPLING_DEFAULT_MODEL=gpt-4o-mini
+  ```
 
 ### Security Constraints
 If `MCP_ALLOW_WRITE=true`, the server enforces the following additional security checks at startup:

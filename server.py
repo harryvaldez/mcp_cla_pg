@@ -14,7 +14,7 @@ import signal
 import decimal
 from datetime import datetime, date, timedelta, timezone
 from urllib.parse import quote, urlparse, urlunparse, urlsplit, urlunsplit
-from typing import Any, Optional, cast
+from typing import Any, Literal, Optional, cast
 
 from sshtunnel import SSHTunnelForwarder
 from fastmcp import FastMCP
@@ -361,6 +361,58 @@ def _get_auth() -> Any:
             base_url=base_url,
             client_storage=client_storage,
         )
+
+
+def _get_sampling_handler_config() -> tuple[Any, Literal["always", "fallback"] | None]:
+    provider = (
+        os.environ.get("FASTMCP_SAMPLING_HANDLER")
+        or os.environ.get("MCP_SAMPLING_HANDLER")
+        or ""
+    ).strip().lower()
+
+    behavior_raw = (
+        os.environ.get("FASTMCP_SAMPLING_HANDLER_BEHAVIOR")
+        or os.environ.get("MCP_SAMPLING_HANDLER_BEHAVIOR")
+        or "fallback"
+    ).strip().lower()
+    behavior: Literal["always", "fallback"]
+
+    if behavior_raw not in {"fallback", "always"}:
+        logger.warning(
+            "Invalid sampling handler behavior %r. Falling back to 'fallback'.",
+            behavior_raw,
+        )
+        behavior = "fallback"
+    else:
+        behavior = cast(Literal["always", "fallback"], behavior_raw)
+
+    if provider in {"", "none", "off", "disabled"}:
+        return None, None
+
+    default_model = (
+        os.environ.get("FASTMCP_SAMPLING_DEFAULT_MODEL")
+        or os.environ.get("MCP_SAMPLING_DEFAULT_MODEL")
+        or None
+    )
+
+    if provider == "openai":
+        OpenAISamplingHandler = _import_symbol(
+            "fastmcp.client.sampling.handlers.openai", "OpenAISamplingHandler"
+        )
+        handler = OpenAISamplingHandler(default_model=default_model)
+        return handler, behavior
+
+    if provider == "anthropic":
+        AnthropicSamplingHandler = _import_symbol(
+            "fastmcp.client.sampling.handlers.anthropic", "AnthropicSamplingHandler"
+        )
+        handler = AnthropicSamplingHandler(default_model=default_model)
+        return handler, behavior
+
+    raise ValueError(
+        "Invalid FASTMCP_SAMPLING_HANDLER/MCP_SAMPLING_HANDLER value. "
+        "Accepted values: openai, anthropic, none"
+    )
             
 def _env_int(name: str, default: int) -> int:
     value = os.environ.get(name)
@@ -381,6 +433,21 @@ def _env_optional_bool(name: str) -> bool | None:
     if value is None or value == "":
         return None
     return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _env_optional_positive_int(name: str) -> int | None:
+    value = os.environ.get(name)
+    if value is None or value.strip() == "":
+        return None
+    try:
+        parsed = int(value)
+    except ValueError:
+        logger.warning("Ignoring invalid integer for %s: %r", name, value)
+        return None
+    if parsed <= 0:
+        logger.warning("Ignoring non-positive value for %s: %r", name, value)
+        return None
+    return parsed
 
 
 def _env_optional_tag_set(name: str) -> set[str] | None:
@@ -509,10 +576,17 @@ if exclude_tags is None:
 include_fastmcp_meta = _env_optional_bool("FASTMCP_INCLUDE_META")
 if include_fastmcp_meta is None:
     include_fastmcp_meta = _env_optional_bool("MCP_INCLUDE_META")
+list_page_size = _env_optional_positive_int("FASTMCP_LIST_PAGE_SIZE")
+if list_page_size is None:
+    list_page_size = _env_optional_positive_int("MCP_LIST_PAGE_SIZE")
+sampling_handler, sampling_handler_behavior = _get_sampling_handler_config()
 mcp = FastMCP(
     name=os.environ.get("MCP_SERVER_NAME", "PostgreSQL MCP Server"),
     auth=_get_auth() if auth_type != "apikey" else None,
     tasks=tasks_enabled,
+    list_page_size=list_page_size,
+    sampling_handler=sampling_handler,
+    sampling_handler_behavior=sampling_handler_behavior,
 )
 
 if include_tags:
@@ -1206,6 +1280,52 @@ def _execute_safe(cur, sql: Any, params: Any = None) -> None:
         _rollback_cursor_connection(cur)
         logger.exception("Unexpected error during query execution")
         raise RuntimeError("An unexpected error occurred while processing the query.") from e
+
+
+async def _rollback_cursor_connection_async(cur) -> None:
+    conn = getattr(cur, "connection", None)
+    if conn is None:
+        return
+    try:
+        await conn.rollback()
+    except Exception as rollback_error:
+        logger.debug(f"Rollback after query error failed: {rollback_error}")
+
+
+async def _execute_safe_async(cur, sql: Any, params: Any = None) -> None:
+    """Executes an async query with session-level timeouts and sanitized error handling."""
+    try:
+        _enforce_query_rate_limit()
+        if logger.isEnabledFor(logging.DEBUG):
+            query_str = str(sql)
+            if len(query_str) > 1000:
+                query_str = query_str[:1000] + "..."
+            logger.debug(f"Executing SQL: {query_str} | Params: {params}")
+
+        await cur.execute(f"SET statement_timeout = {STATEMENT_TIMEOUT_MS}")
+        await cur.execute(sql, params)
+    except PsycopgError as e:
+        await _rollback_cursor_connection_async(cur)
+        logger.error(f"Database error: {str(e)}")
+        if "timeout" in str(e).lower():
+            raise RuntimeError("Query execution timed out.") from e
+        raise RuntimeError(f"Database operation failed: {e.diag.message_primary if hasattr(e, 'diag') and e.diag else 'Internal error'}") from e
+    except Exception as e:
+        await _rollback_cursor_connection_async(cur)
+        logger.exception("Unexpected error during query execution")
+        raise RuntimeError("An unexpected error occurred while processing the query.") from e
+
+
+async def _fetch_limited_async(cur, max_rows: int) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    remaining = max_rows
+    while remaining > 0:
+        batch = cur.fetchmany(min(remaining, 200))
+        if not batch:
+            break
+        rows.extend(batch)
+        remaining -= len(batch)
+    return rows
 
 
 def _execute_safe_with_fallback(
@@ -1984,7 +2104,7 @@ def db_pg96_create_object(
             else:
                 raise ValueError(f"Creation of object type '{obj_type}' not supported.")
 
-            logger.info(f"Executing CREATE: {query.as_string(conn)}")
+            logger.info(f"Executing CREATE: {cast(Any, query).as_string(conn)}")
             _execute_safe(cur, query)
             
             # Post-creation steps (like owner)
@@ -5417,6 +5537,823 @@ def main() -> None:
         mcp.run(transport="stdio")
     else:
         raise ValueError(f"Unknown transport: {transport}. Supported transports: http, sse, stdio")
+
+
+# Background Task Versions of Analysis Tools
+# These run as async background tasks with progress reporting
+
+from fastmcp.dependencies import Progress
+
+
+@mcp.tool(tags={"public"}, task=True)
+async def db_pg96_analyze_logical_data_model_async(
+    schema: str = "public",
+    include_views: bool = False,
+    max_entities: Optional[int] = None,
+    include_attributes: bool = True,
+    detail_level: str = "full",
+    response_format: str = "legacy",
+    progress: Progress = Progress(),
+) -> dict[str, Any]:
+    """
+    Generate a logical data model (LDM) for a schema and produce issues and recommendations.
+    This is the async background-task version of db_pg96_analyze_logical_data_model.
+
+    Args:
+        schema: Schema to analyze (default: "public").
+        include_views: Include views/materialized views as entities (default: False).
+        max_entities: Maximum number of entities to include (default: 200).
+        include_attributes: Include full attribute details (default: True).
+
+    Returns:
+        Dictionary containing logical model, issues, and recommendations.
+    """
+    await progress.set_message("Starting data model analysis...")
+    
+    def _snake_case(name: str) -> bool:
+        return bool(re.match(r"^[a-z][a-z0-9_]*$", name))
+
+    def _action(code: str) -> str:
+        mapping = {
+            "a": "NO ACTION",
+            "r": "RESTRICT",
+            "c": "CASCADE",
+            "n": "SET NULL",
+            "d": "SET DEFAULT",
+        }
+        return mapping.get(code, code)
+
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            await progress.set_message("Fetching table metadata...")
+            _execute_safe(cur, "select now() at time zone 'utc' as generated_at_utc")
+            generated_at_row = cur.fetchone() or {}
+            generated_at = generated_at_row.get("generated_at_utc")
+            generated_at_iso = generated_at.isoformat() if isinstance(generated_at, (datetime, date)) else str(generated_at)
+
+            relkinds = ["r", "p"]
+            if include_views:
+                relkinds.extend(["v", "m"])
+
+            _execute_safe(
+                cur,
+                """
+                select
+                  c.oid,
+                  n.nspname as schema,
+                  c.relname as name,
+                  c.relkind
+                from pg_class c
+                join pg_namespace n on n.oid = c.relnamespace
+                where n.nspname = %(schema)s
+                  and c.relkind = any(%(relkinds)s)
+                order by c.relname
+                """,
+                {"schema": schema, "relkinds": relkinds},
+            )
+            table_rows = cur.fetchall()
+            total_tables = len(table_rows)
+            table_rows = table_rows[:max_entities] if max_entities and max_entities > 0 else table_rows
+            table_names = [r["name"] for r in table_rows]
+
+            await progress.set_total(4)
+            await progress.set_message("Analyzing columns...")
+            await progress.increment()
+
+            columns_by_table: dict[str, list[dict[str, Any]]] = {}
+            if include_attributes and table_names:
+                _execute_safe(
+                    cur,
+                    """
+                    select
+                      table_name,
+                      column_name,
+                      ordinal_position,
+                      is_nullable,
+                      data_type,
+                      udt_name,
+                      character_maximum_length,
+                      numeric_precision,
+                      numeric_scale,
+                      column_default
+                    from information_schema.columns
+                    where table_schema = %(schema)s
+                      and table_name = any(%(tables)s)
+                    order by table_name, ordinal_position
+                    """,
+                    {"schema": schema, "tables": table_names},
+                )
+                for row in cur.fetchall():
+                    t = row["table_name"]
+                    columns_by_table.setdefault(t, []).append({
+                        "name": row["column_name"],
+                        "position": row["ordinal_position"],
+                        "data_type": row["data_type"],
+                        "udt_name": row["udt_name"],
+                        "nullable": (row["is_nullable"] == "YES"),
+                        "max_length": row["character_maximum_length"],
+                        "numeric_precision": row["numeric_precision"],
+                        "numeric_scale": row["numeric_scale"],
+                        "default": row["column_default"],
+                    })
+
+            await progress.set_message("Analyzing constraints...")
+            await progress.increment()
+
+            _execute_safe(
+                cur,
+                """
+                select
+                  n.nspname as schema,
+                  c.relname as table,
+                  con.conname as name,
+                  con.contype as type,
+                  array_agg(att.attname order by ck.ord) as columns
+                from pg_constraint con
+                join pg_class c on c.oid = con.conrelid
+                join pg_namespace n on n.oid = c.relnamespace
+                join unnest(con.conkey) with ordinality as ck(attnum, ord) on true
+                join pg_attribute att on att.attrelid = c.oid and att.attnum = ck.attnum
+                where n.nspname = %(schema)s
+                  and c.relname = any(%(tables)s)
+                  and con.contype in ('p', 'u')
+                group by n.nspname, c.relname, con.conname, con.contype
+                """,
+                {"schema": schema, "tables": table_names},
+            )
+            pk_by_table: dict[str, list[str]] = {}
+            uniques_by_table: dict[str, list[list[str]]] = {}
+            for row in cur.fetchall():
+                if row["type"] == "p":
+                    pk_by_table[row["table"]] = row["columns"]
+                else:
+                    uniques_by_table.setdefault(row["table"], []).append(row["columns"])
+
+            await progress.set_message("Analyzing foreign keys...")
+            await progress.increment()
+
+            _execute_safe(
+                cur,
+                """
+                select
+                  n.nspname as schema,
+                  c.relname as table,
+                  con.conname as name,
+                  array_agg(att.attname order by l.ord) as local_columns,
+                  rn.nspname as ref_schema,
+                  rc.relname as ref_table,
+                  array_agg(ratt.attname order by l.ord) as ref_columns,
+                  con.confupdtype as on_update,
+                  con.confdeltype as on_delete
+                from pg_constraint con
+                join pg_class c on c.oid = con.conrelid
+                join pg_namespace n on n.oid = c.relnamespace
+                join pg_class rc on rc.oid = con.confrelid
+                join pg_namespace rn on rn.oid = rc.relnamespace
+                join unnest(con.conkey) with ordinality as l(attnum, ord) on true
+                join unnest(con.confkey) with ordinality as r(attnum, ord) on r.ord = l.ord
+                join pg_attribute att on att.attrelid = c.oid and att.attnum = l.attnum
+                join pg_attribute ratt on ratt.attrelid = rc.oid and ratt.attnum = r.attnum
+                where n.nspname = %(schema)s
+                  and c.relname = any(%(tables)s)
+                  and con.contype = 'f'
+                group by n.nspname, c.relname, con.conname, rn.nspname, rc.relname, con.confupdtype, con.confdeltype
+                order by c.relname, con.conname
+                """,
+                {"schema": schema, "tables": table_names},
+            )
+            fk_rows = cur.fetchall()
+
+            await progress.set_message("Analyzing indexes...")
+            await progress.increment()
+
+            _execute_safe(
+                cur,
+                """
+                select
+                  n.nspname as schema,
+                  t.relname as table,
+                  i.relname as index,
+                  ix.indisunique as is_unique,
+                  ix.indisprimary as is_primary,
+                  array_agg(case when k.attnum > 0 then a.attname else null end order by k.ord) as columns
+                from pg_index ix
+                join pg_class i on i.oid = ix.indexrelid
+                join pg_class t on t.oid = ix.indrelid
+                join pg_namespace n on n.oid = t.relnamespace
+                join unnest(ix.indkey) with ordinality as k(attnum, ord) on true
+                left join pg_attribute a on a.attrelid = t.oid and a.attnum = k.attnum
+                where n.nspname = %(schema)s
+                  and t.relname = any(%(tables)s)
+                group by n.nspname, t.relname, i.relname, ix.indisunique, ix.indisprimary
+                order by t.relname, i.relname
+                """,
+                {"schema": schema, "tables": table_names},
+            )
+            indexes_by_table: dict[str, list[dict[str, Any]]] = {}
+            for row in cur.fetchall():
+                cols_raw = row["columns"] or []
+                cols = [c for c in cols_raw if c is not None]
+                indexes_by_table.setdefault(row["table"], []).append({
+                    "name": row["index"],
+                    "is_unique": row["is_unique"],
+                    "is_primary": row["is_primary"],
+                    "columns": cols,
+                })
+
+            await progress.set_message("Compiling results...")
+            await progress.increment()
+
+            entities: list[dict[str, Any]] = []
+            for table_row in table_rows:
+                t = table_row["name"]
+                columns = columns_by_table.get(t, [])
+                pks = pk_by_table.get(t, [])
+                uniques = uniques_by_table.get(t, [])
+                fks = [r for r in fk_rows if r["table"] == t]
+                indexes = indexes_by_table.get(t, [])
+
+                entity: dict[str, Any] = {
+                    "name": t,
+                    "kind": table_row["relkind"],
+                    "columns": columns,
+                    "primary_key": {"name": "primary", "columns": pks} if pks else None,
+                    "unique_constraints": [{"name": u[0], "columns": u[1]} for u in enumerate(uniques)],
+                    "foreign_keys": [
+                        {
+                            "name": r["name"],
+                            "columns": r["local_columns"],
+                            "references": {
+                                "schema": r["ref_schema"],
+                                "table": r["ref_table"],
+                                "columns": r["ref_columns"],
+                            },
+                            "on_update": _action(r["on_update"]),
+                            "on_delete": _action(r["on_delete"]),
+                        }
+                        for r in fks
+                    ],
+                    "indexes": indexes,
+                }
+                entities.append(entity)
+
+            issues: list[dict[str, Any]] = []
+            for entity in entities:
+                if not entity["primary_key"]:
+                    issues.append({
+                        "severity": "high",
+                        "type": "missing_primary_key",
+                        "entity": entity["name"],
+                        "message": f"Table '{entity['name']}' has no primary key",
+                    })
+                for idx in entity["indexes"]:
+                    if idx["is_primary"] and idx["name"] != f"{entity['name']}_pkey":
+                        issues.append({
+                            "severity": "medium",
+                            "type": "non_standard_pk_index",
+                            "entity": entity["name"],
+                            "index": idx["name"],
+                            "message": f"Primary key index '{idx['name']}' does not follow naming convention",
+                        })
+
+            recommendations: list[dict[str, Any]] = []
+            if any(e["kind"] == "r" and not e.get("primary_key") for e in entities):
+                recommendations.append({
+                    "category": "schema",
+                    "priority": "high",
+                    "title": "Add Primary Keys",
+                    "description": "Add primary keys to tables missing them for better query performance and data integrity",
+                })
+            if len(entities) > 50:
+                recommendations.append({
+                    "category": "schema",
+                    "priority": "medium",
+                    "title": "Consider Schema Segmentation",
+                    "description": f"Large schema with {len(entities)} entities - consider logical segmentation",
+                })
+
+            await progress.set_message("Analysis complete")
+            await progress.set_total(4)
+            await progress.increment(4)
+
+            results = {
+                "schema": schema,
+                "generated_at_utc": generated_at_iso,
+                "entity_count": len(entities),
+                "entities": entities,
+                "issues": issues,
+                "recommendations": recommendations,
+            }
+
+            if response_format == "legacy":
+                return results
+
+            return _build_response_envelope(
+                tool="db_pg96_analyze_logical_data_model_async",
+                payload=results,
+                summary={
+                    "schema": schema,
+                    "entity_count": len(entities),
+                    "issues_count": len(issues),
+                },
+            )
+
+
+@mcp.tool(tags={"public"}, task=True)
+async def db_pg96_analyze_indexes_async(
+    schema: str | None = None,
+    detail_level: str = "compact",
+    max_items_per_category: int = 20,
+    response_format: str = "legacy",
+    progress: Progress = Progress(),
+) -> dict[str, Any]:
+    """
+    Analyzes indexes for unused, duplicate, and missing indexes.
+    This is the async background-task version of db_pg96_analyze_indexes.
+
+    Args:
+        schema: Schema to analyze (default: all).
+        detail_level: 'compact' for summary, 'full' for detailed rows.
+        max_items_per_category: Max items per category.
+        response_format: 'legacy' or 'envelope'.
+
+    Returns:
+        Dictionary with index analysis results.
+    """
+    await progress.set_message("Starting index analysis...")
+    await progress.set_total(3)
+
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            await progress.set_message("Checking for unused indexes...")
+            
+            unused_query = """
+            select
+              n.nspname as schema,
+              c.relname as table,
+              i.relname as index,
+              pg_size_pretty(pg_relation_size(i.oid)) as size,
+              idx_scan
+            from pg_index ix
+            join pg_class i on i.oid = ix.indexrelid
+            join pg_class c on c.oid = ix.indrelid
+            join pg_namespace n on n.oid = c.relnamespace
+            left join pg_stat_user_indexes sui on sui.indexrelid = i.oid
+            where idx_scan = 0
+              and i.relname not like '%pkey%'
+              and i.relname not like '%_pkey'
+              and n.nspname not in ('pg_catalog', 'information_schema')
+            """
+            if schema:
+                unused_query += " and n.nspname = %(schema)s"
+            unused_query += " order by pg_relation_size(i.oid) desc"
+
+            _execute_safe(cur, unused_query, {"schema": schema} if schema else None)
+            unused_results = cur.fetchall()
+
+            await progress.set_message("Checking for duplicate indexes...")
+            await progress.increment()
+
+            dup_query = """
+            select
+              n.nspname as schema,
+              c.relname as table,
+              count(*) as dup_count,
+              array_agg(i.relname) as indexes
+            from pg_index ix
+            join pg_class i on i.oid = ix.indexrelid
+            join pg_class c on c.oid = ix.indrelid
+            join pg_namespace n on n.oid = c.relnamespace
+            where n.nspname not in ('pg_catalog', 'information_schema')
+            """
+            if schema:
+                dup_query += " and n.nspname = %(schema)s"
+            dup_query += """
+            group by n.nspname, c.relname, ix.indrelid, ix.indkey
+            having count(*) > 1
+            """
+
+            _execute_safe(cur, dup_query, {"schema": schema} if schema else None)
+            duplicate_results = cur.fetchall()
+
+            await progress.set_message("Compiling results...")
+            await progress.increment()
+
+            list_cap = max_items_per_category
+            truncated = False
+
+            def _trim(lst: list, cap: int) -> list:
+                if len(lst) > cap:
+                    return lst[:cap]
+                return lst
+
+            unused_trimmed = _trim(list(unused_results), list_cap)
+            dup_trimmed = _trim(list(duplicate_results), list_cap)
+
+            results = {
+                "unused_indexes": unused_trimmed,
+                "duplicate_indexes": dup_trimmed,
+            }
+
+            if detail_level == "compact":
+                results["unused_indexes"] = [
+                    {"schema": r["schema"], "table": r["table"], "index": r["index"], "size": r["size"]}
+                    for r in unused_trimmed
+                ]
+                results["duplicate_indexes"] = [
+                    {"schema": r["schema"], "table": r["table"], "dup_count": r["dup_count"], "indexes": r["indexes"]}
+                    for r in dup_trimmed
+                ]
+
+            await progress.set_message("Analysis complete")
+            await progress.increment()
+
+            if response_format == "legacy":
+                results["_meta"] = {
+                    "detail_level": detail_level,
+                    "max_items_per_category": list_cap,
+                }
+                return results
+
+            return _build_response_envelope(
+                tool="db_pg96_analyze_indexes_async",
+                payload=results,
+                summary={
+                    "unused_indexes": len(results["unused_indexes"]),
+                    "duplicate_indexes": len(results["duplicate_indexes"]),
+                },
+            )
+
+
+@mcp.tool(tags={"public"}, task=True)
+async def db_pg96_check_bloat_async(
+    limit: int = 50,
+    progress: Progress = Progress(),
+) -> list[dict[str, Any]]:
+    """
+    Identifies the top bloated tables and indexes with maintenance commands.
+    This is the async background-task version of db_pg96_check_bloat.
+
+    Args:
+        limit: Maximum number of objects to return (default: 50).
+
+    Returns:
+        List of objects with bloat statistics and suggested maintenance commands.
+    """
+    await progress.set_message("Checking table bloat...")
+    await progress.set_total(2)
+
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            _execute_safe(
+                cur,
+                """
+                with bloat as (
+                  select
+                    'table' as type,
+                    schemaname,
+                    tblname as object_name,
+                    bs::bigint * tblpages::bigint as real_size,
+                    (tblpages::bigint - est_tblpages::bigint) * bs::bigint as extra_size,
+                    case when tblpages > 0 then (tblpages - est_tblpages)::float / tblpages else 0 end as bloat_ratio,
+                    case
+                      when (tblpages - est_tblpages) > 0
+                      then 'VACUUM FULL ' || quote_ident(schemaname) || '.' || quote_ident(tblname)
+                      else 'VACUUM ' || quote_ident(schemaname) || '.' || quote_ident(tblname)
+                    end as maintenance_cmd
+                  from (
+                    select
+                      (ceil( reltuples / ( (bs-page_hdr)/fillfactor ) ) + ceil( toasttuples / 4 ))::bigint as est_tblpages,
+                      tblpages, fillfactor, bs, tblname, schemaname, page_hdr
+                    from (
+                      select
+                        (select current_setting('block_size')::int) as bs,
+                        24 as page_hdr,
+                        schemaname, tblname, reltuples, tblpages, toasttuples,
+                        coalesce(substring(
+                          array_to_string(reloptions, ' ') from 'fillfactor=([0-9]+)'
+                        )::int, 100) as fillfactor
+                      from (
+                        select
+                          n.nspname as schemaname,
+                          c.relname as tblname,
+                          c.reltuples,
+                          c.relpages as tblpages,
+                          c.reloptions,
+                          coalesce( (select sum(t.reltuples) from pg_class t where t.oid = c.reltoastrelid), 0) as toasttuples
+                        from pg_class c
+                        join pg_namespace n on n.oid = c.relnamespace
+                        where c.relkind = 'r'
+                          and n.nspname not in ('pg_catalog', 'information_schema')
+                          and n.nspname not like 'pg_temp%'
+                          and n.nspname like %s
+                      ) as a
+                    ) as b
+                  ) as c
+                  where tblpages - est_tblpages > 0
+                ),
+                indexes as (
+                  select
+                    'index' as type,
+                    schemaname,
+                    tblname as object_name,
+                    bs::bigint * tblpages::bigint as real_size,
+                    (tblpages::bigint - est_tblpages::bigint) * bs::bigint as extra_size,
+                    case when tblpages > 0 then (tblpages - est_tblpages)::float / tblpages else 0 end as bloat_ratio,
+                    'REINDEX INDEX ' || quote_ident(schemaname) || '.' || quote_ident(indexname) as maintenance_cmd
+                  from (
+                    select
+                      ceil( reltuples / ( (bs-page_hdr)/fillfactor ) )::bigint as est_tblpages,
+                      tblpages, fillfactor, bs, schemaname, tblname, indexname
+                    from (
+                      select
+                        (select current_setting('block_size')::int) as bs,
+                        68 as page_hdr,
+                        schemaname, tblname, indexname, reltuples, tblpages,
+                        coalesce(substring(
+                          array_to_string(reloptions, ' ') from 'fillfactor=([0-9]+)'
+                        )::int, 90) as fillfactor
+                      from (
+                        select
+                          n.nspname as schemaname,
+                          c.relname as tblname,
+                          i.relname as indexname,
+                          i.reltuples,
+                          i.relpages as tblpages,
+                          c.reloptions as creloptions,
+                          i.reloptions
+                        from pg_class i
+                        join pg_namespace n on n.oid = i.relnamespace
+                        join pg_class c on i.indrelid = c.oid
+                        where i.relkind = 'i'
+                          and n.nspname not in ('pg_catalog', 'information_schema')
+                          and n.nspname not like 'pg_temp%'
+                          and n.nspname like %s
+                      ) as a
+                    ) as b
+                  ) as c
+                  where tblpages - est_tblpages > 0
+                )
+                select * from bloat
+                union all
+                select * from indexes
+                order by extra_size desc
+                limit %s
+                """,
+                (limit,)
+            )
+            await progress.set_message("Bloat check complete")
+            await progress.increment()
+            
+            return cur.fetchall()
+
+
+@mcp.tool(tags={"public"}, task=True)
+async def db_pg96_analyze_sessions_async(
+    include_idle: bool = True,
+    include_active: bool = True,
+    include_locked: bool = True,
+    min_duration_seconds: int = 60,
+    min_idle_seconds: int = 60,
+    progress: Progress = Progress(),
+) -> dict[str, Any]:
+    """
+    Comprehensive session analysis with background task support.
+    This is the async background-task version of db_pg96_analyze_sessions.
+
+    Args:
+        include_idle: Include idle sessions.
+        include_active: Include active sessions.
+        include_locked: Include locked sessions.
+        min_duration_seconds: Min query duration.
+        min_idle_seconds: Min idle time.
+
+    Returns:
+        Dictionary with session analysis.
+    """
+    await progress.set_message("Analyzing database sessions...")
+    await progress.set_total(3)
+
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            results = {
+                "summary": {},
+                "active_sessions": [],
+                "idle_sessions": [],
+                "locked_sessions": [],
+                "recommendations": []
+            }
+
+            _execute_safe(
+                cur,
+                """
+                select
+                  count(*) as total_sessions,
+                  count(*) filter (where state = 'active') as active_count,
+                  count(*) filter (where state like 'idle%') as idle_count,
+                  count(*) filter (where wait_event is not null) as waiting_count
+                from pg_stat_activity
+                where pid <> pg_backend_pid()
+                """
+            )
+            results["summary"] = cur.fetchone()
+            await progress.set_message("Checking active sessions...")
+            await progress.increment()
+
+            if include_active:
+                _execute_safe(
+                    cur,
+                    """
+                    select
+                      pid,
+                      usename as user,
+                      datname as database,
+                      application_name,
+                      client_addr::text as client_addr,
+                      state,
+                      now() - xact_start as xact_age,
+                      now() - query_start as query_age,
+                      wait_event_type,
+                      wait_event,
+                      left(query, 5000) as query
+                    from pg_stat_activity
+                    where pid <> pg_backend_pid()
+                      and (
+                        (query_start is not null and now() - query_start > make_interval(secs => %(min_duration)s))
+                        or (xact_start is not null and now() - xact_start > make_interval(secs => %(min_duration)s))
+                      )
+                    order by greatest(coalesce(now() - query_start, interval '0'), coalesce(now() - xact_start, interval '0')) desc
+                    """,
+                    {"min_duration": min_duration_seconds}
+                )
+                results["active_sessions"] = cur.fetchall()
+
+            await progress.set_message("Checking idle sessions...")
+            await progress.increment()
+
+            if include_idle:
+                _execute_safe(
+                    cur,
+                    """
+                    select
+                      pid,
+                      usename as user,
+                      datname as database,
+                      application_name,
+                      state,
+                      now() - backend_start as connection_duration,
+                      now() - state_change as idle_duration,
+                      left(query, 1000) as last_query
+                    from pg_stat_activity
+                    where state in ('idle', 'idle in transaction', 'idle in transaction (aborted)')
+                      and pid <> pg_backend_pid()
+                      and now() - state_change > make_interval(secs => %(min_idle)s)
+                    order by state_change asc
+                    """,
+                    {"min_idle": min_idle_seconds}
+                )
+                results["idle_sessions"] = cur.fetchall()
+
+            await progress.set_message("Checking locked sessions...")
+            await progress.increment()
+
+            if include_locked:
+                _execute_safe(
+                    cur,
+                    """
+                    select
+                      bl.pid as blocked_pid,
+                      a.usename as blocked_user,
+                      a.datname as blocked_database,
+                      a.state as blocked_state,
+                      bl.locktype,
+                      bl.mode as blocked_lock_mode,
+                      a.query as blocked_query
+                    from pg_catalog.pg_locks bl
+                    join pg_catalog.pg_stat_activity a on bl.pid = a.pid
+                    where not bl.granted
+                    limit 50
+                    """
+                )
+                results["locked_sessions"] = cur.fetchall()
+
+            if results["summary"] and results["summary"].get("idle_count", 0) > 5:
+                results["recommendations"].append({
+                    "category": "sessions",
+                    "priority": "medium",
+                    "title": "High Idle Session Count",
+                    "description": f"Found {results['summary']['idle_count']} idle sessions. Consider reducing connection pool idle timeout."
+                })
+
+            await progress.set_message("Session analysis complete")
+
+            return results
+
+
+@mcp.tool(tags={"public"}, task=True)
+async def db_pg96_recommend_partitioning_async(
+    schema: str = "public",
+    min_size_gb: float = 1.0,
+    progress: Progress = Progress(),
+) -> dict[str, Any]:
+    """
+    Recommends tables that would benefit from partitioning.
+    This is the async background-task version of db_pg96_recommend_partitioning.
+
+    Args:
+        schema: Schema to analyze.
+        min_size_gb: Minimum table size in GB to consider.
+
+    Returns:
+        Partitioning recommendations.
+    """
+    await progress.set_message("Analyzing tables for partitioning...")
+    await progress.set_total(2)
+
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            _execute_safe(
+                cur,
+                """
+                select
+                  n.nspname as schema,
+                  c.relname as table,
+                  pg_total_relation_size(c.oid) as size_bytes,
+                  c.reltuples as row_count,
+                  pg_stat_get_numscans(c.oid) as seq_scans,
+                  pg_stat_get_tuples_returned(c.oid) as seq_scan_rows,
+                  pg_stat_get_tuples_inserted(c.oid) as inserts,
+                  pg_stat_get_tuples_updated(c.oid) as updates,
+                  pg_stat_get_tuples_deleted(c.oid) as deletes
+                from pg_class c
+                join pg_namespace n on n.oid = c.relnamespace
+                where c.relkind = 'r'
+                  and n.nspname = %(schema)s
+                  and pg_total_relation_size(c.oid) > %(min_size)s
+                order by pg_total_relation_size(c.oid) desc
+                """,
+                {"schema": schema, "min_size": min_size_gb * 1024 * 1024 * 1024}
+            )
+            
+            rows = cur.fetchall()
+            candidates = []
+            
+            for row in rows:
+                approx_size_gb = row["size_bytes"] / (1024 * 1024 * 1024)
+                live_rows = row["row_count"] or 0
+                dead_rows = max(0, (row["inserts"] or 0) + (row["updates"] or 0) + (row["deletes"] or 0) - live_rows)
+                seq_scan = row["seq_scans"] or 0
+                idx_scan = row["seq_scan_rows"] or 0
+                inserts = row["inserts"] or 0
+                updates = row["updates"] or 0
+                deletes = row["deletes"] or 0
+                
+                total_reads = seq_scan + idx_scan
+                total_writes = inserts + updates + deletes
+                
+                if total_reads > 0 or total_writes > 0:
+                    if total_reads >= 10 * max(total_writes, 1):
+                        workload_pattern = "read_heavy"
+                    elif total_writes >= 5 * max(total_reads, 1):
+                        workload_pattern = "write_heavy"
+                    else:
+                        workload_pattern = "mixed"
+                else:
+                    workload_pattern = "unknown"
+                
+                if approx_size_gb >= 10.0 or live_rows >= 100_000_000:
+                    benefit = "high"
+                elif approx_size_gb >= 1.0 or live_rows >= 10_000_000:
+                    benefit = "medium"
+                else:
+                    benefit = "low"
+                
+                notes_parts = []
+                if benefit == "high":
+                    notes_parts.append("Very large table; partitioning likely to improve maintenance and query performance")
+                elif benefit == "medium":
+                    notes_parts.append("Large table; partitioning may help for time-based or tenant-based queries")
+                
+                if workload_pattern == "read_heavy":
+                    notes_parts.append("Read-heavy workload")
+                elif workload_pattern == "write_heavy":
+                    notes_parts.append("Write-heavy workload")
+                
+                candidates.append({
+                    "schema": row["schema"],
+                    "table": row["table"],
+                    "approx_size_gb": round(approx_size_gb, 3),
+                    "live_rows": live_rows,
+                    "dead_rows": dead_rows,
+                    "workload_pattern": workload_pattern,
+                    "estimated_partitioning_benefit": benefit,
+                    "notes": "; ".join(notes_parts),
+                })
+
+            await progress.set_message("Partitioning analysis complete")
+            await progress.increment()
+            
+            return {"schema": schema, "candidates": candidates}
 
 
 if __name__ == "__main__":
