@@ -120,6 +120,63 @@ def _static_inventory_check() -> None:
     _assert(not extra, f"Unexpected tools found in server.py: {extra}")
 
 
+def _assert_async_context_injection_contract() -> None:
+    with open(SERVER_FILE, "r", encoding="utf-8") as f:
+        src = f.read()
+    tree = ast.parse(src, filename=SERVER_FILE)
+
+    expected_positional_prefix: dict[str, list[str]] = {
+        "db_pg96_analyze_logical_data_model_async": [
+            "schema",
+            "include_views",
+            "max_entities",
+            "include_attributes",
+            "detail_level",
+            "response_format",
+            "progress",
+        ],
+        "db_pg96_analyze_indexes_async": [
+            "schema",
+            "detail_level",
+            "max_items_per_category",
+            "response_format",
+            "progress",
+        ],
+        "db_pg96_analyze_sessions_async": [
+            "include_idle",
+            "include_active",
+            "include_locked",
+            "min_duration_seconds",
+            "min_idle_seconds",
+            "progress",
+        ],
+    }
+
+    functions = {
+        node.name: node
+        for node in tree.body
+        if isinstance(node, ast.AsyncFunctionDef)
+    }
+
+    for fn_name, prefix in expected_positional_prefix.items():
+        fn = functions.get(fn_name)
+        _assert(fn is not None, f"Expected async function '{fn_name}' not found")
+        args = [arg.arg for arg in fn.args.args]
+        _assert(
+            args[: len(prefix)] == prefix,
+            f"Unexpected leading parameters for {fn_name}: {args}",
+        )
+        _assert(args[-1] == "ctx", f"Expected trailing ctx parameter for {fn_name}: {args}")
+
+        default = fn.args.defaults[-1] if fn.args.defaults else None
+        _assert(
+            isinstance(default, ast.Call)
+            and isinstance(default.func, ast.Name)
+            and default.func.id == "CurrentContext",
+            f"Expected CurrentContext() default for {fn_name}.ctx",
+        )
+
+
 def _wait_for_db(timeout_s: int = 60) -> None:
     deadline = time.time() + timeout_s
     last_err: Exception | None = None
@@ -244,6 +301,8 @@ def _call_all_tools() -> None:
     os.environ["MCP_ALLOW_WRITE"] = "true"
     os.environ["MCP_CONFIRM_WRITE"] = "true"
     os.environ["MCP_TRANSPORT"] = "stdio"
+    os.environ["MCP_SKIP_CONFIRMATION"] = "true"
+    os.environ["MCP_REGISTER_SIGNAL_HANDLERS"] = "false"
 
     if "server" in sys.modules:
         del sys.modules["server"]
@@ -380,7 +439,10 @@ def _call_all_tools() -> None:
             pass
 
     try:
-        server.pool.close()
+        try:
+            server.pool.close(timeout=15.0)
+        except TypeError:
+            server.pool.close()
     except Exception:
         pass
 
@@ -388,6 +450,7 @@ def _call_all_tools() -> None:
 @pytest.mark.skipif(not _docker_available(), reason="Docker is not available")
 def test_full_suite():
     _static_inventory_check()
+    _assert_async_context_injection_contract()
     print("✅ Static tool inventory matches expected list")
 
     _compose("down", "-v", "--remove-orphans", check=False)
@@ -406,3 +469,20 @@ def test_full_suite():
         print("✅ All tools called successfully")
     finally:
         _compose("down", "-v", "--remove-orphans")
+
+def test_transport_gate_changes_do_not_modify_db_pg96_contract(monkeypatch):
+    monkeypatch.setenv("MCP_TRANSPORT", "http")
+
+    import importlib
+    import server as server_module_local
+
+    server_module_local = importlib.reload(server_module_local)
+
+    ping_result = server_module_local.db_pg96_ping()
+    assert "ok" in ping_result
+    assert isinstance(ping_result["ok"], bool)
+
+    info_result = server_module_local.db_pg96_server_info()
+    assert isinstance(info_result, dict)
+    assert "version" in info_result
+    assert "database" in info_result

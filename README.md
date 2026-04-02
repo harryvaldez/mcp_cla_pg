@@ -55,7 +55,7 @@ For hardening-audit artifacts (credential scoping, rate limiting/circuit breaker
 - **Performance Analysis**: Detect table bloat, missing indexes, and lock contention.
 - **Security Audits**: Analyze database privileges and security settings.
 - **Safe Execution**: Read-only by default, with optional write capabilities for specific maintenance tasks.
-- **Multiple Transports**: Supports `sse` (Server-Sent Events) and `stdio`. HTTPS is supported via SSL configuration variables.
+- **Multiple Transports**: Supports `http` (recommended), `stdio`, and legacy `sse` compatibility mode. HTTPS is supported via SSL configuration variables.
 - **Secure Authentication**: Built-in support for **Azure AD (Microsoft Entra ID)** and standard token auth.
 - **HTTPS Support**: Native SSL/TLS support for secure remote connections.
 - **SSH Tunneling**: Built-in support for connecting via SSH bastion hosts.
@@ -87,6 +87,115 @@ Use these prompt patterns to minimize tokens and expand only when needed.
   - `using postgres_readonly, call db_pg96_analyze_logical_data_model(schema='public', max_entities=50, detail_level='compact', response_format='envelope')`
 
 If the response has `truncated=true`, increase only the relevant max parameter and re-run.
+
+---
+
+## Resources
+
+This server exposes read-only FastMCP resources for deterministic runtime and configuration discovery.
+
+### data://server/status
+
+- URI: `data://server/status`
+- MIME type: `application/json`
+- Parameters: none
+- Payload shape:
+
+```json
+{
+  "contents": [
+    {
+      "content": "{\"ok\":true,\"transport\":\"http\",\"allow_write\":false,\"statement_timeout_ms\":30000,\"default_max_rows\":1000,\"database\":{\"host\":\"localhost\",\"port\":5432,\"name\":\"postgres\"},\"request_id\":\"...\",\"timestamp_utc\":\"2026-04-01T12:00:00+00:00\"}",
+      "mime_type": "application/json"
+    }
+  ],
+  "meta": {
+    "resource": "server_status"
+  }
+}
+```
+
+### data://db/settings{?pattern,limit}
+
+- URI template: `data://db/settings{?pattern,limit}`
+- MIME type: `application/json`
+- Query args:
+  - `pattern`: optional PostgreSQL regex (case-insensitive)
+  - `limit`: optional integer, bounded to `1..500`
+- Payload shape:
+
+```json
+{
+  "pattern": "max_connections|shared_buffers",
+  "limit": 50,
+  "count": 2,
+  "rows": [
+    {
+      "name": "max_connections",
+      "setting": "100",
+      "unit": null,
+      "category": "Connections and Authentication / Connections and Authentication",
+      "short_desc": "Sets the maximum number of concurrent connections.",
+      "context": "postmaster",
+      "pending_restart": false
+    }
+  ]
+}
+```
+
+## Prompts
+
+The following prompts are available for repeatable operational guidance.
+
+### explain_slow_query
+
+- Name: `explain_slow_query`
+- Args:
+  - `sql: str` (required)
+  - `analyze: bool` (default `false`)
+  - `buffers: bool` (default `false`)
+- Output: deterministic message sequence with task metadata.
+
+Example rendered message payload:
+
+```json
+{
+  "task": "explain_and_optimize",
+  "plan_mode": "ESTIMATE",
+  "buffers": "OFF",
+  "required_sections": [
+    "query_intent",
+    "plan_findings",
+    "index_recommendations",
+    "rewrite_recommendations",
+    "risk_assessment"
+  ],
+  "sql": "select * from orders where customer_id = 42"
+}
+```
+
+### maintenance_recommendations
+
+- Name: `maintenance_recommendations`
+- Args:
+  - `profile: "oltp" | "olap"` (default `"oltp"`)
+- Output: `PromptResult` with one checklist message and metadata.
+
+Example rendered message payload:
+
+```json
+{
+  "task": "maintenance_checklist",
+  "profile": "oltp",
+  "checklist": [
+    "Validate cache hit ratios against profile threshold.",
+    "Review checkpoint request ratio and WAL sizing.",
+    "Inspect dead tuples and vacuum/analyze recency.",
+    "Review long-running and idle-in-transaction sessions.",
+    "Tune connection pressure and autovacuum aggressiveness for OLTP churn."
+  ]
+}
+```
 
 ---
 
@@ -338,7 +447,7 @@ To prevent the MCP server from becoming unresponsive or overloading the database
 | `DATABASE_URL` | Full PostgreSQL connection string | *Required* |
 | `MCP_HOST` | Host to bind the server to | `0.0.0.0` |
 | `MCP_PORT` | Port to listen on (8000 for Docker, 8085 for local) | `8085` |
-| `MCP_TRANSPORT` | Transport mode: `sse`, `http` (uses SSE), or `stdio` | `http` |
+| `MCP_TRANSPORT` | Transport mode: `http` (recommended), `stdio`, or `sse` (legacy compatibility) | `http` |
 | `MCP_ALLOW_WRITE` | Enable write tools (`db_pg96_create_db_user`, etc.) | `false` |
 | `MCP_CONFIRM_WRITE` | **Required if ALLOW_WRITE=true**. Safety latch to confirm write mode. | `false` |
 | `MCP_POOL_MAX_WAITING` | Max queries queued when pool is full | `20` |

@@ -81,7 +81,7 @@ Current published tags:
 Notes:
 - The base image is python:3.13-slim.
 - System packages and Python tooling are upgraded during build to reduce CVE exposure.
-- Default HTTP port is 8000; ensure it is available locally when testing.
+- Default HTTP port is 8085; ensure it is available locally when testing.
 
 ---
 
@@ -157,9 +157,9 @@ When deploying to production, verify the following:
 
 Key environment variables supported by the server:
 - `DATABASE_URL` PostgreSQL connection string.
-- `MCP_TRANSPORT` Transport mode: `sse`, `http` (default), or `stdio`.
+- `MCP_TRANSPORT` Transport mode: `http` (recommended default), `stdio`, or `sse` (legacy compatibility).
 - `MCP_HOST` Host for HTTP transport, default `0.0.0.0`.
-- `MCP_PORT` Port for HTTP transport, default `8000`.
+- `MCP_PORT` Port for HTTP transport, default `8085`.
 - `MCP_ALLOW_WRITE` Allow write operations, default `false`.
 - `MCP_CONFIRM_WRITE` Require confirmation for writes, default `false`.
 - `MCP_SKIP_CONFIRMATION` Skip startup confirmation dialog, default `false`.
