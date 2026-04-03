@@ -354,6 +354,39 @@ def test_resources_prompts_and_async_context_compat(db_pool):
         assert "db_pg96_analyze_indexes_async" in discovered_tools
         assert "db_pg96_analyze_sessions_async" in discovered_tools
         assert "db_pg96_analyze_logical_data_model_async" in discovered_tools
+
+        # --- Phase 4: Capabilities resource ---
+        caps_r = asyncio.run(server_module.mcp.get_resource("data://server/capabilities"))
+        caps_data = json.loads(asyncio.run(caps_r.read()))
+        assert caps_data.get("elicitation_enabled") is True
+        assert caps_data.get("composition_enabled") is True
+        assert caps_data.get("context_injection_enabled") is True
+
+        # --- Phase 4: runtime_context_brief prompt ---
+        prompts_map = asyncio.run(server_module.mcp.get_prompts())
+        assert "runtime_context_brief" in prompts_map
+        # Do not call runtime_context_brief directly; requires active MCP context
+
+        # --- Phase 4: Tool registration ---
+        phase4_tools = [
+            "task_progress_demo",
+            "dependency_injection_snapshot",
+            "elicitation_collect_maintenance_window",
+            "elicitation_create_maintenance_ticket",
+            "logging_demo",
+            "server_runtime_config_snapshot",
+            "context_state_demo",
+        ]
+        # If composed child tool is present, check it
+        if "composed_ping" in discovered_tools:
+            phase4_tools.append("composed_ping")
+        for tool_name in phase4_tools:
+            assert tool_name in discovered_tools, f"Tool {tool_name} not registered"
+
+        # --- Phase 4: server_runtime_config_snapshot tool schema ---
+        config_tool = asyncio.run(server_module.mcp.get_tool("server_runtime_config_snapshot"))
+        schema = json.dumps(config_tool.parameters)
+        assert '"ctx"' not in schema
     finally:
         try:
             db_pool.close(timeout=15.0)

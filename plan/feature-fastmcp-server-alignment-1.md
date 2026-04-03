@@ -80,16 +80,16 @@ This plan defines deterministic implementation steps to align the existing MCP s
 
 | Task | Description | Completed | Date |
 | -------- | --------------------- | --------- | ---- |
-| TASK-015 | In server.py, add resource data://server/capabilities and prompt runtime_context_brief using CurrentContext-based request metadata. | Yes | 2026-04-01 |
-| TASK-016 | In server.py, add task_progress_demo using TaskConfig(mode="optional") and Progress updates. | Yes | 2026-04-01 |
-| TASK-017 | In server.py, add composition_demo child server and mount with namespace composed. | Yes | 2026-04-01 |
-| TASK-018 | In server.py, add dependency_injection_snapshot using Depends, CurrentFastMCP, header injection, and helper context request id. | Yes | 2026-04-01 |
-| TASK-019 | In server.py, expand elicitation_collect_maintenance_window with titled options, multi-select, and response_type=None approval. | Yes | 2026-04-01 |
-| TASK-020 | In server.py, add elicitation_create_maintenance_ticket with structured dataclass response. | Yes | 2026-04-01 |
-| TASK-021 | In server.py, add logging_demo with debug/info/warning/error and structured extra payloads. | Yes | 2026-04-01 |
-| TASK-022 | In server.py, add server_runtime_config_snapshot and env-driven constructor toggles (strict validation, mask error details, duplicate behavior). | Yes | 2026-04-01 |
-| TASK-023 | In server.py, add robust context state helpers and retrofit session_counter for sync/async Context API compatibility. | Yes | 2026-04-01 |
-| TASK-024 | Expand automated tests for newly added resources/prompts/tools and run targeted validation matrix. | Yes | 2026-04-01 |
+| TASK-015 | In server.py, add resource data://server/capabilities and prompt runtime_context_brief using CurrentContext-based request metadata. | Yes | 2026-04-03 |
+| TASK-016 | In server.py, add task_progress_demo using TaskConfig(mode="optional") and Progress updates. | Yes | 2026-04-03 |
+| TASK-017 | In server.py, add composition_demo child server and mount with namespace composed. | Yes | 2026-04-03 |
+| TASK-018 | In server.py, add dependency_injection_snapshot using Depends, CurrentFastMCP, header injection, and helper context request id. | Yes | 2026-04-03 |
+| TASK-019 | In server.py, expand elicitation_collect_maintenance_window with titled options, multi-select, and response_type=None approval. | Yes | 2026-04-03 |
+| TASK-020 | In server.py, add elicitation_create_maintenance_ticket with structured dataclass response. | Yes | 2026-04-03 |
+| TASK-021 | In server.py, add logging_demo with debug/info/warning/error and structured extra payloads. | Yes | 2026-04-03 |
+| TASK-022 | In server.py, add server_runtime_config_snapshot and env-driven constructor toggles (strict validation, mask error details, duplicate behavior). | Yes | 2026-04-03 |
+| TASK-023 | In server.py, add robust context state helpers and retrofit session_counter for sync/async Context API compatibility. | Yes | 2026-04-03 |
+| TASK-024 | Expand automated tests for newly added resources/prompts/tools and run targeted validation matrix. | Yes | 2026-04-03 |
 
 ## 3. Alternatives
 

@@ -21,7 +21,8 @@ from sshtunnel import SSHTunnelForwarder
 from fastmcp import FastMCP
 from fastmcp.prompts import Message
 from fastmcp.server.context import Context
-from fastmcp.dependencies import CurrentContext
+from fastmcp.dependencies import CurrentContext, CurrentFastMCP
+from fastmcp.server.tasks.config import TaskConfig
 from psycopg import Error as PsycopgError
 from psycopg import sql
 from psycopg.errors import UndefinedTable
@@ -804,7 +805,343 @@ def maintenance_recommendations_prompt(profile: str = "oltp") -> list[Message]:
     ]
     return messages
 
-# Backward-compatibility alias for tests/clients expecting `server` as the FastMCP app object.
+# ---------------------------------------------------------------------------
+# Phase 4: Capabilities resource + runtime_context_brief prompt (TASK-015)
+# ---------------------------------------------------------------------------
+
+@mcp.resource(
+    "data://server/capabilities",
+    name="server_capabilities",
+    mime_type="application/json",
+    tags={"public"},
+    annotations={"readOnlyHint": True, "idempotentHint": True},
+)
+def server_capabilities_resource() -> str:
+    """Expose server feature capability flags derived from env/config."""
+    payload = {
+        "tasks_enabled": tasks_enabled,
+        "allow_write": ALLOW_WRITE,
+        "auth_type": os.environ.get("FASTMCP_AUTH_TYPE", "none"),
+        "transport": os.environ.get("MCP_TRANSPORT", "stdio"),
+        "strict_validation": os.environ.get("MCP_STRICT_VALIDATION", "false").lower() == "true",
+        "mask_error_details": os.environ.get("MCP_MASK_ERROR_DETAILS", "false").lower() == "true",
+        "elicitation_enabled": True,
+        "composition_enabled": True,
+        "context_injection_enabled": True,
+    }
+    return json.dumps(payload, ensure_ascii=False)
+
+
+@mcp.prompt(
+    name="runtime_context_brief",
+    description="Produce a concise brief of the current MCP runtime context and active server state.",
+    tags={"public"},
+)
+async def runtime_context_brief_prompt(ctx: Context = CurrentContext()) -> list[Message]:
+    """Generate a brief summarising what the current server exposes at runtime."""
+    transport_val = os.environ.get("MCP_TRANSPORT", "stdio")
+    allow_write_val = ALLOW_WRITE
+    tasks_val = tasks_enabled
+    try:
+        resources_map = await ctx.list_resources()
+        resource_count = len(resources_map)
+    except Exception:
+        resource_count = -1
+    try:
+        prompts_list = await ctx.list_prompts()
+        prompt_count = len(prompts_list)
+    except Exception:
+        prompt_count = -1
+
+    return [
+        Message(
+            "You are a PostgreSQL MCP server assistant. Provide a concise runtime context brief."
+        ),
+        Message(
+            f"Transport={transport_val}, allow_write={allow_write_val}, tasks={tasks_val}, "
+            f"resource_count={resource_count}, prompt_count={prompt_count}. "
+            "Summarise what operations are safe to perform given these runtime flags."
+        ),
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: task_progress_demo (TASK-016)
+# ---------------------------------------------------------------------------
+
+from fastmcp.dependencies import Progress
+
+
+@mcp.tool(
+    name="task_progress_demo",
+    description=(
+        "Demonstrate fastmcp task-augmented execution with progress reporting. "
+        "Runs a configurable number of steps emitting Progress updates between steps."
+    ),
+    tags={"demo"},
+)
+async def task_progress_demo(
+    steps: int = 3,
+    step_label: str = "step",
+    progress: Progress = Progress(),
+) -> dict[str, Any]:
+    """Task-capable demo tool that reports progress through N labeled steps."""
+    steps = max(1, min(steps, 20))
+    await progress.set_total(steps)
+    results: list[str] = []
+    for i in range(1, steps + 1):
+        results.append(f"{step_label}_{i}")
+        await progress.set_message(f"Completed {i}/{steps}")
+        await progress.increment(1)
+    return {"ok": True, "steps": steps, "results": results}
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: Composition — child server mounted as "composed" prefix (TASK-017)
+# ---------------------------------------------------------------------------
+
+_composed_child = FastMCP(name="composed-child")
+
+
+@_composed_child.tool(name="ping")
+def _composed_child_ping() -> dict[str, Any]:
+    """Health check tool from the composed child server."""
+    return {"ok": True, "source": "composed-child", "timestamp_utc": datetime.now(timezone.utc).isoformat()}
+
+
+@_composed_child.resource(
+    "data://composed/info",
+    name="composed_info",
+    mime_type="application/json",
+    annotations={"readOnlyHint": True},
+)
+def _composed_child_info_resource() -> str:
+    """Info resource from the composed child server."""
+    return json.dumps({"name": "composed-child", "version": "1.0", "mounted_prefix": "composed"})
+
+
+mcp.mount(_composed_child, prefix="composed")
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: Dependency injection snapshot (TASK-018)
+# ---------------------------------------------------------------------------
+
+@mcp.tool(
+    name="dependency_injection_snapshot",
+    description=(
+        "Return a snapshot of the current FastMCP dependency context: "
+        "server name, transport, request_id, and session_id (when in request context)."
+    ),
+    tags={"demo"},
+)
+async def dependency_injection_snapshot(
+    server: FastMCP = CurrentFastMCP(),
+    ctx: Context = CurrentContext(),
+) -> dict[str, Any]:
+    """Demonstrate CurrentFastMCP + CurrentContext dependency injection."""
+    request_id: str | None = None
+    session_id: str | None = None
+    try:
+        request_id = ctx.request_id
+    except Exception:
+        pass
+    try:
+        session_id = ctx.session_id
+    except Exception:
+        pass
+    return {
+        "ok": True,
+        "server_name": server.name,
+        "transport": os.environ.get("MCP_TRANSPORT", "stdio"),
+        "request_id": request_id,
+        "session_id": session_id,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: Elicitation tools (TASK-019 + TASK-020)
+# ---------------------------------------------------------------------------
+
+from fastmcp.server.elicitation import AcceptedElicitation, CancelledElicitation, DeclinedElicitation
+from dataclasses import dataclass as _dataclass
+
+
+@mcp.tool(
+    name="elicitation_collect_maintenance_window",
+    description=(
+        "Ask the client to select a preferred maintenance window time slot using "
+        "titled single-select elicitation, then confirm with no-response approval."
+    ),
+    tags={"demo"},
+)
+async def elicitation_collect_maintenance_window(
+    ctx: Context = CurrentContext(),
+) -> dict[str, Any]:
+    """Demonstrate titled-options and approval elicitation patterns."""
+    # Single-select: titled options dict pattern {"value": {"title": "Label"}}
+    slot_result = await ctx.elicit(
+        message="Select a preferred maintenance window:",
+        response_type=["00:00-02:00 UTC", "02:00-04:00 UTC", "04:00-06:00 UTC", "Saturday 22:00 UTC"],
+    )
+    if isinstance(slot_result, (DeclinedElicitation, CancelledElicitation)):
+        return {"ok": False, "reason": "user declined or cancelled slot selection"}
+
+    selected_slot = slot_result.data
+
+    # Approval: response_type=None -> empty object acknowledgement
+    confirm_result = await ctx.elicit(
+        message=f"Confirm scheduling maintenance during '{selected_slot}'? Send empty response to confirm.",
+        response_type=None,
+    )
+    if isinstance(confirm_result, (DeclinedElicitation, CancelledElicitation)):
+        return {"ok": False, "reason": "user declined confirmation", "slot": selected_slot}
+
+    return {"ok": True, "scheduled_window": selected_slot, "confirmed": True}
+
+
+@_dataclass
+class MaintenanceTicketRequest:
+    title: str
+    priority: str
+    description: str
+
+
+@mcp.tool(
+    name="elicitation_create_maintenance_ticket",
+    description=(
+        "Ask the client to fill in a structured maintenance ticket form "
+        "(title, priority, description) via dataclass-based elicitation."
+    ),
+    tags={"demo"},
+)
+async def elicitation_create_maintenance_ticket(
+    ctx: Context = CurrentContext(),
+) -> dict[str, Any]:
+    """Demonstrate structured dataclass response elicitation."""
+    ticket_result = await ctx.elicit(
+        message="Please fill in the maintenance ticket details:",
+        response_type=MaintenanceTicketRequest,
+    )
+    if isinstance(ticket_result, (DeclinedElicitation, CancelledElicitation)):
+        return {"ok": False, "reason": "user declined or cancelled ticket creation"}
+
+    ticket = ticket_result.data
+    return {
+        "ok": True,
+        "ticket": {
+            "title": ticket.title,
+            "priority": ticket.priority,
+            "description": ticket.description,
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: Logging demo (TASK-021)
+# ---------------------------------------------------------------------------
+
+@mcp.tool(
+    name="logging_demo",
+    description=(
+        "Emit one log message at each severity level (debug/info/warning/error) "
+        "with structured extra payloads to demonstrate client logging."
+    ),
+    tags={"demo"},
+)
+async def logging_demo(
+    label: str = "test",
+    ctx: Context = CurrentContext(),
+) -> dict[str, Any]:
+    """Show all ctx.log levels with structured extra payloads."""
+    await ctx.log("debug level message", level="debug", extra={"label": label, "phase": "start"})
+    await ctx.log("info level message", level="info", extra={"label": label, "phase": "middle"})
+    await ctx.log("warning level message", level="warning", extra={"label": label, "phase": "middle"})
+    await ctx.log("error level message", level="error", extra={"label": label, "phase": "end"})
+    return {"ok": True, "label": label, "levels_emitted": ["debug", "info", "warning", "error"]}
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: Runtime config snapshot + env-driven toggles (TASK-022)
+# ---------------------------------------------------------------------------
+
+# Env-driven runtime behaviour toggles (evaluated once at import/startup)
+_STRICT_VALIDATION: bool = os.environ.get("MCP_STRICT_VALIDATION", "false").lower() == "true"
+_MASK_ERROR_DETAILS: bool = os.environ.get("MCP_MASK_ERROR_DETAILS", "false").lower() == "true"
+_DUPLICATE_REGISTRATION: str = os.environ.get("MCP_DUPLICATE_REGISTRATION", "warn")  # warn | error | silent
+
+
+@mcp.tool(
+    name="server_runtime_config_snapshot",
+    description=(
+        "Return a snapshot of environment-driven server runtime configuration "
+        "toggles (strict_validation, mask_error_details, duplicate_registration, "
+        "tasks_enabled, allow_write, transport)."
+    ),
+    tags={"admin"},
+)
+def server_runtime_config_snapshot() -> dict[str, Any]:
+    """Read-only snapshot of env-driven runtime behaviour flags."""
+    return {
+        "strict_validation": _STRICT_VALIDATION,
+        "mask_error_details": _MASK_ERROR_DETAILS,
+        "duplicate_registration": _DUPLICATE_REGISTRATION,
+        "tasks_enabled": tasks_enabled,
+        "allow_write": ALLOW_WRITE,
+        "transport": os.environ.get("MCP_TRANSPORT", "stdio"),
+        "default_max_rows": DEFAULT_MAX_ROWS,
+        "statement_timeout_ms": int(os.environ.get("STATEMENT_TIMEOUT_MS", "30000")),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: Context state helpers + session counter (TASK-023)
+# ---------------------------------------------------------------------------
+
+import threading as _threading
+_session_counter_lock = _threading.Lock()
+_session_counter: int = 0
+
+
+def _increment_session_counter() -> int:
+    """Thread-safe session counter increment. Returns new value."""
+    global _session_counter
+    with _session_counter_lock:
+        _session_counter += 1
+        return _session_counter
+
+
+@mcp.tool(
+    name="context_state_demo",
+    description=(
+        "Demonstrate Context.set_state/get_state and the server-side session counter. "
+        "Sets a key in context state, reads it back, and returns the current session count."
+    ),
+    tags={"demo"},
+)
+async def context_state_demo(
+    key: str = "demo_key",
+    value: str = "demo_value",
+    ctx: Context = CurrentContext(),
+) -> dict[str, Any]:
+    """Show Context state management and thread-safe session counter."""
+    ctx.set_state(key, value)
+    retrieved = ctx.get_state(key)
+    session_count = _increment_session_counter()
+    return {
+        "ok": True,
+        "set_key": key,
+        "set_value": value,
+        "retrieved_value": retrieved,
+        "session_count": session_count,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Backward-compatibility alias
+# ---------------------------------------------------------------------------
+
+# API Key Middleware for simple static token auth
 server = mcp
 
 # API Key Middleware for simple static token auth

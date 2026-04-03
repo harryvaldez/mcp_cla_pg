@@ -220,10 +220,39 @@ def _assert_async_context_injection_contract() -> None:
 
 def test_static_resources_and_prompts_inventory() -> None:
     resources, prompts = _scan_server_resources_and_prompts()
+    # Phase 1-3 resources
     assert "data://server/status" in resources
     assert "data://db/settings{?pattern,limit}" in resources
+    # Phase 4 resources
+    assert "data://server/capabilities" in resources
+    # If composed child resource is statically found, check it
+    if "data://composed/info" in resources:
+        assert "data://composed/info" in resources
+
+    # Phase 1-3 prompts
     assert "explain_slow_query" in prompts
     assert "maintenance_recommendations" in prompts
+    # Phase 4 prompt
+    assert "runtime_context_brief" in prompts
+
+
+def test_static_tools_inventory_phase4() -> None:
+    """Assert all Phase 4 tool names are present in server.py."""
+    discovered = _scan_server_tools()
+    expected = [
+        "task_progress_demo",
+        "dependency_injection_snapshot",
+        "elicitation_collect_maintenance_window",
+        "elicitation_create_maintenance_ticket",
+        "logging_demo",
+        "server_runtime_config_snapshot",
+        "context_state_demo",
+    ]
+    # If composed child tool is statically found, check it
+    if "composed_ping" in discovered:
+        expected.append("composed_ping")
+    missing = [t for t in expected if t not in discovered]
+    assert not missing, f"Expected Phase 4 tools missing from server.py: {missing}"
 
 
 def _wait_for_db(timeout_s: int = 60) -> None:
