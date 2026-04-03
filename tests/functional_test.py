@@ -256,42 +256,42 @@ def _parse_resource_payload(raw_content: Any) -> dict[str, Any]:
             return json.loads(inner)
     return decoded if isinstance(decoded, dict) else {}
 
-    def test_startup_rejects_legacy_sse_when_disabled(monkeypatch):
-        monkeypatch.setenv("MCP_TRANSPORT", "sse")
-        monkeypatch.setenv("MCP_ALLOW_LEGACY_SSE", "false")
-        monkeypatch.delenv("FASTMCP_ALLOW_LEGACY_SSE", raising=False)
 
-        calls: list[dict[str, Any]] = []
+def test_startup_rejects_legacy_sse_when_disabled(monkeypatch):
+    monkeypatch.setenv("MCP_TRANSPORT", "sse")
+    monkeypatch.setenv("MCP_ALLOW_LEGACY_SSE", "false")
+    monkeypatch.delenv("FASTMCP_ALLOW_LEGACY_SSE", raising=False)
 
-        def _fake_run(**kwargs):
-            calls.append(kwargs)
+    calls: list[dict[str, Any]] = []
 
-        monkeypatch.setattr(server_module.mcp, "run", _fake_run)
+    def _fake_run(**kwargs):
+        calls.append(kwargs)
 
-        expected_message = "Legacy SSE transport is disabled. Set MCP_TRANSPORT=http or set MCP_ALLOW_LEGACY_SSE=true."
-        with pytest.raises(ValueError, match="^" + expected_message.replace(".", r"\\.") + "$"):
-            server_module.main()
+    monkeypatch.setattr(server_module.mcp, "run", _fake_run)
 
-        assert len(calls) == 0
-
-
-    def test_startup_allows_legacy_sse_when_enabled(monkeypatch):
-        monkeypatch.setenv("MCP_TRANSPORT", "sse")
-        monkeypatch.setenv("MCP_ALLOW_LEGACY_SSE", "true")
-
-        calls: list[dict[str, Any]] = []
-
-        def _fake_run(**kwargs):
-            calls.append(kwargs)
-
-        monkeypatch.setattr(server_module.mcp, "run", _fake_run)
-
+    with pytest.raises(ValueError, match=r"Legacy SSE transport is disabled"):
         server_module.main()
 
-        assert len(calls) == 1
-        assert calls[0].get("transport") == "sse"
-        assert "host" in calls[0]
-        assert "port" in calls[0]
+    assert len(calls) == 0
+
+
+def test_startup_allows_legacy_sse_when_enabled(monkeypatch):
+    monkeypatch.setenv("MCP_TRANSPORT", "sse")
+    monkeypatch.setenv("MCP_ALLOW_LEGACY_SSE", "true")
+
+    calls: list[dict[str, Any]] = []
+
+    def _fake_run(**kwargs):
+        calls.append(kwargs)
+
+    monkeypatch.setattr(server_module.mcp, "run", _fake_run)
+
+    server_module.main()
+
+    assert len(calls) == 1
+    assert calls[0].get("transport") == "sse"
+    assert "host" in calls[0]
+    assert "port" in calls[0]
 
 
 def test_resources_prompts_and_async_context_compat(db_pool):

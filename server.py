@@ -5993,6 +5993,19 @@ def main() -> None:
     
     stateless = _env_bool("MCP_STATELESS", False)
     json_resp = _env_bool("MCP_JSON_RESPONSE", False)
+
+    allow_legacy_sse = _env_optional_bool("MCP_ALLOW_LEGACY_SSE")
+    if allow_legacy_sse is None:
+        allow_legacy_sse = _env_optional_bool("FASTMCP_ALLOW_LEGACY_SSE")
+
+    if transport == "sse":
+        if allow_legacy_sse is False:
+            raise ValueError(
+                "Legacy SSE transport is disabled. Set MCP_TRANSPORT=http or set MCP_ALLOW_LEGACY_SSE=true."
+            )
+        logger.warning(
+            "MCP_TRANSPORT=sse is legacy compatibility mode. Use MCP_TRANSPORT=http for new deployments."
+        )
     
     # SSL Configuration for HTTPS
     ssl_cert = os.environ.get("MCP_SSL_CERT")

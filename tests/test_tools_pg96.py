@@ -238,7 +238,39 @@ def test_static_resources_and_prompts_inventory() -> None:
 
 def test_static_tools_inventory_phase4() -> None:
     """Assert all Phase 4 tool names are present in server.py."""
-    discovered = _scan_server_tools()
+    # Scan for all tools (not just db_pg96_ prefixed ones)
+    with open(SERVER_FILE, "r", encoding="utf-8") as f:
+        src = f.read()
+    tree = ast.parse(src, filename=SERVER_FILE)
+    discovered = []
+    for node in tree.body:
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        has_tool_decorator = False
+        tool_name = None
+        for dec in node.decorator_list:
+            target = dec.func if isinstance(dec, ast.Call) else dec
+            is_mcp_tool = (
+                isinstance(target, ast.Attribute)
+                and isinstance(target.value, ast.Name)
+                and target.value.id == "mcp"
+                and target.attr == "tool"
+            )
+            is_tool = isinstance(target, ast.Name) and target.id == "tool"
+            
+            if is_mcp_tool or is_tool:
+                has_tool_decorator = True
+                # Extract tool name from decorator if provided
+                if isinstance(dec, ast.Call):
+                    for keyword in dec.keywords:
+                        if keyword.arg == "name" and isinstance(keyword.value, ast.Constant):
+                            tool_name = keyword.value.value
+                            break
+                break
+        if has_tool_decorator:
+            # Use the tool name from decorator, or fall back to function name
+            discovered.append(tool_name if tool_name else node.name)
+    
     expected = [
         "task_progress_demo",
         "dependency_injection_snapshot",
