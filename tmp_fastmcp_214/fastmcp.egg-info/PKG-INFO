@@ -1,0 +1,23 @@
+Metadata-Version: 2.4
+Name: fastmcp
+Version: 2.14.0
+Summary: The fast, Pythonic way to build MCP servers and clients.
+Author: Jeremiah Lowin
+Requires-Dist: authlib
+Requires-Dist: cyclopts
+Requires-Dist: exceptiongroup
+Requires-Dist: httpx
+Requires-Dist: jsonref
+Requires-Dist: jsonschema-path
+Requires-Dist: mcp
+Requires-Dist: openapi-pydantic
+Requires-Dist: packaging
+Requires-Dist: platformdirs
+Requires-Dist: py-key-value-aio
+Requires-Dist: pydantic
+Requires-Dist: pydocket
+Requires-Dist: pyperclip
+Requires-Dist: python-dotenv
+Requires-Dist: rich
+Requires-Dist: uvicorn
+Requires-Dist: websockets

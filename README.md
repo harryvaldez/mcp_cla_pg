@@ -431,7 +431,7 @@ To prevent the MCP server from becoming unresponsive or overloading the database
 *   **Max Rows**: Queries returning large result sets are truncated to **500 rows** (default).
     *   **Configuration**: Set `MCP_MAX_ROWS` to adjust.
 
-### Core Connection
+### Core Connection & Runtime Config
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `DATABASE_URL` | Full PostgreSQL connection string | *Required* |
@@ -473,6 +473,9 @@ To prevent the MCP server from becoming unresponsive or overloading the database
 | `MCP_EXCLUDE_TAGS` | Alias for `FASTMCP_EXCLUDE_TAGS` | *Unset* |
 | `FASTMCP_INCLUDE_META` | Optional FastMCP metadata visibility toggle (`true`/`false`) | *Unset* |
 | `MCP_INCLUDE_META` | Alias for `FASTMCP_INCLUDE_META` | *Unset* |
+| `MCP_STRICT_VALIDATION` | Enable strict runtime validation of requests and config | `false` |
+| `MCP_MASK_ERROR_DETAILS` | Mask error details in responses for security | `false` |
+| `MCP_DUPLICATE_REGISTRATION` | Control duplicate registration behavior: `warn`, `error`, `silent` | `warn` |
 
 ### Background Tasks (FastMCP)
 
@@ -765,13 +768,40 @@ These tools support FastMCP background tasks (SEP-1686) for long-running operati
 - `db_pg96_get_db_parameters(pattern: str = None)`: Retrieve database configuration parameters (GUCs).
 
 ### 🔧 Maintenance (Requires `MCP_ALLOW_WRITE=true`)
-- `db_pg96_create_db_user(username: str, password: str, privileges: str = "read", database: str | None = None)`: Create a new database user. Defaults to the current database if `database` is not specified.
-- `db_pg96_drop_db_user(username: str)`: Remove a role.
-- `db_pg96_kill_session(pid: int)`: Terminate a specific backend PID.
-- `db_pg96_run_query(sql: str, params_json: str | None = None, max_rows: int | None = None, source_prompt: str | None = None)`: Execute ad-hoc SQL. `max_rows` defaults to 500 (configurable via `MCP_MAX_ROWS`). Returns up to `max_rows` rows; if truncated, `truncated: true` is set. Provide `source_prompt` to store exact AI prompt in the audit log.
-- `db_pg96_create_object(object_type: str, object_name: str, schema: str = None, owner: str = None, parameters: dict = None)`: Create database objects (table, view, index, function, etc.).
-- `db_pg96_alter_object(object_type: str, object_name: str, operation: str, schema: str = None, owner: str = None, parameters: dict = None)`: Modify database objects (add/rename column, set owner, etc.).
-- `db_pg96_drop_object(object_type: str, object_name: str, schema: str = None, parameters: dict = None)`: Drop database objects with optional `cascade` or `if_exists`.
+- `db_pg96_create_db_user(...)`, `db_pg96_drop_db_user(...)`, `db_pg96_kill_session(...)`, `db_pg96_run_query(...)`, `db_pg96_create_object(...)`, `db_pg96_alter_object(...)`, `db_pg96_drop_object(...)`
+
+### **Phase 4: New Demo/Admin Tools**
+
+#### task_progress_demo *(NEW)*
+- Demonstrates FastMCP task execution with progress reporting.
+- Args: `steps: int = 3`, `step_label: str = "step"`
+- Returns: `{ok, steps, results}`
+
+#### dependency_injection_snapshot *(NEW)*
+- Returns a snapshot of the current FastMCP dependency context (server name, transport, request/session id).
+
+#### elicitation_collect_maintenance_window *(NEW)*
+- Demonstrates single-select and approval elicitation patterns.
+- Guides user through selecting a maintenance window and confirming.
+
+#### elicitation_create_maintenance_ticket *(NEW)*
+- Demonstrates structured dataclass-based elicitation for ticket creation (title, priority, description).
+
+#### logging_demo *(NEW)*
+- Emits log messages at all severity levels (debug/info/warning/error) with structured payloads.
+
+#### server_runtime_config_snapshot *(NEW)*
+- Returns a snapshot of environment-driven server runtime config toggles (strict_validation, mask_error_details, duplicate_registration, tasks_enabled, allow_write, transport, etc.).
+
+#### context_state_demo *(NEW)*
+- Demonstrates context state management and a server-side session counter.
+- Sets and retrieves a key in context state, returns session count.
+
+#### composed_child.ping *(NEW, via server composition)*
+- Health check tool from the composed child server (mounted at `/composed`).
+
+#### composed_child resource *(NEW)*
+- `data://composed/info`: Info resource from the composed child server.
 
 ---
 

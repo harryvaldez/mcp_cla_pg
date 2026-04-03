@@ -18,7 +18,7 @@ from urllib.parse import quote, urlparse, urlunparse, urlsplit, urlunsplit
 from typing import Any, Literal, Optional, cast
 
 from sshtunnel import SSHTunnelForwarder
-from fastmcp import FastMCP
+from fastmcp.server.server import FastMCP
 from fastmcp.prompts import Message
 from fastmcp.server.context import Context
 from fastmcp.dependencies import CurrentContext, CurrentFastMCP
@@ -920,7 +920,7 @@ def _composed_child_info_resource() -> str:
     return json.dumps({"name": "composed-child", "version": "1.0", "mounted_prefix": "composed"})
 
 
-mcp.mount(_composed_child, prefix="composed")
+mcp.mount(_composed_child, namespace="composed")
 
 
 # ---------------------------------------------------------------------------
@@ -1125,8 +1125,8 @@ async def context_state_demo(
     ctx: Context = CurrentContext(),
 ) -> dict[str, Any]:
     """Show Context state management and thread-safe session counter."""
-    ctx.set_state(key, value)
-    retrieved = ctx.get_state(key)
+    await ctx.set_state(key, value)
+    retrieved = await ctx.get_state(key)
     session_count = _increment_session_counter()
     return {
         "ok": True,

@@ -153,9 +153,11 @@ When deploying to production, verify the following:
 
 ---
 
+
 ## ⚙️ Environment Variables
 
-Key environment variables supported by the server:
+Key environment variables supported by the server (including all new runtime config toggles):
+
 - `DATABASE_URL` PostgreSQL connection string.
 - `MCP_TRANSPORT` Transport mode: `http` (recommended default), `stdio`, or `sse` (legacy compatibility).
 - `MCP_HOST` Host for HTTP transport, default `0.0.0.0`.
@@ -163,18 +165,40 @@ Key environment variables supported by the server:
 - `MCP_ALLOW_WRITE` Allow write operations, default `false`.
 - `MCP_CONFIRM_WRITE` Require confirmation for writes, default `false`.
 - `MCP_SKIP_CONFIRMATION` Skip startup confirmation dialog, default `false`.
-- `FASTMCP_AUTH_TYPE` Authentication type (`apikey`, `github`, `google`, `azure-ad`, `oidc`, `jwt`).
-- `FASTMCP_API_KEY` Secret key for `apikey` auth.
+- `MCP_STRICT_VALIDATION` Enable strict runtime validation of requests and config, default `false`.
+- `MCP_MASK_ERROR_DETAILS` Mask error details in responses for security, default `false`.
+- `MCP_DUPLICATE_REGISTRATION` Control duplicate registration behavior: `warn`, `error`, `silent` (default `warn`).
+- `MCP_POOL_MAX_WAITING` Max queries queued when pool is full.
+- `MCP_STATEMENT_TIMEOUT_MS` Max execution time per query in milliseconds.
+- `MCP_RATE_LIMIT_ENABLED` Enable query-level token-bucket rate limiting and breaker.
+- `MCP_RATE_LIMIT_PER_MINUTE` Allowed query executions per minute before throttling.
+- `MCP_BREAKER_TRIP_REJECTIONS` Consecutive throttles before opening breaker.
+- `MCP_BREAKER_OPEN_SECONDS` Seconds to hold breaker open after trip.
+- `MCP_ENFORCE_TABLE_SCOPE` Validate DB credential can only `SELECT` allowed tables at startup.
+- `MCP_ALLOWED_TABLES` Comma-separated allowed table list (`schema.table`) when scope enforcement is enabled.
+- `MCP_AUDIT_LOG_FILE` JSONL file path for query audit events (includes `source_prompt`).
+- `MCP_AUDIT_LOG_SQL_TEXT` Include raw SQL text in audit events (otherwise hash/length only).
+- `MCP_AUDIT_REQUIRE_PROMPT` Require `source_prompt` for `run_query`/`explain_query` calls.
+- `MCP_LOG_LEVEL` Logging level (DEBUG, INFO, WARNING, ERROR).
+- `MCP_LOG_FILE` Optional path to write logs to a file.
 - `FASTMCP_TASKS_ENABLED` Optional FastMCP background tasks toggle (`true`/`false`).
 - `MCP_TASKS_ENABLED` Backward-compatible alias for `FASTMCP_TASKS_ENABLED`.
-- `MCP_SKILLS_RESOURCES_ENABLED` Optional toggle for local skills resources (`skills://index`, `skills://{skill_id}`).
-- `MCP_SKILLS_DIRS` Optional semicolon/comma-separated skills roots (`<root>/<skill>/SKILL.md`).
+- `FASTMCP_LIST_PAGE_SIZE` Optional FastMCP pagination size for `tools/list`, `resources/list`, `resources/templates/list`, and `prompts/list` (must be positive integer).
+- `MCP_LIST_PAGE_SIZE` Backward-compatible alias for `FASTMCP_LIST_PAGE_SIZE`.
+- `FASTMCP_SAMPLING_HANDLER` Optional FastMCP sampling fallback provider: `openai`, `anthropic`, or `none`.
+- `MCP_SAMPLING_HANDLER` Backward-compatible alias for `FASTMCP_SAMPLING_HANDLER`.
+- `FASTMCP_SAMPLING_HANDLER_BEHAVIOR` Sampling handler mode: `fallback` (default) or `always`.
+- `MCP_SAMPLING_HANDLER_BEHAVIOR` Backward-compatible alias for `FASTMCP_SAMPLING_HANDLER_BEHAVIOR`.
+- `FASTMCP_SAMPLING_DEFAULT_MODEL` Optional default model hint for sampling handler (for example, `gpt-4o-mini`).
+- `MCP_SAMPLING_DEFAULT_MODEL` Backward-compatible alias for `FASTMCP_SAMPLING_DEFAULT_MODEL`.
+- `MCP_SKILLS_RESOURCES_ENABLED` Enable local "skills as resources" endpoints (`skills://index`, `skills://{skill_id}`).
+- `MCP_SKILLS_DIRS` Optional skill root directories (comma-separated; semicolon also supported), each containing `<skill>/SKILL.md`.
 - `FASTMCP_SKILLS_DIRS` Alias for `MCP_SKILLS_DIRS`.
-- `FASTMCP_INCLUDE_TAGS` Optional allow-list for visibility filtering by tags.
-- `MCP_INCLUDE_TAGS` Alias for `FASTMCP_INCLUDE_TAGS`.
-- `FASTMCP_EXCLUDE_TAGS` Optional block-list for visibility filtering by tags.
+- `FASTMCP_INCLUDE_TAGS` Optional server-level visibility allow-list tags (comma-separated; semicolon also supported).
+- `MCP_INCLUDE_TAGS` Alias for `FASTMCP_INCLUDE_TAGS` (comma-separated; semicolon also supported).
+- `FASTMCP_EXCLUDE_TAGS` Optional server-level visibility block-list tags (comma-separated; semicolon also supported).
 - `MCP_EXCLUDE_TAGS` Alias for `FASTMCP_EXCLUDE_TAGS`.
-- `FASTMCP_INCLUDE_META` Optional toggle for FastMCP metadata visibility.
+- `FASTMCP_INCLUDE_META` Optional FastMCP metadata visibility toggle (`true`/`false`).
 - `MCP_INCLUDE_META` Alias for `FASTMCP_INCLUDE_META`.
 - `FASTMCP_GITHUB_CLIENT_ID` / `FASTMCP_GITHUB_CLIENT_SECRET` GitHub OAuth credentials.
 - `FASTMCP_GOOGLE_CLIENT_ID` / `FASTMCP_GOOGLE_CLIENT_SECRET` Google OAuth credentials.
