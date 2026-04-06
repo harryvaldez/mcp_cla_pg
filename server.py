@@ -3,6 +3,75 @@ import itertools
 import importlib
 import inspect
 import contextvars
+from fastmcp.server.transforms import Namespace, ToolTransform, Transform
+from typing import Callable, Any, Sequence, cast
+from fastmcp.tools.base import Tool
+# --- FastMCP Transform for Dual-Instance Tool Prefixing ---
+class InstanceToolPrefixTransform(ToolTransform):
+    """
+    Deterministically rewrites tool names for dual-instance routing.
+    Adds a prefix (e.g., 'pg96_' or 'pg14_') to tool names based on the instance context.
+    """
+    def __init__(self, prefix: str, match_func: Callable[[str], bool]):
+        self.prefix = prefix
+        self.match_func = match_func
+
+
+    async def list_tools(self, tools: Sequence["Tool"]) -> Sequence["Tool"]:
+        # Rewrite tool names with prefix if they match
+        result = []
+        for tool in tools:
+            if self.match_func(tool.name):
+                tool.name = f"{self.prefix}{tool.name}"
+            result.append(tool)
+        return result
+
+
+    async def get_tool(
+        self,
+        name: str,
+        call_next,
+        *,
+        version=None,
+    ):
+        # Remove prefix and match underlying tool
+        if name.startswith(self.prefix):
+            base_name = name[len(self.prefix):]
+            tool = await call_next(base_name, version=version)
+            if tool is not None:
+                return tool
+        # Otherwise, delegate to the next transform
+        return await call_next(name, version=version)
+
+# --- Transform Provider for Dual-Instance Routing ---
+def get_dual_instance_transforms(enable_dual: bool) -> list[Transform]:
+    """
+    Returns a list of transforms for dual-instance routing.
+    If enable_dual is False, returns an empty list (compat mode).
+    """
+    if not enable_dual:
+        return []
+    # Example: Prefix all tools with 'pg96_' or 'pg14_' based on instance
+    # Here, we only implement 'pg96_' for demonstration; extend as needed.
+    return [
+        InstanceToolPrefixTransform("pg96_", lambda n: True),
+        # Add InstanceToolPrefixTransform("pg14_", ...) for other instance if needed
+    ]
+
+# --- MCP Server Initialization with Transform Wiring ---
+import os
+
+# Compatibility toggle: set MCP_DUAL_INSTANCE_TRANSFORMS=1 to enable
+ENABLE_DUAL_INSTANCE_TRANSFORMS = os.environ.get("MCP_DUAL_INSTANCE_TRANSFORMS", "0") == "1"
+
+# ...existing MCP server setup code...
+
+# When initializing FastMCP, wire transforms:
+# Example (replace with your actual FastMCP server init):
+# mcp = FastMCP(
+#     ...,  # existing args
+#     transforms=get_dual_instance_transforms(ENABLE_DUAL_INSTANCE_TRANSFORMS),
+# )
 import json
 import hashlib
 import logging
@@ -680,6 +749,9 @@ auth_type = os.environ.get("FASTMCP_AUTH_TYPE", "").lower()
 tasks_enabled = _env_optional_bool("FASTMCP_TASKS_ENABLED")
 if tasks_enabled is None:
     tasks_enabled = _env_optional_bool("MCP_TASKS_ENABLED")
+# Default to False if not explicitly set (avoid implicit task enabling)
+if tasks_enabled is None:
+    tasks_enabled = False
 include_tags = _env_optional_tag_set("FASTMCP_INCLUDE_TAGS")
 if include_tags is None:
     include_tags = _env_optional_tag_set("MCP_INCLUDE_TAGS")
@@ -705,7 +777,7 @@ _fastmcp_supported_params = set(inspect.signature(FastMCP).parameters.keys())
 _fastmcp_init_kwargs = {
     key: value
     for key, value in _fastmcp_candidate_kwargs.items()
-    if key in _fastmcp_supported_params and value is not None
+    if key in _fastmcp_supported_params and (value is not None or key == "tasks")
 }
 
 _unsupported_init_keys = sorted(
@@ -763,9 +835,8 @@ _register_skills_resources()
     description="Read-only snapshot of MCP server and PostgreSQL connection status.",
     mime_type="application/json",
     tags={"public"},
-    annotations={"readOnlyHint": True, "idempotentHint": True},
 )
-def server_status_resource() -> str:
+async def server_status_resource() -> str:
     payload = {
         "ok": True,
         "server_name": os.environ.get("MCP_SERVER_NAME", "PostgreSQL MCP Server"),
@@ -805,9 +876,8 @@ def server_status_resource() -> str:
     description="Read PostgreSQL settings with optional regex name filter and result limit.",
     mime_type="application/json",
     tags={"public"},
-    annotations={"readOnlyHint": True, "idempotentHint": True},
 )
-def db_settings_resource(pattern: str | None = None, limit: int = 100) -> str:
+async def db_settings_resource(pattern: str | None = None, limit: int = 100) -> str:
     if limit <= 0:
         raise ValueError("limit must be positive")
 
@@ -878,7 +948,7 @@ def db_settings_resource(pattern: str | None = None, limit: int = 100) -> str:
     description="Generate a deterministic checklist for query plan analysis before running explain.",
     tags={"public"},
 )
-def explain_slow_query_prompt(sql: str, analyze: bool = False, buffers: bool = False) -> list[Message]:
+async def explain_slow_query_prompt(sql: str, analyze: bool = False, buffers: bool = False) -> list[Message]:
     options = [f"analyze={str(analyze).lower()}", f"buffers={str(buffers).lower()}"]
     messages = [
         Message(
@@ -901,7 +971,7 @@ def explain_slow_query_prompt(sql: str, analyze: bool = False, buffers: bool = F
     description="Generate profile-aware PostgreSQL maintenance checklist aligned with security/performance thresholds.",
     tags={"public"},
 )
-def maintenance_recommendations_prompt(profile: str = "oltp") -> list[Message]:
+async def maintenance_recommendations_prompt(profile: str = "oltp") -> list[Message]:
     profile_value = (profile or "oltp").lower()
     if profile_value == "olap":
         cache_threshold = 80
@@ -938,9 +1008,8 @@ def maintenance_recommendations_prompt(profile: str = "oltp") -> list[Message]:
     name="server_capabilities",
     mime_type="application/json",
     tags={"public"},
-    annotations={"readOnlyHint": True, "idempotentHint": True},
 )
-def server_capabilities_resource() -> str:
+async def server_capabilities_resource() -> str:
     """Expose server feature capability flags derived from env/config."""
     payload = {
         "tasks_enabled": tasks_enabled,
@@ -1037,9 +1106,8 @@ def _composed_child_ping() -> dict[str, Any]:
     "data://composed/info",
     name="composed_info",
     mime_type="application/json",
-    annotations={"readOnlyHint": True},
 )
-def _composed_child_info_resource() -> str:
+async def _composed_child_info_resource() -> str:
     """Info resource from the composed child server."""
     return json.dumps({"name": "composed-child", "version": "1.0", "mounted_prefix": "composed"})
 
