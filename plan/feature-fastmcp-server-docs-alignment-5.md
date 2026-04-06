@@ -35,10 +35,10 @@ This plan is a planning-only execution checklist that adds exact assertion snipp
 
 | Task | Description | Completed | Date |
 |------|-------------|-----------|------|
-| TASK-001 | In tests/functional_test.py, add helper setup for startup monkeypatching near existing imports and fixtures. |  |  |
-| TASK-002 | Add test_startup_rejects_legacy_sse_when_disabled in tests/functional_test.py. |  |  |
-| TASK-003 | Add test_startup_allows_legacy_sse_when_enabled in tests/functional_test.py. |  |  |
-| TASK-004 | Add deterministic assertions for mcp.run call-count and kwargs capture behavior. |  |  |
+| TASK-001 | In tests/functional_test.py, add helper setup for startup monkeypatching near existing imports and fixtures. | ✅ | 2026-04-05 |
+| TASK-002 | Add test_startup_rejects_legacy_sse_when_disabled in tests/functional_test.py. | ✅ | 2026-04-05 |
+| TASK-003 | Add test_startup_allows_legacy_sse_when_enabled in tests/functional_test.py. | ✅ | 2026-04-05 |
+| TASK-004 | Add deterministic assertions for mcp.run call-count and kwargs capture behavior. | ✅ | 2026-04-05 |
 
 ### Implementation Phase 2
 
@@ -46,10 +46,10 @@ This plan is a planning-only execution checklist that adds exact assertion snipp
 
 | Task | Description | Completed | Date |
 |------|-------------|-----------|------|
-| TASK-005 | In tests/test_tools_pg96.py, add test_transport_gate_changes_do_not_modify_db_pg96_contract. |  |  |
-| TASK-006 | Assert db_pg96_ping output contains ok boolean field. |  |  |
-| TASK-007 | Assert db_pg96_server_info output contains stable top-level keys used by existing tests. |  |  |
-| TASK-008 | Ensure contract guard assertions do not depend on mutable runtime values. |  |  |
+| TASK-005 | In tests/test_tools_pg96.py, add test_transport_gate_changes_do_not_modify_db_pg96_contract. | ✅ | 2026-04-05 |
+| TASK-006 | Assert db_pg96_ping output contains ok boolean field. | ✅ | 2026-04-05 |
+| TASK-007 | Assert db_pg96_server_info output contains stable top-level keys used by existing tests. | ✅ | 2026-04-05 |
+| TASK-008 | Ensure contract guard assertions do not depend on mutable runtime values. | ✅ | 2026-04-05 |
 
 ### Implementation Phase 3
 
@@ -57,10 +57,10 @@ This plan is a planning-only execution checklist that adds exact assertion snipp
 
 | Task | Description | Completed | Date |
 |------|-------------|-----------|------|
-| TASK-009 | Run targeted startup tests in tests/functional_test.py and confirm deterministic allow/deny behavior. |  |  |
-| TASK-010 | Run contract guard test in tests/test_tools_pg96.py and confirm no regressions. |  |  |
-| TASK-011 | Run combined targeted suite for startup and tool contract checks. |  |  |
-| TASK-012 | Record pass or fail outcomes in Validation Snapshot section of this plan. |  |  |
+| TASK-009 | Run targeted startup tests in tests/functional_test.py and confirm deterministic allow/deny behavior. | ✅ | 2026-04-05 |
+| TASK-010 | Run contract guard test in tests/test_tools_pg96.py and confirm no regressions. | ✅ | 2026-04-05 |
+| TASK-011 | Run combined targeted suite for startup and tool contract checks. | ✅ | 2026-04-05 |
+| TASK-012 | Record pass or fail outcomes in Validation Snapshot section of this plan. | ✅ | 2026-04-05 |
 
 ## 3. Alternatives
 
@@ -116,9 +116,9 @@ This plan is a planning-only execution checklist that adds exact assertion snipp
 
 ## 11. Validation Snapshot
 
-- VAL-001: CMD-001 -> Pending
-- VAL-002: CMD-002 -> Pending
-- VAL-003: CMD-003 -> Pending
+- VAL-001: CMD-001 -> Passed (2026-04-05)
+- VAL-002: CMD-002 -> Passed (2026-04-05)
+- VAL-003: CMD-003 -> Passed (2026-04-05)
 
 ## 12. Paste-Ready Checklist
 

@@ -38,10 +38,10 @@ This plan defines deterministic tasks to align this repository with current Fast
 
 | Task | Description | Completed | Date |
 | -------- | --------------------- | --------- | ---------- |
-| TASK-001 | In server.py, document current transport execution paths inside main() for http, sse, and stdio using concise inline comments above the `if transport in {"http", "sse"}` and `elif transport == "stdio"` branches. |  |  |
-| TASK-002 | In README.md, replace transport marketing text that implies SSE parity with HTTP and explicitly mark SSE as legacy transport while preserving mention of compatibility support. |  |  |
-| TASK-003 | In DEPLOYMENT.md, update transport variable section so MCP_TRANSPORT describes `http` as recommended default, `stdio` as local process mode, and `sse` as legacy compatibility mode. |  |  |
-| TASK-004 | In DEPLOYMENT.md, update default HTTP port references from 8000 to 8085 to match `_env_int("MCP_PORT", 8085)` in server.py. |  |  |
+| TASK-001 | In server.py, document current transport execution paths inside main() for http, sse, and stdio using concise inline comments above the `if transport in {"http", "sse"}` and `elif transport == "stdio"` branches. | ✅ | 2026-04-05 |
+| TASK-002 | In README.md, replace transport marketing text that implies SSE parity with HTTP and explicitly mark SSE as legacy transport while preserving mention of compatibility support. | ✅ | 2026-04-05 |
+| TASK-003 | In DEPLOYMENT.md, update transport variable section so MCP_TRANSPORT describes `http` as recommended default, `stdio` as local process mode, and `sse` as legacy compatibility mode. | ✅ | 2026-04-05 |
+| TASK-004 | In DEPLOYMENT.md, update default HTTP port references from 8000 to 8085 to match `_env_int("MCP_PORT", 8085)` in server.py. | ✅ | 2026-04-05 |
 
 ### Implementation Phase 2
 
@@ -49,10 +49,10 @@ This plan defines deterministic tasks to align this repository with current Fast
 
 | Task | Description | Completed | Date |
 | -------- | --------------------- | --------- | ---- |
-| TASK-005 | In server.py main(), add a logger.warning message when transport == "sse" indicating legacy status and recommending MCP_TRANSPORT=http for new deployments. |  |  |
-| TASK-006 | In server.py, add environment flag parsing for MCP_ALLOW_LEGACY_SSE (fallback FASTMCP_ALLOW_LEGACY_SSE) using existing optional bool helper pattern. |  |  |
-| TASK-007 | In server.py main(), enforce deterministic behavior: if transport == "sse" and MCP_ALLOW_LEGACY_SSE is explicitly false, raise ValueError with remediation text; if unset or true, continue with warning. |  |  |
-| TASK-008 | In README.md and DEPLOYMENT.md, add one configuration example showing how to disable SSE by setting MCP_ALLOW_LEGACY_SSE=false. |  |  |
+| TASK-005 | In server.py main(), add a logger.warning message when transport == "sse" indicating legacy status and recommending MCP_TRANSPORT=http for new deployments. | ✅ | 2026-04-05 |
+| TASK-006 | In server.py, add environment flag parsing for MCP_ALLOW_LEGACY_SSE (fallback FASTMCP_ALLOW_LEGACY_SSE) using existing optional bool helper pattern. | ✅ | 2026-04-05 |
+| TASK-007 | In server.py main(), enforce deterministic behavior: if transport == "sse" and MCP_ALLOW_LEGACY_SSE is explicitly false, raise ValueError with remediation text; if unset or true, continue with warning. | ✅ | 2026-04-05 |
+| TASK-008 | In README.md and DEPLOYMENT.md, add one configuration example showing how to disable SSE by setting MCP_ALLOW_LEGACY_SSE=false. | ✅ | 2026-04-05 |
 
 ### Implementation Phase 3
 
@@ -60,10 +60,10 @@ This plan defines deterministic tasks to align this repository with current Fast
 
 | Task | Description | Completed | Date |
 | -------- | --------------------- | --------- | ---- |
-| TASK-009 | In tests/functional_test.py, add test case that starts server with MCP_TRANSPORT=sse and MCP_ALLOW_LEGACY_SSE=false and asserts startup failure with deterministic error message. |  |  |
-| TASK-010 | In tests/functional_test.py, add test case that starts server with MCP_TRANSPORT=sse and MCP_ALLOW_LEGACY_SSE=true and asserts startup proceeds to FastMCP run invocation path. |  |  |
-| TASK-011 | In tests/test_tools_pg96.py, add a guard test asserting representative db_pg96_* tool outputs are unchanged after transport-gating additions. |  |  |
-| TASK-012 | Execute `python -m pytest tests/functional_test.py -q` and `python -m pytest tests/test_tools_pg96.py -q`; record pass/fail summary in this plan under a validation snapshot subsection. |  |  |
+| TASK-009 | In tests/functional_test.py, add test case that starts server with MCP_TRANSPORT=sse and MCP_ALLOW_LEGACY_SSE=false and asserts startup failure with deterministic error message. | ✅ | 2026-04-05 |
+| TASK-010 | In tests/functional_test.py, add test case that starts server with MCP_TRANSPORT=sse and MCP_ALLOW_LEGACY_SSE=true and asserts startup proceeds to FastMCP run invocation path. | ✅ | 2026-04-05 |
+| TASK-011 | In tests/test_tools_pg96.py, add a guard test asserting representative db_pg96_* tool outputs are unchanged after transport-gating additions. | ✅ | 2026-04-05 |
+| TASK-012 | Execute `python -m pytest tests/functional_test.py -q` and `python -m pytest tests/test_tools_pg96.py -q`; record pass/fail summary in this plan under a validation snapshot subsection. | ✅ | 2026-04-05 |
 
 ## 3. Alternatives
 

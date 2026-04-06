@@ -37,8 +37,8 @@ This plan provides one copy-paste apply patch operation that implements all scop
 
 | Task | Description | Completed | Date |
 |------|-------------|-----------|------|
-| TASK-001 | Copy the full patch payload in Section 9 and apply it with one apply patch call. |  |  |
-| TASK-002 | Confirm modified files match File List section. |  |  |
+| TASK-001 | Copy the full patch payload in Section 9 and apply it with one apply patch call. | ✅ | 2026-04-05 |
+| TASK-002 | Confirm modified files match File List section. | ✅ | 2026-04-05 |
 
 ### Implementation Phase 2
 
@@ -46,9 +46,9 @@ This plan provides one copy-paste apply patch operation that implements all scop
 
 | Task | Description | Completed | Date |
 |------|-------------|-----------|------|
-| TASK-003 | Run startup transport tests for legacy SSE allow and deny branches. |  |  |
-| TASK-004 | Run db_pg96 contract guard test. |  |  |
-| TASK-005 | Run combined targeted test suite. |  |  |
+| TASK-003 | Run startup transport tests for legacy SSE allow and deny branches. | ✅ | 2026-04-05 |
+| TASK-004 | Run db_pg96 contract guard test. | ✅ | 2026-04-05 |
+| TASK-005 | Run combined targeted test suite. | ✅ | 2026-04-05 |
 
 ## 3. Alternatives
 
@@ -259,6 +259,6 @@ Copy all lines below exactly into one apply patch tool call.
 
 ## 12. Validation Snapshot
 
-- VAL-001: CMD-001 -> Pending
-- VAL-002: CMD-002 -> Pending
-- VAL-003: CMD-003 -> Pending
+- VAL-001: CMD-001 -> Passed (2026-04-05)
+- VAL-002: CMD-002 -> Passed (2026-04-05)
+- VAL-003: CMD-003 -> Passed (2026-04-05)

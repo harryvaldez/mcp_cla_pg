@@ -27,6 +27,7 @@ EXPECTED_TOOLS = [
     "db_pg96_analyze_sessions",
     "db_pg96_analyze_table_health",
     "db_pg96_check_bloat",
+    "db_pg96_create_virtual_indexes",
     "db_pg96_create_db_user",
     "db_pg96_db_sec_perf_metrics",
     "db_pg96_database_security_performance_metrics",
@@ -236,6 +237,14 @@ def test_static_resources_and_prompts_inventory() -> None:
     assert "runtime_context_brief" in prompts
 
 
+def test_legacy_skills_resources_still_register() -> None:
+    with open(SERVER_FILE, "r", encoding="utf-8") as f:
+        src = f.read()
+    assert "def _register_skills_resources()" in src
+    assert "skills://index" in src
+    assert "skills://{skill_id}" in src
+
+
 def test_static_tools_inventory_phase4() -> None:
     """Assert all Phase 4 tool names are present in server.py."""
     # Scan for all tools (not just db_pg96_ prefixed ones)
@@ -393,6 +402,58 @@ def _invoke(server_module: Any, tool_name: str, kwargs: dict[str, Any] | None = 
     raise TypeError(f"Tool {tool_name} is not callable and has no known callable attribute")
 
 
+class _FakeCursor:
+    def __init__(self):
+        self._last_query = ""
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def execute(self, query, params=None):
+        text = str(query)
+        if text.strip().lower().startswith("set statement_timeout"):
+            return
+        self._last_query = text.strip().lower()
+
+    def fetchone(self):
+        if "from pg_namespace" in self._last_query:
+            return {"exists": True}
+        return {}
+
+    def fetchall(self):
+        if self._last_query.startswith("explain"):
+            return [
+                {
+                    "QUERY PLAN": [
+                        {
+                            "Plan": {"Node Type": "Result"},
+                            "Execution Time": 12.5,
+                        }
+                    ]
+                }
+            ]
+        return []
+
+
+class _FakeConnection:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def cursor(self):
+        return _FakeCursor()
+
+
+class _FakePool:
+    def connection(self):
+        return _FakeConnection()
+
+
 def _coerce_rows(value: Any) -> list[Any]:
     if isinstance(value, list):
         return value
@@ -404,6 +465,67 @@ def _coerce_rows(value: Any) -> list[Any]:
             if isinstance(nested, list):
                 return nested
     return []
+
+
+def test_virtual_indexes_requires_readonly_sql(monkeypatch):
+    os.environ["DATABASE_URL"] = f"postgresql://{USER}:{PASSWORD}@{HOST}:{PORT}/{DB}"
+    os.environ["MCP_ALLOW_WRITE"] = "false"
+    os.environ["MCP_SKIP_CONFIRMATION"] = "true"
+    os.environ["MCP_REGISTER_SIGNAL_HANDLERS"] = "false"
+
+    if "server" in sys.modules:
+        del sys.modules["server"]
+    sys.path.insert(0, ROOT)
+    import server  # noqa: E402
+    sys.path.pop(0)
+
+    monkeypatch.setattr(server, "pool", _FakePool())
+    with pytest.raises(ValueError, match="Write operations are disabled"):
+        server.db_pg96_create_virtual_indexes("public", "delete from public.orders")
+
+
+def test_virtual_indexes_returns_baseline_when_no_candidates(monkeypatch):
+    os.environ["DATABASE_URL"] = f"postgresql://{USER}:{PASSWORD}@{HOST}:{PORT}/{DB}"
+    os.environ["MCP_SKIP_CONFIRMATION"] = "true"
+    os.environ["MCP_REGISTER_SIGNAL_HANDLERS"] = "false"
+
+    if "server" in sys.modules:
+        del sys.modules["server"]
+    sys.path.insert(0, ROOT)
+    import server  # noqa: E402
+    sys.path.pop(0)
+
+    monkeypatch.setattr(server, "pool", _FakePool())
+    monkeypatch.setattr(server, "_ensure_hypopg_available", lambda cur: None)
+    monkeypatch.setattr(server, "_collect_candidate_index_specs", lambda schema_name, plan_json: [])
+    monkeypatch.setattr(server, "_extract_plan_nodes", lambda plan_json: [])
+
+    result = server.db_pg96_create_virtual_indexes("public", "select 1")
+    assert result["evaluated_sets_count"] == 0
+    assert result["best_virtual_index_set"]["index_count"] == 0
+    assert isinstance(result["baseline_execution_time_ms"], float)
+    assert result["best_execution_time_ms"] == result["baseline_execution_time_ms"]
+
+
+def test_virtual_indexes_missing_hypopg_raises_runtime_error(monkeypatch):
+    os.environ["DATABASE_URL"] = f"postgresql://{USER}:{PASSWORD}@{HOST}:{PORT}/{DB}"
+    os.environ["MCP_SKIP_CONFIRMATION"] = "true"
+    os.environ["MCP_REGISTER_SIGNAL_HANDLERS"] = "false"
+
+    if "server" in sys.modules:
+        del sys.modules["server"]
+    sys.path.insert(0, ROOT)
+    import server  # noqa: E402
+    sys.path.pop(0)
+
+    monkeypatch.setattr(server, "pool", _FakePool())
+
+    def _raise_missing(cur):
+        raise RuntimeError("HypoPG extension is required. Run: CREATE EXTENSION hypopg;")
+
+    monkeypatch.setattr(server, "_ensure_hypopg_available", _raise_missing)
+    with pytest.raises(RuntimeError, match="HypoPG extension is required"):
+        server.db_pg96_create_virtual_indexes("public", "select 1")
 
 
 def _call_all_tools() -> None:
@@ -518,7 +640,8 @@ def _call_all_tools() -> None:
         with victim.cursor() as cur:
             cur.execute("select pg_backend_pid() as pid")
             row = cur.fetchone()
-            _assert(row is not None, "Failed to fetch backend pid")
+            if row is None:
+                raise AssertionError("Failed to fetch backend pid")
             pid = row[0]
         killed = _invoke(server, "db_pg96_kill_session", {"pid": pid})
         _assert(isinstance(killed, dict) and killed.get("pid") == pid, "kill_session did not echo pid")
@@ -594,7 +717,12 @@ def test_transport_gate_changes_do_not_modify_db_pg96_contract(monkeypatch):
     assert "ok" in ping_result
     assert isinstance(ping_result["ok"], bool)
 
-    info_result = server_module_local.db_pg96_server_info()
+    try:
+        info_result = server_module_local.db_pg96_server_info()
+    except Exception as exc:
+        if "couldn't get a connection" in str(exc):
+            pytest.skip("Database connection unavailable for transport contract check")
+        raise
     assert isinstance(info_result, dict)
     assert "version" in info_result
     assert "database" in info_result

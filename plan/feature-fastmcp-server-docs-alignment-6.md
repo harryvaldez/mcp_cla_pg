@@ -37,9 +37,9 @@ This plan provides deterministic, planning-only replace-block patches for runtim
 
 | Task | Description | Completed | Date |
 |------|-------------|-----------|------|
-| TASK-001 | Update server.py main() to parse MCP_ALLOW_LEGACY_SSE with FASTMCP_ALLOW_LEGACY_SSE fallback. |  |  |
-| TASK-002 | Add warning when transport is sse and gate is not false. |  |  |
-| TASK-003 | Add ValueError branch when transport is sse and gate is false. |  |  |
+| TASK-001 | Update server.py main() to parse MCP_ALLOW_LEGACY_SSE with FASTMCP_ALLOW_LEGACY_SSE fallback. | ✅ | 2026-04-05 |
+| TASK-002 | Add warning when transport is sse and gate is not false. | ✅ | 2026-04-05 |
+| TASK-003 | Add ValueError branch when transport is sse and gate is false. | ✅ | 2026-04-05 |
 
 ### Implementation Phase 2
 
@@ -47,9 +47,9 @@ This plan provides deterministic, planning-only replace-block patches for runtim
 
 | Task | Description | Completed | Date |
 |------|-------------|-----------|------|
-| TASK-004 | Update README feature bullet transport wording. |  |  |
-| TASK-005 | Update README MCP_TRANSPORT env row wording. |  |  |
-| TASK-006 | Update DEPLOYMENT default port and env transport wording. |  |  |
+| TASK-004 | Update README feature bullet transport wording. | ✅ | 2026-04-05 |
+| TASK-005 | Update README MCP_TRANSPORT env row wording. | ✅ | 2026-04-05 |
+| TASK-006 | Update DEPLOYMENT default port and env transport wording. | ✅ | 2026-04-05 |
 
 ### Implementation Phase 3
 
@@ -57,10 +57,10 @@ This plan provides deterministic, planning-only replace-block patches for runtim
 
 | Task | Description | Completed | Date |
 |------|-------------|-----------|------|
-| TASK-007 | Add denied-SSE startup test in tests/functional_test.py. |  |  |
-| TASK-008 | Add allowed-SSE startup test in tests/functional_test.py. |  |  |
-| TASK-009 | Add contract guard test in tests/test_tools_pg96.py. |  |  |
-| TASK-010 | Execute command matrix and record outcomes. |  |  |
+| TASK-007 | Add denied-SSE startup test in tests/functional_test.py. | ✅ | 2026-04-05 |
+| TASK-008 | Add allowed-SSE startup test in tests/functional_test.py. | ✅ | 2026-04-05 |
+| TASK-009 | Add contract guard test in tests/test_tools_pg96.py. | ✅ | 2026-04-05 |
+| TASK-010 | Execute command matrix and record outcomes. | ✅ | 2026-04-05 |
 
 ## 3. Alternatives
 
@@ -267,6 +267,6 @@ Append near other tests:
 
 ## 12. Validation Snapshot
 
-- VAL-001: CMD-001 -> Pending
-- VAL-002: CMD-002 -> Pending
-- VAL-003: CMD-003 -> Pending
+- VAL-001: CMD-001 -> Passed (2026-04-05)
+- VAL-002: CMD-002 -> Passed (2026-04-05)
+- VAL-003: CMD-003 -> Passed (2026-04-05)

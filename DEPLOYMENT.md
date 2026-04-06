@@ -194,6 +194,13 @@ Key environment variables supported by the server (including all new runtime con
 - `MCP_SKILLS_RESOURCES_ENABLED` Enable local "skills as resources" endpoints (`skills://index`, `skills://{skill_id}`).
 - `MCP_SKILLS_DIRS` Optional skill root directories (comma-separated; semicolon also supported), each containing `<skill>/SKILL.md`.
 - `FASTMCP_SKILLS_DIRS` Alias for `MCP_SKILLS_DIRS`.
+- `MCP_SKILLS_PROVIDER_ENABLED` Enable FastMCP skills provider registration (default `true`).
+- `MCP_SKILLS_PROVIDER_RELOAD` Enable provider auto-reload (default `false`; keep `false` in production).
+- `MCP_SKILLS_SUPPORTING_FILES_MODE` Supporting files mode: `template` or `resources` (default `template`).
+
+Production guidance:
+- Keep `MCP_SKILLS_PROVIDER_RELOAD=false` in production.
+- Restrict `MCP_SKILLS_DIRS` to trusted directories only.
 - `FASTMCP_INCLUDE_TAGS` Optional server-level visibility allow-list tags (comma-separated; semicolon also supported).
 - `MCP_INCLUDE_TAGS` Alias for `FASTMCP_INCLUDE_TAGS` (comma-separated; semicolon also supported).
 - `FASTMCP_EXCLUDE_TAGS` Optional server-level visibility block-list tags (comma-separated; semicolon also supported).

@@ -1,6 +1,8 @@
 import asyncio
+import itertools
 import importlib
 import inspect
+import contextvars
 import json
 import hashlib
 import logging
@@ -23,6 +25,7 @@ from fastmcp.prompts import Message
 from fastmcp.server.context import Context
 from fastmcp.dependencies import CurrentContext, CurrentFastMCP
 from fastmcp.server.tasks.config import TaskConfig
+from fastmcp.server.providers.skills import SkillsDirectoryProvider, CopilotSkillsProvider
 from psycopg import Error as PsycopgError
 from psycopg import sql
 from psycopg.errors import UndefinedTable
@@ -440,6 +443,14 @@ def _env_optional_bool(name: str) -> bool | None:
     return value.strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
+def _env_optional_string(name: str) -> str | None:
+    value = os.environ.get(name)
+    if value is None:
+        return None
+    cleaned = value.strip()
+    return cleaned if cleaned else None
+
+
 def _env_optional_positive_int(name: str) -> int | None:
     value = os.environ.get(name)
     if value is None or value.strip() == "":
@@ -478,6 +489,103 @@ def _resolve_skills_roots() -> list[str]:
         if os.path.isdir(full) and full not in resolved:
             resolved.append(full)
     return resolved
+
+
+def _resolve_provider_skills_roots() -> list[str]:
+    raw = _env_optional_string("MCP_SKILLS_DIRS") or _env_optional_string("FASTMCP_SKILLS_DIRS")
+    if raw:
+        candidates = [segment.strip() for segment in re.split(r"[;,]", raw) if segment.strip()]
+    else:
+        candidates = [
+            os.path.join(os.getcwd(), ".trae", "skills"),
+            os.path.join(os.path.expanduser("~"), ".copilot", "skills"),
+        ]
+
+    resolved: list[str] = []
+    for candidate in candidates:
+        full = os.path.abspath(os.path.expanduser(candidate))
+        if os.path.isdir(full) and full not in resolved:
+            resolved.append(full)
+    return resolved
+
+
+def _register_fastmcp_skills_provider() -> bool:
+    enabled = _env_bool("MCP_SKILLS_PROVIDER_ENABLED", True)
+    if not enabled:
+        logger.info("FastMCP skills provider disabled by MCP_SKILLS_PROVIDER_ENABLED=false")
+        return False
+
+    supporting_files_mode_raw = _env_optional_string("MCP_SKILLS_SUPPORTING_FILES_MODE") or "template"
+    if supporting_files_mode_raw not in {"template", "resources"}:
+        raise ValueError(
+            "Invalid MCP_SKILLS_SUPPORTING_FILES_MODE. Accepted values are: template, resources"
+        )
+    supporting_files_mode: Literal["template", "resources"] = cast(
+        Literal["template", "resources"],
+        supporting_files_mode_raw,
+    )
+
+    reload_enabled = _env_bool("MCP_SKILLS_PROVIDER_RELOAD", False)
+    roots = _resolve_provider_skills_roots()
+
+    registered_count = 0
+    if roots:
+        try:
+            provider = SkillsDirectoryProvider(
+                roots=roots,
+                reload=reload_enabled,
+                supporting_files=supporting_files_mode,
+            )
+            mcp.add_provider(provider)
+            registered_count = 1
+        except Exception as exc:
+            logger.warning(
+                "Failed to register skills provider for root set %s: %s. "
+                "Retrying individual roots.",
+                roots,
+                exc,
+            )
+
+            for root in roots:
+                try:
+                    provider = SkillsDirectoryProvider(
+                        roots=[root],
+                        reload=reload_enabled,
+                        supporting_files=supporting_files_mode,
+                    )
+                    mcp.add_provider(provider)
+                    registered_count += 1
+                except Exception as root_exc:
+                    logger.warning("Skipping unreadable skills root '%s': %s", root, root_exc)
+    else:
+        try:
+            provider = CopilotSkillsProvider(
+                reload=reload_enabled,
+                supporting_files=supporting_files_mode,
+            )
+            mcp.add_provider(provider)
+            registered_count = 1
+        except Exception as exc:
+            logger.warning("Failed to register CopilotSkillsProvider: %s", exc)
+
+    if registered_count == 0:
+        logger.warning("FastMCP skills provider enabled but no providers could be registered.")
+        return False
+
+    logger.info(
+        "Registered FastMCP skills provider(s): %d, reload=%s, supporting_files=%s",
+        registered_count,
+        reload_enabled,
+        supporting_files_mode,
+    )
+
+    if _env_bool("MCP_SKILLS_RESOURCES_ENABLED", False):
+        logger.warning(
+            "Both FastMCP skills provider and legacy skills:// resources are enabled. "
+            "This is temporary compatibility mode; legacy skills:// resources are planned for deprecation."
+        )
+
+    return True
 
 
 def _build_skill_index() -> dict[str, str]:
@@ -645,6 +753,7 @@ if include_fastmcp_meta is not None:
         "FASTMCP_INCLUDE_META/MCP_INCLUDE_META is not supported by this FastMCP version and will be ignored."
     )
 
+_register_fastmcp_skills_provider()
 _register_skills_resources()
 
 
@@ -669,6 +778,21 @@ def server_status_resource() -> str:
             "port": ORIGINAL_DB_PORT,
             "name": ORIGINAL_DB_NAME,
         },
+        "database_instances": {
+            "instance_01": {
+                "configured": bool(DATABASE_URL_INSTANCE_1),
+                "host": ORIGINAL_DB_HOST,
+                "port": ORIGINAL_DB_PORT,
+                "name": ORIGINAL_DB_NAME,
+            },
+            "instance_02": {
+                "configured": bool(DATABASE_URL_INSTANCE_2),
+                "host": ORIGINAL_DB2_HOST,
+                "port": ORIGINAL_DB2_PORT,
+                "name": ORIGINAL_DB2_NAME,
+            },
+        },
+        "active_instance": _ACTIVE_DB_INSTANCE.get(),
         "tasks_enabled": tasks_enabled,
         "timestamp_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
@@ -1289,11 +1413,20 @@ def _build_database_url_from_pg_env() -> str | None:
     return f"postgresql://{user_encoded}{password_part}@{host}:{port}/{database}"
 
 
-DATABASE_URL = os.environ.get("DATABASE_URL") or _build_database_url_from_pg_env()
-if not DATABASE_URL:
+DATABASE_URL_INSTANCE_1 = (
+    os.environ.get("DATABASE_URL_INSTANCE_1")
+    or os.environ.get("DATABASE_URL")
+    or _build_database_url_from_pg_env()
+)
+DATABASE_URL_INSTANCE_2 = os.environ.get("DATABASE_URL_INSTANCE_2")
+
+if not DATABASE_URL_INSTANCE_1:
     raise RuntimeError(
-        "Missing DATABASE_URL or PGHOST/PGUSER/PGDATABASE environment variables"
+        "Missing DATABASE_URL_INSTANCE_1 (or DATABASE_URL) or PGHOST/PGUSER/PGDATABASE environment variables"
     )
+
+# Keep the existing variable name for compatibility in the rest of the module.
+DATABASE_URL = DATABASE_URL_INSTANCE_1
 
 # Capture original connection details before any SSH tunneling modification
 # This ensures we report the correct target server info to the user
@@ -1306,6 +1439,16 @@ except Exception:
     ORIGINAL_DB_HOST = None
     ORIGINAL_DB_PORT = None
     ORIGINAL_DB_NAME = None
+
+try:
+    _parsed_second = urlparse(DATABASE_URL_INSTANCE_2) if DATABASE_URL_INSTANCE_2 else None
+    ORIGINAL_DB2_HOST = _parsed_second.hostname if _parsed_second else None
+    ORIGINAL_DB2_PORT = (_parsed_second.port or 5432) if _parsed_second else None
+    ORIGINAL_DB2_NAME = _parsed_second.path.lstrip('/') if _parsed_second else None
+except Exception:
+    ORIGINAL_DB2_HOST = None
+    ORIGINAL_DB2_PORT = None
+    ORIGINAL_DB2_NAME = None
 
 if os.environ.get("MCP_ALLOW_WRITE") is None:
     raise RuntimeError("MCP_ALLOW_WRITE environment variable is required (e.g. 'true' or 'false')")
@@ -1470,6 +1613,80 @@ pool = ConnectionPool(
     open=True,
     kwargs={"row_factory": dict_row, "options": "-c DateStyle=ISO,MDY"},
 )
+
+pool_instance_01 = pool
+pool_instance_02 = (
+    ConnectionPool(
+        conninfo=DATABASE_URL_INSTANCE_2,
+        min_size=POOL_MIN_SIZE,
+        max_size=POOL_MAX_SIZE,
+        timeout=POOL_TIMEOUT,
+        max_waiting=POOL_MAX_WAITING,
+        open=True,
+        kwargs={"row_factory": dict_row, "options": "-c DateStyle=ISO,MDY"},
+    )
+    if DATABASE_URL_INSTANCE_2
+    else None
+)
+
+_ACTIVE_DB_INSTANCE: contextvars.ContextVar[str] = contextvars.ContextVar("active_db_instance", default="01")
+
+
+def _resolve_pool_for_instance(instance_id: str) -> ConnectionPool[Any]:
+    normalized = instance_id.strip()
+    if normalized == "01":
+        return pool_instance_01
+    if normalized == "02":
+        if pool_instance_02 is None:
+            raise RuntimeError(
+                "Database instance 2 is not configured. Set DATABASE_URL_INSTANCE_2 in your environment."
+            )
+        return pool_instance_02
+    raise ValueError(f"Unsupported database instance id: {instance_id}")
+
+
+class _PoolRouter:
+    """Connection pool router that resolves target pool from per-request instance context."""
+
+    def connection(self, *args: Any, **kwargs: Any):
+        return _resolve_pool_for_instance(_ACTIVE_DB_INSTANCE.get()).connection(*args, **kwargs)
+
+    def close(self, *args: Any, **kwargs: Any) -> None:
+        closed: set[int] = set()
+        for candidate in [pool_instance_01, pool_instance_02]:
+            if candidate is None:
+                continue
+            marker = id(candidate)
+            if marker in closed:
+                continue
+            closed.add(marker)
+            try:
+                candidate.close(*args, **kwargs)
+            except Exception:
+                logger.exception("Failed to close pooled connection for one instance")
+
+    def __getattr__(self, item: str) -> Any:
+        current = _resolve_pool_for_instance(_ACTIVE_DB_INSTANCE.get())
+        return getattr(current, item)
+
+
+pool = _PoolRouter()
+
+
+def _run_in_instance_sync(instance_id: str, target: Any, *args: Any, **kwargs: Any) -> Any:
+    token = _ACTIVE_DB_INSTANCE.set(instance_id)
+    try:
+        return target(*args, **kwargs)
+    finally:
+        _ACTIVE_DB_INSTANCE.reset(token)
+
+
+async def _run_in_instance_async(instance_id: str, target: Any, *args: Any, **kwargs: Any) -> Any:
+    token = _ACTIVE_DB_INSTANCE.set(instance_id)
+    try:
+        return await target(*args, **kwargs)
+    finally:
+        _ACTIVE_DB_INSTANCE.reset(token)
 
 
 def _parse_allowed_tables(raw_value: str) -> set[str]:
@@ -1908,6 +2125,201 @@ def _execute_safe_with_fallback(
         _rollback_cursor_connection(cur)
         _execute_safe(cur, fallback_sql, fallback_params)
         return False
+
+
+VIDX_MAX_SET_SIZE_DEFAULT = 2
+VIDX_MAX_SETS_DEFAULT = 64
+
+
+def _ensure_hypopg_available(cur) -> None:
+    _execute_safe(
+        cur,
+        """
+        select exists(
+            select 1
+            from pg_extension
+            where extname = 'hypopg'
+        ) as installed
+        """,
+    )
+    row = cur.fetchone() or {}
+    if not row.get("installed", False):
+        raise RuntimeError("HypoPG extension is required. Run: CREATE EXTENSION hypopg;")
+
+
+def _parse_execution_time_ms(plan_json: Any) -> float:
+    root: dict[str, Any] | None = None
+    if isinstance(plan_json, list) and plan_json and isinstance(plan_json[0], dict):
+        root = plan_json[0]
+    elif isinstance(plan_json, dict):
+        root = plan_json
+
+    if not root:
+        raise ValueError("Invalid EXPLAIN JSON payload: missing root object")
+
+    value = root.get("Execution Time")
+    if value is None:
+        raise ValueError("EXPLAIN ANALYZE JSON does not include 'Execution Time'")
+    try:
+        return float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Invalid execution time value: {value!r}") from exc
+
+
+def _extract_plan_nodes(plan_json: Any) -> list[dict[str, Any]]:
+    root: dict[str, Any] | None = None
+    if isinstance(plan_json, list) and plan_json and isinstance(plan_json[0], dict):
+        root = plan_json[0]
+    elif isinstance(plan_json, dict):
+        root = plan_json
+
+    if not root:
+        return []
+
+    start = root.get("Plan") if isinstance(root.get("Plan"), dict) else None
+    if not start:
+        return []
+
+    nodes: list[dict[str, Any]] = []
+
+    def _walk(node: dict[str, Any]) -> None:
+        plans = node.get("Plans")
+        nodes.append(
+            {
+                "node_type": node.get("Node Type"),
+                "relation_name": node.get("Relation Name"),
+                "schema": node.get("Schema"),
+                "alias": node.get("Alias"),
+                "index_name": node.get("Index Name"),
+                "filter": node.get("Filter"),
+                "index_cond": node.get("Index Cond"),
+                "recheck_cond": node.get("Recheck Cond"),
+                "hash_cond": node.get("Hash Cond"),
+                "merge_cond": node.get("Merge Cond"),
+                "join_filter": node.get("Join Filter"),
+                "sort_key": node.get("Sort Key"),
+                "group_key": node.get("Group Key"),
+                "plans_count": len(plans) if isinstance(plans, list) else 0,
+            }
+        )
+
+        if isinstance(plans, list):
+            for child in plans:
+                if isinstance(child, dict):
+                    _walk(child)
+
+    _walk(start)
+    return nodes
+
+
+def _normalize_candidate_columns(expr: Any) -> list[str]:
+    if expr is None:
+        return []
+    if isinstance(expr, list):
+        text = " ".join(str(item) for item in expr)
+    else:
+        text = str(expr)
+
+    stop_words = {
+        "and",
+        "or",
+        "not",
+        "null",
+        "true",
+        "false",
+        "is",
+        "like",
+        "ilike",
+        "similar",
+        "in",
+        "exists",
+        "any",
+        "all",
+        "case",
+        "when",
+        "then",
+        "else",
+        "end",
+        "as",
+        "on",
+        "join",
+        "inner",
+        "left",
+        "right",
+        "full",
+        "cross",
+        "where",
+        "group",
+        "by",
+        "order",
+        "limit",
+        "offset",
+        "desc",
+        "asc",
+        "between",
+        "distinct",
+        "coalesce",
+    }
+
+    cols: list[str] = []
+    seen: set[str] = set()
+    for quoted, bare in re.findall(r'"([^"]+)"|([A-Za-z_][A-Za-z0-9_]*)', text):
+        token = quoted or bare
+        lowered = token.lower()
+        if lowered in stop_words:
+            continue
+        if lowered in {"plan", "rows", "width", "cost"}:
+            continue
+        if token not in seen:
+            seen.add(token)
+            cols.append(token)
+    return cols
+
+
+def _collect_candidate_index_specs(schema_name: str, plan_json: Any) -> list[dict[str, Any]]:
+    specs: dict[tuple[str, str, tuple[str, ...]], dict[str, Any]] = {}
+    for node in _extract_plan_nodes(plan_json):
+        table = node.get("relation_name")
+        schema = node.get("schema") or schema_name
+        if not table or schema != schema_name:
+            continue
+
+        for source in [
+            "index_cond",
+            "filter",
+            "join_filter",
+            "hash_cond",
+            "merge_cond",
+            "sort_key",
+            "group_key",
+            "recheck_cond",
+        ]:
+            cols = _normalize_candidate_columns(node.get(source))
+            if not cols:
+                continue
+
+            for col in cols:
+                key = (schema, table, (col,))
+                specs[key] = {
+                    "schema": schema,
+                    "table": table,
+                    "columns": [col],
+                    "source": source,
+                }
+
+            for pair in itertools.combinations(cols, 2):
+                key = (schema, table, pair)
+                specs[key] = {
+                    "schema": schema,
+                    "table": table,
+                    "columns": list(pair),
+                    "source": source,
+                }
+
+    return sorted(
+        specs.values(),
+        key=lambda item: (item["schema"], item["table"], len(item["columns"]), tuple(item["columns"])),
+    )
 
 
 @mcp.custom_route("/health", methods=["GET"])
@@ -5349,6 +5761,198 @@ def db_pg96_explain_query(
             return {"format": "text", "plan": text}
 
 
+@mcp.tool(
+    tags={"public"},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
+    timeout=180.0,
+)
+def db_pg96_create_virtual_indexes(schema_name: str, sql_statement: str) -> dict[str, Any]:
+    """
+    Evaluate HypoPG virtual index sets for a SQL statement and return the best plan.
+
+    Args:
+        schema_name: Target schema used to scope candidate virtual indexes.
+        sql_statement: SQL SELECT/CTE statement to tune.
+
+    Returns:
+        Structured result containing baseline and best virtual-index explain plans.
+    """
+    schema = (schema_name or "").strip()
+    statement = (sql_statement or "").strip()
+    if not schema:
+        raise ValueError("schema_name is required")
+    if not statement:
+        raise ValueError("sql_statement is required")
+
+    _require_readonly(statement)
+    sql_hash = hashlib.sha256(statement.encode("utf-8")).hexdigest()
+    explain_stmt = f"EXPLAIN (ANALYZE, FORMAT JSON) {statement}"
+
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            _ensure_hypopg_available(cur)
+            _execute_safe(
+                cur,
+                "select exists(select 1 from pg_namespace where nspname = %(schema)s) as exists",
+                {"schema": schema},
+            )
+            row = cur.fetchone() or {}
+            if not row.get("exists", False):
+                raise ValueError(f"Schema not found: {schema}")
+
+            _execute_safe(cur, explain_stmt)
+            baseline_rows = cur.fetchall()
+            baseline_plan = baseline_rows[0]["QUERY PLAN"] if baseline_rows else None
+            if baseline_plan is None:
+                raise RuntimeError("Failed to retrieve baseline explain plan")
+            baseline_execution_time_ms = _parse_execution_time_ms(baseline_plan)
+
+            candidate_specs = _collect_candidate_index_specs(schema, baseline_plan)
+
+            # Add schema-table column fallback candidates for tables seen in the plan.
+            plan_tables = sorted(
+                {
+                    (node.get("schema") or schema, node.get("relation_name"))
+                    for node in _extract_plan_nodes(baseline_plan)
+                    if node.get("relation_name")
+                }
+            )
+            for table_schema, table_name in plan_tables:
+                if table_schema != schema:
+                    continue
+                _execute_safe(
+                    cur,
+                    """
+                    select column_name
+                    from information_schema.columns
+                    where table_schema = %(schema)s and table_name = %(table)s
+                    order by ordinal_position
+                    """,
+                    {"schema": schema, "table": table_name},
+                )
+                columns = [r["column_name"] for r in cur.fetchall()]
+                for col in columns:
+                    candidate_specs.append(
+                        {
+                            "schema": schema,
+                            "table": table_name,
+                            "columns": [col],
+                            "source": "table_columns",
+                        }
+                    )
+                for pair in itertools.combinations(columns, 2):
+                    candidate_specs.append(
+                        {
+                            "schema": schema,
+                            "table": table_name,
+                            "columns": [pair[0], pair[1]],
+                            "source": "table_columns",
+                        }
+                    )
+
+            # De-duplicate candidates and keep deterministic order.
+            dedup: dict[tuple[str, str, tuple[str, ...]], dict[str, Any]] = {}
+            for spec in candidate_specs:
+                key = (spec["schema"], spec["table"], tuple(spec["columns"]))
+                dedup[key] = spec
+            candidates = sorted(
+                dedup.values(),
+                key=lambda item: (item["schema"], item["table"], len(item["columns"]), tuple(item["columns"])),
+            )
+
+            candidate_sets: list[list[dict[str, Any]]] = []
+            for candidate in candidates:
+                candidate_sets.append([candidate])
+            if VIDX_MAX_SET_SIZE_DEFAULT >= 2:
+                for pair in itertools.combinations(candidates, 2):
+                    candidate_sets.append([pair[0], pair[1]])
+
+            candidate_sets = candidate_sets[:VIDX_MAX_SETS_DEFAULT]
+
+            best_execution_time_ms = baseline_execution_time_ms
+            best_plan = baseline_plan
+            best_indexes: list[dict[str, Any]] = []
+            evaluated_summaries: list[dict[str, Any]] = []
+
+            try:
+                for candidate_set in candidate_sets:
+                    _execute_safe(cur, "select * from hypopg_reset()")
+                    created_indexes: list[dict[str, Any]] = []
+
+                    for spec in candidate_set:
+                        ddl = sql.SQL("CREATE INDEX ON {}.{} ({})").format(
+                            sql.Identifier(spec["schema"]),
+                            sql.Identifier(spec["table"]),
+                            sql.SQL(", ").join(sql.Identifier(col) for col in spec["columns"]),
+                        ).as_string(conn)
+                        _execute_safe(
+                            cur,
+                            "select * from hypopg_create_index(%(ddl)s)",
+                            {"ddl": ddl},
+                        )
+                        create_row = cur.fetchone() or {}
+                        created_indexes.append(
+                            {
+                                "schema": spec["schema"],
+                                "table": spec["table"],
+                                "columns": spec["columns"],
+                                "ddl": ddl,
+                                "hypopg_index_oid": create_row.get("indexrelid") or create_row.get("oid"),
+                            }
+                        )
+
+                    _execute_safe(cur, explain_stmt)
+                    rows = cur.fetchall()
+                    plan = rows[0]["QUERY PLAN"] if rows else None
+                    if plan is None:
+                        continue
+                    execution_time_ms = _parse_execution_time_ms(plan)
+
+                    evaluated_summaries.append(
+                        {
+                            "execution_time_ms": execution_time_ms,
+                            "index_count": len(created_indexes),
+                            "indexes": created_indexes,
+                        }
+                    )
+
+                    current_sort = (execution_time_ms, len(created_indexes), [i["ddl"] for i in created_indexes])
+                    best_sort = (best_execution_time_ms, len(best_indexes), [i["ddl"] for i in best_indexes])
+                    if current_sort < best_sort:
+                        best_execution_time_ms = execution_time_ms
+                        best_plan = plan
+                        best_indexes = created_indexes
+            finally:
+                _execute_safe(cur, "select * from hypopg_reset()")
+
+            evaluated_sorted = sorted(
+                evaluated_summaries,
+                key=lambda item: (item["execution_time_ms"], item["index_count"], [i["ddl"] for i in item["indexes"]]),
+            )
+
+            improvement_ms = baseline_execution_time_ms - best_execution_time_ms
+            improvement_pct = (
+                (improvement_ms / baseline_execution_time_ms) * 100.0 if baseline_execution_time_ms > 0 else 0.0
+            )
+
+            return {
+                "schema_name": schema,
+                "sql_statement_hash": sql_hash,
+                "baseline_execution_time_ms": baseline_execution_time_ms,
+                "baseline_plan_json": baseline_plan,
+                "evaluated_sets_count": len(evaluated_summaries),
+                "best_virtual_index_set": {
+                    "index_count": len(best_indexes),
+                    "indexes": best_indexes,
+                },
+                "best_execution_time_ms": best_execution_time_ms,
+                "improvement_ms": improvement_ms,
+                "improvement_pct": improvement_pct,
+                "best_explain_plan_json": best_plan,
+                "evaluated_sets_top10": evaluated_sorted[:10],
+            }
+
+
 @mcp.tool(tags={"public"}, annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False}, timeout=15.0)
 def db_pg96_ping() -> dict[str, Any]:
     """
@@ -6962,6 +7566,47 @@ async def db_pg96_recommend_partitioning_async(
             await progress.increment()
             
             return {"schema": schema, "candidates": candidates}
+
+
+def _register_dual_instance_tool_aliases() -> None:
+    """Register db_01_pg96_* and db_02_pg96_* aliases for every db_pg96_* tool."""
+    for name, obj in list(globals().items()):
+        if not callable(obj):
+            continue
+        if not name.startswith("db_pg96_"):
+            continue
+
+        suffix = name[len("db_pg96_"):]
+        for instance_id, alias_prefix in (("01", "db_01_pg96_"), ("02", "db_02_pg96_")):
+            alias_name = f"{alias_prefix}{suffix}"
+            if alias_name in globals():
+                continue
+
+            if inspect.iscoroutinefunction(obj):
+                async def _alias_proxy_async(*args: Any, __target: Any = obj, __instance_id: str = instance_id, **kwargs: Any):
+                    return await _run_in_instance_async(__instance_id, __target, *args, **kwargs)
+
+                alias_callable: Any = _alias_proxy_async
+            else:
+                def _alias_proxy_sync(*args: Any, __target: Any = obj, __instance_id: str = instance_id, **kwargs: Any):
+                    return _run_in_instance_sync(__instance_id, __target, *args, **kwargs)
+
+                alias_callable = _alias_proxy_sync
+
+            alias_callable.__name__ = alias_name
+            alias_callable.__qualname__ = alias_name
+            setattr(alias_callable, "__signature__", inspect.signature(obj))
+            alias_callable.__annotations__ = dict(getattr(obj, "__annotations__", {}))
+            alias_callable.__doc__ = (
+                f"Alias for {name} on database instance {instance_id}. "
+                f"Use this when the prompt says instance {instance_id}."
+            )
+
+            registered = mcp.tool(name=alias_name, tags={"public"})(alias_callable)
+            globals()[alias_name] = registered
+
+
+_register_dual_instance_tool_aliases()
 
 
 if __name__ == "__main__":

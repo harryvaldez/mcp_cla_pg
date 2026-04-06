@@ -38,10 +38,10 @@ This plan extends the 2.1 alignment plan by adding executable Given/When/Then te
 
 | Task | Description | Completed | Date |
 |------|-------------|-----------|------|
-| TASK-001 | Update README.md transport summary text to mark HTTP as recommended and SSE as legacy compatibility mode. |  |  |
-| TASK-002 | Update README.md env table row for MCP_TRANSPORT to ordering: http, stdio, sse (legacy). |  |  |
-| TASK-003 | Update DEPLOYMENT.md default HTTP port references to 8085 where startup defaults are described. |  |  |
-| TASK-004 | Update DEPLOYMENT.md MCP_TRANSPORT and MCP_PORT descriptions to match server.py startup defaults. |  |  |
+| TASK-001 | Update README.md transport summary text to mark HTTP as recommended and SSE as legacy compatibility mode. | ✅ | 2026-04-05 |
+| TASK-002 | Update README.md env table row for MCP_TRANSPORT to ordering: http, stdio, sse (legacy). | ✅ | 2026-04-05 |
+| TASK-003 | Update DEPLOYMENT.md default HTTP port references to 8085 where startup defaults are described. | ✅ | 2026-04-05 |
+| TASK-004 | Update DEPLOYMENT.md MCP_TRANSPORT and MCP_PORT descriptions to match server.py startup defaults. | ✅ | 2026-04-05 |
 
 ### Implementation Phase 2
 
@@ -49,10 +49,10 @@ This plan extends the 2.1 alignment plan by adding executable Given/When/Then te
 
 | Task | Description | Completed | Date |
 |------|-------------|-----------|------|
-| TASK-005 | In server.py main(), parse MCP_ALLOW_LEGACY_SSE with FASTMCP_ALLOW_LEGACY_SSE fallback using existing optional bool helper. |  |  |
-| TASK-006 | In server.py main(), when transport is sse and gate is unset/true, log warning stating SSE is legacy and HTTP is recommended. |  |  |
-| TASK-007 | In server.py main(), when transport is sse and gate is false, raise deterministic ValueError with remediation text. |  |  |
-| TASK-008 | Keep existing http/sse and stdio branching unchanged except for gate/warning insertion. |  |  |
+| TASK-005 | In server.py main(), parse MCP_ALLOW_LEGACY_SSE with FASTMCP_ALLOW_LEGACY_SSE fallback using existing optional bool helper. | ✅ | 2026-04-05 |
+| TASK-006 | In server.py main(), when transport is sse and gate is unset/true, log warning stating SSE is legacy and HTTP is recommended. | ✅ | 2026-04-05 |
+| TASK-007 | In server.py main(), when transport is sse and gate is false, raise deterministic ValueError with remediation text. | ✅ | 2026-04-05 |
+| TASK-008 | Keep existing http/sse and stdio branching unchanged except for gate/warning insertion. | ✅ | 2026-04-05 |
 
 ### Implementation Phase 3
 
@@ -60,10 +60,10 @@ This plan extends the 2.1 alignment plan by adding executable Given/When/Then te
 
 | Task | Description | Completed | Date |
 |------|-------------|-----------|------|
-| TASK-009 | Add functional test for denied SSE startup: transport=sse and MCP_ALLOW_LEGACY_SSE=false must raise expected ValueError. |  |  |
-| TASK-010 | Add functional test for allowed SSE startup: transport=sse and MCP_ALLOW_LEGACY_SSE=true must continue to run path. |  |  |
-| TASK-011 | Add regression assertion in tests/test_tools_pg96.py for representative db_pg96_* output key stability. |  |  |
-| TASK-012 | Execute targeted and full test commands; update Validation Snapshot with pass/fail status. |  |  |
+| TASK-009 | Add functional test for denied SSE startup: transport=sse and MCP_ALLOW_LEGACY_SSE=false must raise expected ValueError. | ✅ | 2026-04-05 |
+| TASK-010 | Add functional test for allowed SSE startup: transport=sse and MCP_ALLOW_LEGACY_SSE=true must continue to run path. | ✅ | 2026-04-05 |
+| TASK-011 | Add regression assertion in tests/test_tools_pg96.py for representative db_pg96_* output key stability. | ✅ | 2026-04-05 |
+| TASK-012 | Execute targeted and full test commands; update Validation Snapshot with pass/fail status. | ✅ | 2026-04-05 |
 
 ## 3. Alternatives
 
@@ -141,12 +141,12 @@ This plan extends the 2.1 alignment plan by adding executable Given/When/Then te
 
 ## 12. Validation Snapshot
 
-- VAL-001: CMD-001 -> Pending
-- VAL-002: CMD-002 -> Pending
-- VAL-003: CMD-003 -> Pending
-- VAL-004: CMD-004 -> Pending
-- VAL-005: CMD-005 -> Pending
-- VAL-006: CMD-006 -> Pending
+- VAL-001: CMD-001 -> Passed (2026-04-05)
+- VAL-002: CMD-002 -> Passed (2026-04-05)
+- VAL-003: CMD-003 -> Passed (2026-04-05)
+- VAL-004: CMD-004 -> Passed (2026-04-05)
+- VAL-005: CMD-005 -> Passed (2026-04-05)
+- VAL-006: CMD-006 -> Passed (2026-04-05)
 
 ## 13. Executable Test Skeletons (Given/When/Then)
 

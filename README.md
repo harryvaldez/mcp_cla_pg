@@ -443,6 +443,8 @@ To prevent the MCP server from becoming unresponsive or overloading the database
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `DATABASE_URL` | Full PostgreSQL connection string | *Required* |
+| `DATABASE_URL_INSTANCE_1` | PostgreSQL connection string for instance 1 (overrides `DATABASE_URL` if set) | `DATABASE_URL` |
+| `DATABASE_URL_INSTANCE_2` | PostgreSQL connection string for instance 2 | *Unset* |
 | `MCP_HOST` | Host to bind the server to | `0.0.0.0` |
 | `MCP_PORT` | Port to listen on (8000 for Docker, 8085 for local) | `8085` |
 | `MCP_TRANSPORT` | Transport mode: `http` (recommended), `stdio`, or `sse` (legacy compatibility) | `http` |
@@ -475,6 +477,9 @@ To prevent the MCP server from becoming unresponsive or overloading the database
 | `MCP_SKILLS_RESOURCES_ENABLED` | Enable local "skills as resources" endpoints (`skills://index`, `skills://{skill_id}`) | `false` |
 | `MCP_SKILLS_DIRS` | Optional skill root directories (comma-separated; semicolon also supported), each containing `<skill>/SKILL.md` | `.trae/skills` (if present) |
 | `FASTMCP_SKILLS_DIRS` | Alias for `MCP_SKILLS_DIRS` | *Unset* |
+| `MCP_SKILLS_PROVIDER_ENABLED` | Enable FastMCP skills provider registration at startup | `true` |
+| `MCP_SKILLS_PROVIDER_RELOAD` | Enable provider auto-reload for local development | `false` |
+| `MCP_SKILLS_SUPPORTING_FILES_MODE` | Provider supporting files mode: `template` or `resources` | `template` |
 | `FASTMCP_INCLUDE_TAGS` | Optional server-level visibility allow-list tags (comma-separated; semicolon also supported) | *Unset* |
 | `MCP_INCLUDE_TAGS` | Alias for `FASTMCP_INCLUDE_TAGS` (comma-separated; semicolon also supported) | *Unset* |
 | `FASTMCP_EXCLUDE_TAGS` | Optional server-level visibility block-list tags (comma-separated; semicolon also supported) | *Unset* |
@@ -505,6 +510,32 @@ This server supports the FastMCP "skills as resources" pattern as an opt-in feat
 
 Security note:
 - This feature is disabled by default because it exposes local markdown files from configured skill directories.
+
+Compatibility note:
+- Legacy `skills://index` and `skills://{skill_id}` resources remain available during migration and are planned for future deprecation.
+
+### Skills Provider Integration (FastMCP)
+
+This server also registers a native FastMCP Skills Provider (enabled by default).
+
+- Install the requested Smithery PostgreSQL skill:
+
+```powershell
+npx @smithery/cli@latest skill add sickn33/postgresql
+```
+
+- Optional helper scripts in this repository:
+  - `scripts/install_smithery_skill.ps1`
+  - `scripts/verify_skill_install.ps1`
+
+- Root resolution order for provider discovery:
+  - `MCP_SKILLS_DIRS` (or `FASTMCP_SKILLS_DIRS`) when explicitly set.
+  - `.trae/skills` in current workspace.
+  - `~/.copilot/skills`.
+
+- Expected provider URIs include:
+  - `skill://<id>/SKILL.md`
+  - `skill://<id>/_manifest`
 
 ### Visibility Controls (FastMCP)
 
@@ -734,6 +765,13 @@ This server implements strict security practices for logging:
 
 ## 🛠️ Tools Reference
 
+Dual-instance usage:
+- Base tools remain available as `db_pg96_*` and run against instance 1 by default.
+- Instance-specific aliases are auto-registered for every tool:
+  - `db_01_pg96_*` for instance 1
+  - `db_02_pg96_*` for instance 2
+- In prompts, specify `instance 1` or `instance 2` and call the corresponding prefixed alias for deterministic routing.
+
 ### 🏥 Health & Info
 - `db_pg96_ping()`: Simple health check.
 - `db_pg96_server_info()`: Get database version, current user, and connection details.
@@ -758,6 +796,9 @@ This server implements strict security practices for logging:
 - `db_pg96_analyze_indexes(schema: str = None, limit: int = 50, detail_level: str = "full", max_items_per_category: int = None, response_format: str = "legacy")`: Identify unused, duplicate, or missing indexes.
 - `db_pg96_recommend_partitioning(min_size_gb: float = 1.0, schema: str = None)`: Suggest tables for partitioning.
 - `db_pg96_explain_query(sql: str, analyze: bool = False, buffers: bool = False, verbose: bool = False, settings: bool = False, output_format: str = "json", source_prompt: str | None = None)`: Get the execution plan for a query with optional prompt audit logging. `buffers` includes buffer usage, `verbose` adds detailed plan fields, and `settings` includes planner configuration values (all default to `False`).
+- `db_pg96_create_virtual_indexes(schema_name: str, sql_statement: str)`: Evaluates HypoPG virtual index sets for a read-only query and returns the best plan by minimum execution time, including baseline vs. best-set improvement metrics and top candidate summaries.
+  - Prerequisite: `CREATE EXTENSION hypopg;` must be installed in the target database.
+  - Safety: uses session-scoped virtual indexes only (no physical index creation) and always resets HypoPG state after evaluation.
 
 ### ⚡ Background Tasks (Async)
 These tools support FastMCP background tasks (SEP-1686) for long-running operations with progress reporting. Enable with `FASTMCP_TASKS_ENABLED=true`:

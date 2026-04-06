@@ -22,5 +22,9 @@
   "stress_test": {
     "status": "failed",
     "details": "Stress test failed: Traceback (most recent call last):\n  File \"C:\\Users\\HarryValdez\\OneDrive\\Documents\\trae\\mcp-postgres\\stress_test.py\", line 11, in <module>\n    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))\n    ^^^\nNameError: name 'sys' is not defined. Did you forget to import 'sys'?\n"
+  },
+  "skills_provider_coverage": {
+    "status": "passed",
+    "details": "python -m pytest -q tests/functional_test.py tests/test_tools_pg96.py -> 15 passed, 1 skipped, 4 warnings"
   }
 }

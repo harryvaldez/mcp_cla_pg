@@ -39,10 +39,10 @@ This plan defines deterministic, line-anchored steps to align repository behavio
 
 | Task | Description | Completed | Date |
 |------|-------------|-----------|------|
-| TASK-001 | Edit README.md at line 58 to replace the transport feature bullet with explicit statement: HTTP recommended, STDIO supported, SSE legacy compatibility mode. |  |  |
-| TASK-002 | Edit README.md at line 450 to change MCP_TRANSPORT description to `http` (recommended), `stdio`, `sse` (legacy). |  |  |
-| TASK-003 | Edit DEPLOYMENT.md at line 84 to set default HTTP port guidance to 8085. |  |  |
-| TASK-004 | Edit DEPLOYMENT.md at lines 160-162 to document MCP_TRANSPORT and MCP_PORT defaults consistent with server.py lines 6086 and 6089. |  |  |
+| TASK-001 | Edit README.md at line 58 to replace the transport feature bullet with explicit statement: HTTP recommended, STDIO supported, SSE legacy compatibility mode. | ✅ | 2026-04-05 |
+| TASK-002 | Edit README.md at line 450 to change MCP_TRANSPORT description to `http` (recommended), `stdio`, `sse` (legacy). | ✅ | 2026-04-05 |
+| TASK-003 | Edit DEPLOYMENT.md at line 84 to set default HTTP port guidance to 8085. | ✅ | 2026-04-05 |
+| TASK-004 | Edit DEPLOYMENT.md at lines 160-162 to document MCP_TRANSPORT and MCP_PORT defaults consistent with server.py lines 6086 and 6089. | ✅ | 2026-04-05 |
 
 ### Implementation Phase 2
 
@@ -50,10 +50,10 @@ This plan defines deterministic, line-anchored steps to align repository behavio
 
 | Task | Description | Completed | Date |
 |------|-------------|-----------|------|
-| TASK-005 | In server.py near line 6086, add `allow_legacy_sse = _env_optional_bool("MCP_ALLOW_LEGACY_SSE")` with fallback to `_env_optional_bool("FASTMCP_ALLOW_LEGACY_SSE")` when None. |  |  |
-| TASK-006 | In server.py immediately after TASK-005 logic, add branch: if `transport == "sse"` then emit logger.warning indicating SSE legacy mode and recommendation to use HTTP. |  |  |
-| TASK-007 | In server.py within same branch, enforce gate: if `allow_legacy_sse is False`, raise ValueError("Legacy SSE transport is disabled. Set MCP_TRANSPORT=http or set MCP_ALLOW_LEGACY_SSE=true."). |  |  |
-| TASK-008 | Keep existing `if transport in {"http", "sse"}` branch at line 6098 unchanged except for insertion points from TASK-005..TASK-007. |  |  |
+| TASK-005 | In server.py near line 6086, add `allow_legacy_sse = _env_optional_bool("MCP_ALLOW_LEGACY_SSE")` with fallback to `_env_optional_bool("FASTMCP_ALLOW_LEGACY_SSE")` when None. | ✅ | 2026-04-05 |
+| TASK-006 | In server.py immediately after TASK-005 logic, add branch: if `transport == "sse"` then emit logger.warning indicating SSE legacy mode and recommendation to use HTTP. | ✅ | 2026-04-05 |
+| TASK-007 | In server.py within same branch, enforce gate: if `allow_legacy_sse is False`, raise ValueError("Legacy SSE transport is disabled. Set MCP_TRANSPORT=http or set MCP_ALLOW_LEGACY_SSE=true."). | ✅ | 2026-04-05 |
+| TASK-008 | Keep existing `if transport in {"http", "sse"}` branch at line 6098 unchanged except for insertion points from TASK-005..TASK-007. | ✅ | 2026-04-05 |
 
 ### Implementation Phase 3
 
@@ -61,10 +61,10 @@ This plan defines deterministic, line-anchored steps to align repository behavio
 
 | Task | Description | Completed | Date |
 |------|-------------|-----------|------|
-| TASK-009 | Add test in tests/functional_test.py that configures transport=`sse`, MCP_ALLOW_LEGACY_SSE=false, and asserts deterministic startup ValueError message. |  |  |
-| TASK-010 | Add test in tests/functional_test.py that configures transport=`sse`, MCP_ALLOW_LEGACY_SSE=true, and asserts run path remains reachable. |  |  |
-| TASK-011 | Add regression test in tests/test_tools_pg96.py for representative db_pg96_* output keys to verify no API contract drift. |  |  |
-| TASK-012 | Execute command runbook CMD-001 through CMD-006 and record outcomes in Section 10 Validation Snapshot. |  |  |
+| TASK-009 | Add test in tests/functional_test.py that configures transport=`sse`, MCP_ALLOW_LEGACY_SSE=false, and asserts deterministic startup ValueError message. | ✅ | 2026-04-05 |
+| TASK-010 | Add test in tests/functional_test.py that configures transport=`sse`, MCP_ALLOW_LEGACY_SSE=true, and asserts run path remains reachable. | ✅ | 2026-04-05 |
+| TASK-011 | Add regression test in tests/test_tools_pg96.py for representative db_pg96_* output keys to verify no API contract drift. | ✅ | 2026-04-05 |
+| TASK-012 | Execute command runbook CMD-001 through CMD-006 and record outcomes in Section 10 Validation Snapshot. | ✅ | 2026-04-05 |
 
 ## 3. Alternatives
 
@@ -144,9 +144,9 @@ This plan defines deterministic, line-anchored steps to align repository behavio
 
 ## 12. Validation Snapshot
 
-- VAL-001: CMD-001 -> Pending
-- VAL-002: CMD-002 -> Pending
-- VAL-003: CMD-003 -> Pending
-- VAL-004: CMD-004 -> Pending
-- VAL-005: CMD-005 -> Pending
-- VAL-006: CMD-006 -> Pending
+- VAL-001: CMD-001 -> Passed (2026-04-05)
+- VAL-002: CMD-002 -> Passed (2026-04-05)
+- VAL-003: CMD-003 -> Passed (2026-04-05)
+- VAL-004: CMD-004 -> Passed (2026-04-05)
+- VAL-005: CMD-005 -> Passed (2026-04-05)
+- VAL-006: CMD-006 -> Passed (2026-04-05)

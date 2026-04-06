@@ -221,6 +221,21 @@ def test_functional_suite(db_pool):
         assert result.get("format") in {"json", "text"}
         print(f"Result: {json.dumps(result, indent=2)}")
 
+        # 9b. Virtual Index Tuning (guarded if HypoPG extension is unavailable)
+        print("\n9b. Testing db_pg96_create_virtual_indexes...")
+        try:
+            tool = get_tool('db_pg96_create_virtual_indexes')
+            result = tool.fn("pg_catalog", "SELECT * FROM pg_catalog.pg_class LIMIT 5")
+            assert isinstance(result, dict)
+            assert "best_virtual_index_set" in result
+            assert "best_execution_time_ms" in result
+            print(f"Result: {json.dumps({k: result[k] for k in ['evaluated_sets_count', 'best_execution_time_ms']}, indent=2, default=str)}")
+        except RuntimeError as e:
+            if "HypoPG extension is required" in str(e):
+                print(f"[SKIP] HypoPG not available in fixture: {e}")
+            else:
+                raise
+
         # 10. Analyze Table Health
         print("\n10. Testing db_pg96_analyze_table_health...")
         tool = get_tool('db_pg96_analyze_table_health')
@@ -292,6 +307,77 @@ def test_startup_allows_legacy_sse_when_enabled(monkeypatch):
     assert calls[0].get("transport") == "sse"
     assert "host" in calls[0]
     assert "port" in calls[0]
+
+
+def test_skills_provider_registers_when_enabled(monkeypatch, tmp_path):
+    skills_root = tmp_path / "skills"
+    skill_dir = skills_root / "postgresql"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text("# PostgreSQL Skill\n", encoding="utf-8")
+
+    monkeypatch.setenv("MCP_SKILLS_PROVIDER_ENABLED", "true")
+    monkeypatch.setenv("MCP_SKILLS_PROVIDER_RELOAD", "false")
+    monkeypatch.setenv("MCP_SKILLS_SUPPORTING_FILES_MODE", "template")
+    monkeypatch.setenv("MCP_SKILLS_DIRS", str(skills_root))
+
+    calls: list[Any] = []
+
+    def _fake_add_provider(provider: Any) -> None:
+        calls.append(provider)
+
+    monkeypatch.setattr(server_module.mcp, "add_provider", _fake_add_provider)
+
+    registered = server_module._register_fastmcp_skills_provider()
+
+    assert registered is True
+    assert len(calls) == 1
+    assert calls[0].__class__.__name__ == "SkillsDirectoryProvider"
+
+
+def test_skills_provider_disabled_when_flag_false(monkeypatch):
+    monkeypatch.setenv("MCP_SKILLS_PROVIDER_ENABLED", "false")
+
+    calls: list[Any] = []
+
+    def _fake_add_provider(provider: Any) -> None:
+        calls.append(provider)
+
+    monkeypatch.setattr(server_module.mcp, "add_provider", _fake_add_provider)
+
+    registered = server_module._register_fastmcp_skills_provider()
+
+    assert registered is False
+    assert calls == []
+
+
+def test_skills_provider_root_precedence_env_over_workspace_over_copilot(monkeypatch, tmp_path):
+    env_root = tmp_path / "env-skills"
+    ws_root = tmp_path / "workspace" / ".trae" / "skills"
+    home_root = tmp_path / "home" / ".copilot" / "skills"
+    env_root.mkdir(parents=True)
+    ws_root.mkdir(parents=True)
+    home_root.mkdir(parents=True)
+
+    monkeypatch.chdir(tmp_path / "workspace")
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))
+
+    monkeypatch.delenv("MCP_SKILLS_DIRS", raising=False)
+    monkeypatch.delenv("FASTMCP_SKILLS_DIRS", raising=False)
+    roots_default = server_module._resolve_provider_skills_roots()
+    assert roots_default == [str(ws_root.resolve()), str(home_root.resolve())]
+
+    monkeypatch.setenv("MCP_SKILLS_DIRS", str(env_root))
+    roots_env = server_module._resolve_provider_skills_roots()
+    assert roots_env == [str(env_root.resolve())]
+
+
+def test_supporting_files_mode_validation_rejects_invalid_values(monkeypatch):
+    monkeypatch.setenv("MCP_SKILLS_PROVIDER_ENABLED", "true")
+    monkeypatch.setenv("MCP_SKILLS_SUPPORTING_FILES_MODE", "invalid")
+
+    with pytest.raises(ValueError, match=r"template, resources"):
+        server_module._register_fastmcp_skills_provider()
 
 
 def test_resources_prompts_and_async_context_compat(db_pool):

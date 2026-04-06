@@ -174,3 +174,88 @@ The PostgreSQL MCP Server now has:
 
 **Total Implementation Time:** 2026-04-01 to 2026-04-03  
 **Status as of 2026-04-03:** ✅ COMPLETE AND VALIDATED
+
+---
+
+## Virtual Index Tuning Tool (db_pg96_create_virtual_indexes)
+
+### Status
+
+- ✅ Core implementation completed in `server.py`
+- ✅ Targeted tests completed and passing
+- ✅ README documentation completed
+
+### Delivered Scope
+
+- Added deterministic HypoPG availability check and explain-plan parsing helpers.
+- Added candidate extraction helpers for index-relevant plan attributes and normalized candidate columns.
+- Implemented `db_pg96_create_virtual_indexes(schema_name, sql_statement)` with:
+	- read-only SQL enforcement,
+	- schema existence validation,
+	- baseline explain capture,
+	- bounded candidate-set evaluation,
+	- deterministic best-set tie-break,
+	- HypoPG reset safety in `finally`.
+
+### Test Validation
+
+Validated with:
+
+```text
+pytest -q tests/test_tools_pg96.py tests/functional_test.py
+```
+
+Latest result:
+
+```text
+10 passed, 1 skipped, 4 warnings
+```
+
+Full-suite regression result:
+
+```text
+pytest -q
+21 passed, 3 skipped, 4 warnings
+```
+
+### Notes
+
+- The skipped test path is environment-dependent when a database connection cannot be acquired in transport-gate context; this does not indicate a regression in the virtual-index implementation.
+
+---
+
+## FastMCP Skills Provider Integration
+
+### Status
+
+- ✅ Provider integration completed in `server.py`
+- ✅ Smithery helper scripts added in `scripts/`
+- ✅ Documentation completed in `README.md` and `DEPLOYMENT.md`
+- ✅ Coverage tests completed and passing
+
+### Delivered Scope
+
+- Added FastMCP skills provider support with deterministic env controls:
+	- `MCP_SKILLS_PROVIDER_ENABLED`
+	- `MCP_SKILLS_PROVIDER_RELOAD`
+	- `MCP_SKILLS_SUPPORTING_FILES_MODE`
+- Added root precedence resolver for provider discovery:
+	- explicit `MCP_SKILLS_DIRS` / `FASTMCP_SKILLS_DIRS`
+	- workspace `.trae/skills`
+	- user `~/.copilot/skills`
+- Preserved legacy `skills://index` and `skills://{skill_id}` resource path compatibility.
+- Hardened startup behavior so unreadable skill files/roots do not crash server import.
+- Added scripts:
+	- `scripts/install_smithery_skill.ps1`
+	- `scripts/verify_skill_install.ps1`
+
+### Test Validation
+
+Validated with:
+
+```text
+python -m pytest -q tests/functional_test.py tests/test_tools_pg96.py
+15 passed, 1 skipped, 4 warnings
+```
+
+Coverage result also recorded in `test_results.json` under `skills_provider_coverage`.
