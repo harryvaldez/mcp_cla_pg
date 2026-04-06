@@ -21,8 +21,9 @@ This document executes Phase 2 in planning mode by providing deterministic imple
 - REQ-003: Tool must use HypoPG to create virtual indexes for referenced tables only.
 - REQ-004: Tool must compare EXPLAIN ANALYZE plans across candidate index sets and return least execution time winner.
 - REQ-005: Tool output must include winning index set and explain plan.
-- SEC-001: Tool must reject non-read-only SQL via existing read-only enforcement.
-- SEC-002: Tool must clear HypoPG state before and after each set evaluation and on exceptions.
+- SEC-001: Tool must reject non-read-only SQL via existing read-only enforcement. Additionally, schema_name must never be concatenated into dynamic SQL as a raw string; it must either be validated by an exact-match whitelist lookup against the database catalog (pg_namespace) or passed as a bound/query parameter using psycopg sql.Identifier. Raw string interpolation of schema_name into SQL statements is forbidden.
+- SEC-003: Schema name injection policy - schema_name must be validated against pg_namespace before use (exact-match whitelist) to prevent SQL injection. If validation fails, raise a ValueError with a clear message. This requirement applies to TASK-003 and any direct use of schema_name in SQL construction.
+- SEC-002: Tool must clear HypoPG state before and after each set evaluation and on exceptions. Additionally, each tool invocation must use a dedicated DB session or an explicit transaction-scoped connection (HypoPG virtual indexes are session-scoped, so they do not leak between sessions; each invocation must open its own connection from the pool). EXPLAIN ANALYZE failures for a candidate set must be caught and logged per-candidate (do not abort the whole run); hypopg_reset and finally-block cleanup must still execute regardless. A configurable skip-vs-fail-fast policy must be surfaced (default: skip failed candidates and continue). Reference TASK-010 finally block.
 - CON-001: Candidate set exploration must be bounded by deterministic caps.
 - CON-002: No existing tool contracts may be modified.
 - GUD-001: Use deterministic tie-break ordering when execution times are equal.
@@ -37,7 +38,7 @@ This document executes Phase 2 in planning mode by providing deterministic imple
 | Task     | Description           | Completed | Date       |
 | -------- | --------------------- | --------- | ---------- |
 | TASK-001 | Add function in [server.py](server.py): def db_pg96_create_virtual_indexes(schema_name: str, sql_statement: str) -> dict[str, Any]. | ✅ | 2026-04-05 |
-| TASK-002 | Add decorator in [server.py](server.py): mcp.tool(tags={"public"}, annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False}, timeout=180.0). | ✅ | 2026-04-05 |
+| TASK-002 | Add decorator in [server.py](server.py): mcp.tool(tags={"public"}, annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False}, timeout=180.0). Note: this timeout may be insufficient when max_sets=64 with expensive queries. The timeout should be configurable via an env var (e.g., VIDX_TOOL_TIMEOUT_SECONDS, default 180.0) or set to max_sets * expected_max_query_time_s + buffer. Document the trade-off: higher max_sets requires proportionally higher timeout. The deterministic lexical ordering for candidate sets: sort candidates by (schema, table, columns) tuple and enumerate pairs in itertools.combinations order. | ✅ | 2026-04-05 |
 | TASK-003 | Add input validation gates in [server.py](server.py): schema_name.strip() required; _require_readonly(sql_statement) call required; reject empty SQL. | ✅ | 2026-04-05 |
 | TASK-004 | Add HypoPG availability gate in [server.py](server.py): call _ensure_hypopg_available(cur) before baseline explain. | ✅ | 2026-04-05 |
 
@@ -53,6 +54,7 @@ This document executes Phase 2 in planning mode by providing deterministic imple
 | TASK-008 | Per-set evaluation sequence in [server.py](server.py): hypopg_reset -> create virtual indexes for set -> EXPLAIN ANALYZE JSON -> parse execution time -> capture summary record -> hypopg_reset. | ✅ | 2026-04-05 |
 | TASK-009 | Tie-break rules in [server.py](server.py): lower execution_time_ms wins; then fewer indexes; then lexical order of index statement list. | ✅ | 2026-04-05 |
 | TASK-010 | Exception safety in [server.py](server.py): enforce final hypopg_reset in finally block. | ✅ | 2026-04-05 |
+| TASK-015 | No-improvement baseline check in [server.py](server.py): after selecting best candidate via TASK-009 tie-breaks, compare best_execution_time_ms against baseline_execution_time_ms; if best_execution_time_ms >= baseline_execution_time_ms, return baseline as selected best with improvement_ms=0, improvement_pct=0.0, and add recommendation: "none" to the payload indicating no beneficial indexes were found. Update result payload to include recommendation key so callers can distinguish no-recommendation outcomes from genuine improvements. | ✅ | 2026-04-05 |
 
 ### Implementation Phase 3
 
@@ -93,6 +95,9 @@ This document executes Phase 2 in planning mode by providing deterministic imple
 - TEST-004: Deterministic tie-break behavior for equal execution_time_ms.
 - TEST-005: Output includes both baseline and best plan JSON objects.
 - TEST-006: HypoPG state reset confirmed after success and exception paths.
+- TEST-007: When every candidate's execution_time_ms >= baseline, assert tool returns no improvement: improvement_ms=0, improvement_pct=0.0, recommendation="none", and best_explain_plan_json equals the baseline plan.
+- TEST-008: Inject a failing candidate (e.g., invalid index specification causing hypopg_create_index to error) and assert the evaluator skips/logs the failure but completes other candidate evaluations without crashing; verify final output includes results from non-failing candidates and hypopg_reset was still called.
+- TEST-009: Run two concurrent invocations of the tool (exercising HypoPG setup/teardown code paths) and assert HypoPG state isolation (no cross-contamination of created hypothetical indexes between invocations) and proper cleanup on both success and exception paths; verify each invocation uses its own session-scoped connection.
 
 ## 7. Risks & Assumptions
 

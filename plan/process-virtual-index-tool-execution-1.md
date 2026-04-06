@@ -23,9 +23,9 @@ This process plan is the executable companion to the feature plan for db_pg96_cr
 - REQ-005: Preserve behavior of existing db_pg96 tools and resources.
 - SEC-001: Tool must enforce read-only query validation before any explain execution.
 - SEC-002: Tool must reset HypoPG state after each candidate and before return.
-- CON-001: Candidate combinations must be bounded (max_set_size and max_sets) to avoid runaway runtime.
+- CON-001: Candidate combinations must be bounded (max_set_size and max_sets) to avoid runaway runtime. Default values: max_set_size = 2 (singles and pairs only), max_sets = 64 (cap on total evaluated sets). These are exposed as module-level constants VIDX_MAX_SET_SIZE_DEFAULT and VIDX_MAX_SETS_DEFAULT in server.py and can be overridden by callers. Validation must reject or clamp inputs outside allowed ranges (max_set_size >= 1, max_sets >= 1). Candidate combination generation uses these caps deterministically: generate all singles, then pairs up to max_set_size=2, then truncate the full list at max_sets.
 - CON-002: No schema/object mutations outside HypoPG virtual index catalog.
-- GUD-001: Use deterministic tie-breaker when execution times are equal.
+- GUD-001: Use deterministic tie-breaker when execution times are equal. Tie-breaking order: (1) lower execution_time_ms wins; (2) if still equal, fewer indexes in the candidate set wins; (3) if still equal, compare the serialized index definitions (DDL strings) lexicographically using canonical string representation (sorted list of DDL strings compared element-by-element); (4) if still equal, the candidate that appears first in the evaluated candidate list wins (first-evaluated wins). All implementers must use this exact ordering. The canonicalization method is: represent each candidate set as a sorted list of its DDL strings and compare as Python tuples.
 - GUD-002: Include actionable error message when HypoPG is missing.
 - PAT-001: Follow existing FastMCP tool decorator style and structured dict response pattern in server.py.
 
@@ -41,7 +41,7 @@ This process plan is the executable companion to the feature plan for db_pg96_cr
 | TASK-002 | Edit server.py to add helper _parse_execution_time_ms(plan_json) and helper _extract_plan_nodes(plan_json) for deterministic node traversal. | ✅ | 2026-04-05 |
 | TASK-003 | Edit server.py to add helper _collect_candidate_index_specs(schema_name, plan_json) that outputs stable candidate list of table/columns tuples. | ✅ | 2026-04-05 |
 | TASK-004 | Implement db_pg96_create_virtual_indexes(schema_name: str, sql_statement: str) with baseline explain, candidate generation, HypoPG evaluation loop, best-set tracking, and final structured payload. | ✅ | 2026-04-05 |
-| TASK-005 | Add finally-block safety reset: select * from hypopg_reset() for every execution path including exceptions. | ✅ | 2026-04-05 |
+| TASK-005 | Add per-candidate HypoPG reset: inside the candidate evaluation loop, call hypopg_reset after each candidate's EXPLAIN ANALYZE (after capturing the evaluation result) to clear virtual indexes before the next candidate is created. Additionally add a finally-block safety reset: select * from hypopg_reset() as a last-resort cleanup for every execution path including exceptions. The per-iteration reset is the primary mechanism; the finally block is a safety net. | ✅ | 2026-04-05 |
 
 ### Implementation Phase 2
 

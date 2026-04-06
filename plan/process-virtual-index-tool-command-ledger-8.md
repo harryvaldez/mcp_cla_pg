@@ -51,12 +51,12 @@ This ledger defines the exact command sequence, expected evidence, and failure a
 | Task     | Description           | Completed | Date |
 | -------- | --------------------- | --------- | ---- |
 | TASK-007 | Gate V1 command: git status --short. Expected: only intended files changed (server.py, tests/test_tools_pg96.py, tests/functional_test.py, plan files, optional README.md). Failure action: isolate unrelated files before closeout. | ✅ | 2026-04-05 |
-| TASK-008 | Gate V2 command: git diff -- tests/test_tools_pg96.py tests/functional_test.py server.py | Out-String. Expected: diffs match feature scope only. Failure action: trim unrelated hunks and re-check V2. | ✅ | 2026-04-05 |
+| TASK-008 | Gate V2 command: git diff -- tests/test_tools_pg96.py tests/functional_test.py server.py. Expected: diffs match feature scope only. Failure action: trim unrelated hunks and re-check V2. | ✅ | 2026-04-05 |
 | TASK-009 | Gate V3 command: update plan/feature-virtual-index-tuning-tool-1.md and plan/IMPLEMENTATION_SUMMARY.md with pass evidence and residual risks. Expected: both docs reflect completed status and executed test commands. Failure action: patch docs and re-verify. | ✅ | 2026-04-05 |
 
 ## 3. Alternatives
 
-- ALT-001: Ad hoc command execution. Rejected due weak reproducibility.
+- ALT-001: Ad hoc command execution. Rejected due to weak reproducibility.
 - ALT-002: Rely on CI only for evidence. Rejected because local gate evidence is required before handoff.
 
 ## 4. Dependencies

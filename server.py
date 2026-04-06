@@ -879,6 +879,7 @@ _register_skills_resources()
     tags={"public"},
 )
 async def server_status_resource() -> str:
+    active_meta = _resolve_instance_metadata()
     payload = {
         "ok": True,
         "server_name": os.environ.get("MCP_SERVER_NAME", "PostgreSQL MCP Server"),
@@ -887,9 +888,9 @@ async def server_status_resource() -> str:
         "default_max_rows": DEFAULT_MAX_ROWS,
         "statement_timeout_ms": STATEMENT_TIMEOUT_MS,
         "database": {
-            "host": ORIGINAL_DB_HOST,
-            "port": ORIGINAL_DB_PORT,
-            "name": ORIGINAL_DB_NAME,
+            "host": active_meta["host"],
+            "port": active_meta["port"],
+            "name": active_meta["name"],
         },
         "database_instances": {
             "instance_01": {
@@ -990,7 +991,14 @@ async def db_settings_resource(pattern: str | None = None, limit: int = 100) -> 
     description="Generate a deterministic checklist for query plan analysis before running explain.",
     tags={"public"},
 )
-async def explain_slow_query_prompt(sql: str, analyze: bool = False, buffers: bool = False) -> list[Message]:
+async def explain_slow_query_prompt(
+    sql: str,
+    analyze: bool = False,
+    buffers: bool = False,
+    instance: str = "01",
+) -> list[Message]:
+    normalized_instance = _normalize_instance_id(instance)
+    target_tool_name = _resolve_instance_tool_name("db_pg96_explain_query", normalized_instance)
     options = [f"analyze={str(analyze).lower()}", f"buffers={str(buffers).lower()}"]
     messages = [
         Message(
@@ -998,7 +1006,7 @@ async def explain_slow_query_prompt(sql: str, analyze: bool = False, buffers: bo
         ),
         Message(
             (
-                "Run db_pg96_explain_query with the following options and analyze only factual plan evidence.\\n"
+                f"Run {target_tool_name} for instance {normalized_instance} with the following options and analyze only factual plan evidence.\\n"
                 f"SQL: {sql}\\n"
                 f"Options: {', '.join(options)}\\n"
                 "Output must include: top bottleneck, evidence lines, two index suggestions, and one query rewrite suggestion."
@@ -1013,7 +1021,10 @@ async def explain_slow_query_prompt(sql: str, analyze: bool = False, buffers: bo
     description="Generate profile-aware PostgreSQL maintenance checklist aligned with security/performance thresholds.",
     tags={"public"},
 )
-async def maintenance_recommendations_prompt(profile: str = "oltp") -> list[Message]:
+async def maintenance_recommendations_prompt(profile: str = "oltp", instance: str = "01") -> list[Message]:
+    normalized_instance = _normalize_instance_id(instance)
+    sec_perf_tool = _resolve_instance_tool_name("db_pg96_db_sec_perf_metrics", normalized_instance)
+    table_health_tool = _resolve_instance_tool_name("db_pg96_analyze_table_health", normalized_instance)
     profile_value = (profile or "oltp").lower()
     if profile_value == "olap":
         cache_threshold = 80
@@ -1037,6 +1048,12 @@ async def maintenance_recommendations_prompt(profile: str = "oltp") -> list[Mess
         ),
         Message(
             "Use this order: security baseline, vacuum/analyze hygiene, index hygiene, WAL/checkpoint tuning, connection management, and verification commands."
+        ),
+        Message(
+            (
+                f"For deterministic instance routing, use {sec_perf_tool} and {table_health_tool} "
+                f"for instance {normalized_instance}."
+            )
         ),
     ]
     return messages
@@ -1778,15 +1795,25 @@ class _PoolRouter:
     """Connection pool router that resolves target pool from per-request instance context, supporting dual-instance tool prefix routing."""
 
     def connection(self, *args: Any, **kwargs: Any):
-        # Check for dual-instance tool prefix in the current context
-        tool_name = kwargs.get('tool_name') or ''
-        if tool_name.startswith('pg14_'):
+        # Primary routing: use explicit per-request instance context set by alias wrappers.
+        active_instance = _ACTIVE_DB_INSTANCE.get()
+        if active_instance == "02":
             if pool_instance_02 is None:
                 raise RuntimeError(
                     "Database instance 2 is not configured. Set DATABASE_URL_INSTANCE_2 in your environment."
                 )
             return pool_instance_02.connection(*args, **kwargs)
-        # Default: use instance 1
+
+        # Secondary routing fallback: support prefixed tool names when provided.
+        tool_name = kwargs.get("tool_name") or ""
+        if tool_name.startswith("pg14_"):
+            if pool_instance_02 is None:
+                raise RuntimeError(
+                    "Database instance 2 is not configured. Set DATABASE_URL_INSTANCE_2 in your environment."
+                )
+            return pool_instance_02.connection(*args, **kwargs)
+
+        # Default to instance 1.
         return pool_instance_01.connection(*args, **kwargs)
 
     def close(self, *args: Any, **kwargs: Any) -> None:
@@ -1825,6 +1852,42 @@ async def _run_in_instance_async(instance_id: str, target: Any, *args: Any, **kw
         return await target(*args, **kwargs)
     finally:
         _ACTIVE_DB_INSTANCE.reset(token)
+
+
+def _normalize_instance_id(instance: str | None) -> str:
+    if instance is None:
+        return _ACTIVE_DB_INSTANCE.get()
+    value = str(instance).strip().lower()
+    if value in {"01", "1", "instance_01", "instance01", "instance-01", "instance 01", "instance_1", "instance1", "instance-1", "instance 1", "db_01", "db01", "db-01", "db 01", "db_1", "db1", "db-1", "db 1"}:
+        return "01"
+    if value in {"02", "2", "instance_02", "instance02", "instance-02", "instance 02", "instance_2", "instance2", "instance-2", "instance 2", "db_02", "db02", "db-02", "db 02", "db_2", "db2", "db-2", "db 2"}:
+        return "02"
+    raise ValueError(f"Unsupported database instance id: {instance}")
+
+
+def _resolve_instance_metadata(instance: str | None = None) -> dict[str, Any]:
+    normalized = _normalize_instance_id(instance)
+    if normalized == "02":
+        return {
+            "id": "02",
+            "host": ORIGINAL_DB2_HOST,
+            "port": ORIGINAL_DB2_PORT,
+            "name": ORIGINAL_DB2_NAME,
+        }
+    return {
+        "id": "01",
+        "host": ORIGINAL_DB_HOST,
+        "port": ORIGINAL_DB_PORT,
+        "name": ORIGINAL_DB_NAME,
+    }
+
+
+def _resolve_instance_tool_name(base_tool_name: str, instance: str | None = None) -> str:
+    normalized = _normalize_instance_id(instance)
+    if base_tool_name.startswith("db_pg96_"):
+        suffix = base_tool_name[len("db_pg96_"):]
+        return f"db_{normalized}_pg96_{suffix}"
+    return base_tool_name
 
 
 def _parse_allowed_tables(raw_value: str) -> set[str]:
@@ -3648,8 +3711,8 @@ def db_pg96_analyze_table_health(
                 where c.relkind = 'r'
                   and n.nspname not in ('pg_catalog', 'information_schema')
                   and (%(schema)s::text is null or n.nspname = %(schema)s::text)
-                  and pg_relation_size(c.oid) > %(min_size)s::bigint * 1024 * 1024
-                order by pg_relation_size(c.oid) desc
+                                    and c.relpages > ((%(min_size)s::bigint * 1024 * 1024) / current_setting('block_size')::bigint)
+                                order by c.relpages desc
                 limit %(limit)s
                 """,
                 {"schema": schema, "min_size": min_size_mb, "limit": limit}
@@ -4673,10 +4736,16 @@ def db_pg96_server_info() -> dict[str, Any]:
             row = cur.fetchone()
             if row is None:
                 raise RuntimeError("Failed to retrieve server info: database query returned no rows")
-                
-            db_name = ORIGINAL_DB_NAME if ORIGINAL_DB_NAME else row["database"]
-            server_addr = ORIGINAL_DB_HOST if ORIGINAL_DB_HOST else row["server_addr"]
-            server_port = ORIGINAL_DB_PORT if ORIGINAL_DB_PORT else row["server_port"]
+
+            active_instance = _ACTIVE_DB_INSTANCE.get()
+            if active_instance == "02":
+                db_name = ORIGINAL_DB2_NAME if ORIGINAL_DB2_NAME else row["database"]
+                server_addr = ORIGINAL_DB2_HOST if ORIGINAL_DB2_HOST else row["server_addr"]
+                server_port = ORIGINAL_DB2_PORT if ORIGINAL_DB2_PORT else row["server_port"]
+            else:
+                db_name = ORIGINAL_DB_NAME if ORIGINAL_DB_NAME else row["database"]
+                server_addr = ORIGINAL_DB_HOST if ORIGINAL_DB_HOST else row["server_addr"]
+                server_port = ORIGINAL_DB_PORT if ORIGINAL_DB_PORT else row["server_port"]
             return {
                 "database": db_name,
                 "user": row["user"],
@@ -6136,12 +6205,17 @@ def db_pg96_server_info_mcp() -> dict[str, Any]:
             )
             row = cur.fetchone()
             database_name = row["database"] if row and "database" in row else "unknown"
+    active_instance = _ACTIVE_DB_INSTANCE.get()
+    if active_instance == "02":
+        resolved_database = ORIGINAL_DB2_NAME or database_name
+    else:
+        resolved_database = ORIGINAL_DB_NAME or database_name
     return {
         "name": mcp.name,
         "version": "1.0.0",
         "status": "healthy",
         "transport": os.environ.get("MCP_TRANSPORT", "http"),
-        "database": ORIGINAL_DB_NAME or database_name
+        "database": resolved_database
     }
 
 

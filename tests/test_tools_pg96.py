@@ -1,4 +1,5 @@
 import os
+import asyncio
 import subprocess
 import sys
 import time
@@ -726,3 +727,33 @@ def test_transport_gate_changes_do_not_modify_db_pg96_contract(monkeypatch):
     assert isinstance(info_result, dict)
     assert "version" in info_result
     assert "database" in info_result
+
+
+def test_prompt_instance_routing_references_correct_alias(monkeypatch):
+    monkeypatch.setenv("MCP_TRANSPORT", "http")
+
+    import importlib
+    import server as server_module_local
+
+    server_module_local = importlib.reload(server_module_local)
+
+    explain_messages = asyncio.run(
+        server_module_local.explain_slow_query_prompt(
+            sql="select 1",
+            analyze=False,
+            buffers=False,
+            instance="02",
+        )
+    )
+    explain_text = "\n".join(str(msg) for msg in explain_messages)
+    assert "db_02_pg96_explain_query" in explain_text
+
+    maintenance_messages = asyncio.run(
+        server_module_local.maintenance_recommendations_prompt(
+            profile="oltp",
+            instance="02",
+        )
+    )
+    maintenance_text = "\n".join(str(msg) for msg in maintenance_messages)
+    assert "db_02_pg96_db_sec_perf_metrics" in maintenance_text
+    assert "db_02_pg96_analyze_table_health" in maintenance_text
