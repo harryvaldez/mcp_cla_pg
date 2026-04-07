@@ -6785,6 +6785,16 @@ async def api_sessions(request: Request) -> JSONResponse:
         )
     def _query_fn():
         with pool.connection() as conn:
+            # Print connection info for diagnosis
+            try:
+                logger.info("[api_sessions] DB connection info: %s", {
+                    "dsn": getattr(conn, 'dsn', None),
+                    "host": getattr(conn, 'host', None),
+                    "database": getattr(conn, 'database', None),
+                    "user": getattr(conn, 'user', None),
+                })
+            except Exception as e:
+                logger.info("[api_sessions] Could not get connection info: %s", e)
             with conn.cursor() as cur:
                 _execute_safe(
                     cur,
@@ -6801,13 +6811,14 @@ async def api_sessions(request: Request) -> JSONResponse:
                 return row
 
     row = _run_in_instance_sync(normalized_instance, _query_fn)
+    logger.info("[api_sessions] SQL result row: %s", row)
     active = row["active"] if row and row["active"] is not None else 0
     idle = row["idle"] if row and row["idle"] is not None else 0
     idle_in_transaction = row["idle_in_transaction"] if row and row["idle_in_transaction"] is not None else 0
     total = row["total"] if row and row["total"] is not None else 0
     # Add instance metadata
     meta = _resolve_instance_metadata(normalized_instance)
-    return JSONResponse({
+    response = {
         "active": active,
         "idle": idle,
         "idle_in_transaction": idle_in_transaction,
@@ -6816,7 +6827,9 @@ async def api_sessions(request: Request) -> JSONResponse:
         "instance_id": meta.get("id"),
         "host": meta.get("host"),
         "database": meta.get("name"),
-    })
+    }
+    print("[api_sessions] JSON response:", response)
+    return JSONResponse(response)
 
 async def health_check(_request: Request) -> JSONResponse:
     return JSONResponse({"status": "healthy"})

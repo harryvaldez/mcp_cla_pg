@@ -6,6 +6,31 @@ This server exposes a suite of DBA-grade tools to inspect schemas, analyze perfo
 
 ## 🧪 Audit Evidence
 
+## 🖥️ Dual-Instance Session Monitor
+
+The real-time session monitor now supports explicit instance selection for environments with multiple database instances.
+
+- **Monitor URL:** `/sessions-monitor?instance=01|02` (defaults to `01`)
+- **API URL:** `/api/sessions?instance=01|02` (defaults to `01`)
+- **UI:** The monitor page includes an instance selector and badge. Changing the instance updates the stats and chart in real time.
+- **Backend:** All session stats are routed to the correct instance using the dual-instance context and connection pools.
+
+**Example:**
+
+```
+http://localhost:8000/sessions-monitor?instance=02
+```
+
+**API Example:**
+
+```
+GET /api/sessions?instance=02
+Response: { "active": 3, "idle": 5, "idle_in_transaction": 0, "total": 8, "timestamp": 1712428800.0, "instance": "02" }
+```
+
+If the `instance` parameter is omitted, instance `01` is used by default. The UI always displays the active instance.
+
+
 For hardening-audit artifacts (credential scoping, rate limiting/circuit breaker, and prompt audit logging), see [AUDIT_EVIDENCE_PACK.md](AUDIT_EVIDENCE_PACK.md).
 
 ## 📌 Current Release
