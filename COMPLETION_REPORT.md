@@ -146,3 +146,53 @@ docker run -i --rm \
 **Report Generated**: 2026-01-27  
 **Verified By**: Automated verification suite  
 **Status**: All systems operational ✅
+
+---
+
+## Release Update - 2026-04-07
+
+### Session Monitor Table Feature - COMPLETE ✅
+
+Implemented and published the session monitor enhancement that adds a live per-session table under the line chart, with instance-aware routing and API support.
+
+### Delivered Changes
+
+- Added `GET /api/sessions/list?instance=01|02` with instance validation and deterministic `400` payload for invalid instance ids.
+- Added monitor table rendering below the chart with columns:
+  - `PID`
+  - `database name`
+  - `username`
+  - `application name`
+  - `client address`
+  - `client hostname`
+  - `session start`
+  - `wait event`
+  - `state`
+  - `query`
+- Wired frontend polling to refresh both summary counters/chart and session row list on the same refresh interval.
+- Fixed datetime serialization in `/api/sessions/list` by routing session rows through existing JSON-safe conversion helper.
+
+### Validation Evidence
+
+- Targeted tests:
+  - `python -m pytest tests/test_tools_pg96.py -k "sessions_list_route or sessions_monitor_table_headers or api_sessions_list_route"`
+  - Result: `4 passed`
+- Live runtime verification (Docker on port `8086`):
+  - `GET /api/sessions/list?instance=01` -> `200`
+  - `GET /api/sessions/list?instance=02` -> `200`
+  - `GET /api/sessions/list?instance=03` -> `400` with expected error payload
+  - Monitor HTML contains `sessionsTableBody` and query column header
+
+### Source Control and Image Traceability
+
+- Git commit: `9fc0b93`
+- Git branch: `main`
+- Docker tags pushed:
+  - `harryvaldez/mcp-postgres:latest`
+  - `harryvaldez/mcp-postgres:b7f56e1`
+- Docker digest:
+  - `sha256:a099624cc5c69b2dc32a61e3d31111a76ab6f8fe526d9c00f7acee4254083af3`
+
+### Status
+
+Production update verified and published ✅
