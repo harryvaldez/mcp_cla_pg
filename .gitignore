@@ -8,6 +8,7 @@ venv/
 .env
 .venv
 fresh_env/
+tmp_fastmcp_214/
 *.log
 pg_settings.csv
 pg_settings.txt

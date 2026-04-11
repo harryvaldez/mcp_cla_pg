@@ -1,0 +1,4 @@
+# Ignore temporary or vendored environments when running Semgrep
+.venv/
+fresh_env/
+tmp_fastmcp_214/
