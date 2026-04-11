@@ -1619,6 +1619,8 @@ except Exception as e:
         )
 
 DEFAULT_MAX_ROWS = _env_int("MCP_MAX_ROWS", 500)
+SESSION_LIST_MAX_ROWS = _env_int("MCP_SESSIONS_LIST_MAX_ROWS", 100)
+SESSION_QUERY_PREVIEW_CHARS = _env_int("MCP_SESSIONS_QUERY_PREVIEW_CHARS", 240)
 POOL_MIN_SIZE = _env_int("MCP_POOL_MIN_SIZE", 1)
 POOL_MAX_SIZE = _env_int("MCP_POOL_MAX_SIZE", 20)
 POOL_TIMEOUT = float(os.environ.get("MCP_POOL_TIMEOUT", "60.0"))
@@ -2650,7 +2652,12 @@ async def root(_request: Request) -> HTMLResponse:
     """)
 
 
-@mcp.tool(tags={"public"}, annotations={"destructiveHint": True, "openWorldHint": False}, timeout=60.0)
+@mcp.tool(
+    description="Create a database user and grant read or read-write privileges.",
+    tags={"public"},
+    annotations={"destructiveHint": True, "openWorldHint": False},
+    timeout=60.0,
+)
 def db_pg96_create_db_user(
     username: str,
     password: str,
@@ -2777,7 +2784,12 @@ def db_pg96_create_db_user(
                 )
 
 
-@mcp.tool(tags={"public"}, annotations={"destructiveHint": True, "openWorldHint": False}, timeout=60.0)
+@mcp.tool(
+    description="Drop a database user role and remove owned objects.",
+    tags={"public"},
+    annotations={"destructiveHint": True, "openWorldHint": False},
+    timeout=60.0,
+)
 def db_pg96_drop_db_user(username: str) -> str:
     """
     Drops a database user (role).
@@ -2809,7 +2821,12 @@ def db_pg96_drop_db_user(username: str) -> str:
             return f"User '{username}' dropped successfully."
 
 
-@mcp.tool(tags={"public"}, annotations={"destructiveHint": True, "openWorldHint": False}, timeout=90.0)
+@mcp.tool(
+    description="Execute ALTER DDL operations for supported PostgreSQL object types.",
+    tags={"public"},
+    annotations={"destructiveHint": True, "openWorldHint": False},
+    timeout=90.0,
+)
 def db_pg96_alter_object(
     object_type: str,
     object_name: str,
@@ -3075,7 +3092,12 @@ def db_pg96_alter_object(
             return f"Operation '{op}' on {obj_type} '{object_name}' completed successfully."
 
 
-@mcp.tool(tags={"public"}, annotations={"destructiveHint": True, "openWorldHint": False}, timeout=90.0)
+@mcp.tool(
+    description="Create supported PostgreSQL objects using validated DDL parameters.",
+    tags={"public"},
+    annotations={"destructiveHint": True, "openWorldHint": False},
+    timeout=90.0,
+)
 def db_pg96_create_object(
     object_type: str,
     object_name: str,
@@ -3322,7 +3344,12 @@ def db_pg96_create_object(
             return f"{obj_type.capitalize()} '{object_name}' created successfully."
 
 
-@mcp.tool(tags={"public"}, annotations={"destructiveHint": True, "openWorldHint": False}, timeout=90.0)
+@mcp.tool(
+    description="Drop supported PostgreSQL objects with optional IF EXISTS and CASCADE.",
+    tags={"public"},
+    annotations={"destructiveHint": True, "openWorldHint": False},
+    timeout=90.0,
+)
 def db_pg96_drop_object(
     object_type: str,
     object_name: str,
@@ -3447,7 +3474,12 @@ def db_pg96_drop_object(
             return f"{obj_type.capitalize()} '{object_name}' dropped successfully."
 
 
-@mcp.tool(tags={"public"}, annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False}, timeout=90.0)
+@mcp.tool(
+    description="Estimate table and index bloat and suggest maintenance commands.",
+    tags={"public"},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
+    timeout=90.0,
+)
 def db_pg96_check_bloat(limit: int = 50) -> list[dict[str, Any]]:
     """
     Identifies the top bloated tables and indexes and provides maintenance commands.
@@ -3560,7 +3592,12 @@ def db_pg96_check_bloat(limit: int = 50) -> list[dict[str, Any]]:
             return cur.fetchall()
 
 
-@mcp.tool(tags={"public"}, annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False}, timeout=60.0)
+@mcp.tool(
+    description="Return database-level operational and performance statistics.",
+    tags={"public"},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
+    timeout=60.0,
+)
 def db_pg96_db_stats(database: str | None = None, include_performance: bool = False) -> list[dict[str, Any]] | dict[str, Any]:
     """
     Get database-level statistics including commits, rollbacks, temp files, and deadlocks.
@@ -3662,7 +3699,12 @@ def db_pg96_db_stats(database: str | None = None, include_performance: bool = Fa
                 return results
 
 
-@mcp.tool(tags={"public"}, annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False}, timeout=120.0)
+@mcp.tool(
+    description="Analyze table health, maintenance posture, and autovacuum recommendations.",
+    tags={"public"},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
+    timeout=120.0,
+)
 def db_pg96_analyze_table_health(
     schema: str | None = None,
     min_size_mb: int = 50,
@@ -3991,7 +4033,12 @@ def db_pg96_analyze_table_health(
             )
 
 
-@mcp.tool(tags={"public"}, annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False}, timeout=120.0)
+@mcp.tool(
+    description="Assess security and performance metrics with tuning recommendations.",
+    tags={"public"},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
+    timeout=120.0,
+)
 def db_pg96_db_sec_perf_metrics(
     cache_hit_threshold: int | None = None,
     connection_usage_threshold: float | None = None,
@@ -4354,7 +4401,12 @@ def db_pg96_db_sec_perf_metrics(
             )
 
 
-@mcp.tool(tags={"public"}, annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False}, timeout=120.0)
+@mcp.tool(
+    description="Alias for db_pg96_db_sec_perf_metrics with the long-form tool name.",
+    tags={"public"},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
+    timeout=120.0,
+)
 def db_pg96_database_security_performance_metrics(
     cache_hit_threshold: int | None = None,
     connection_usage_threshold: float | None = None,
@@ -4376,7 +4428,12 @@ def db_pg96_database_security_performance_metrics(
     )
 
 
-@mcp.tool(tags={"public"}, annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False}, timeout=90.0)
+@mcp.tool(
+    description="Recommend partitioning candidates based on size and workload signals.",
+    tags={"public"},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
+    timeout=90.0,
+)
 def db_pg96_recommend_partitioning(
     min_size_gb: float = 1.0,
     schema: str | None = None,
@@ -4532,7 +4589,12 @@ def db_pg96_recommend_partitioning(
             return results
 
 
-@mcp.tool(tags={"public"}, annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False}, timeout=90.0)
+@mcp.tool(
+    description="Analyze active, idle, and locked database sessions with recommendations.",
+    tags={"public"},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
+    timeout=90.0,
+)
 def db_pg96_analyze_sessions(
     include_idle: bool = True,
     include_active: bool = True,
@@ -4701,7 +4763,12 @@ def db_pg96_analyze_sessions(
             return results
 
 
-@mcp.tool(tags={"public"}, annotations={"destructiveHint": True, "openWorldHint": False}, timeout=30.0)
+@mcp.tool(
+    description="Terminate a PostgreSQL backend session by PID.",
+    tags={"public"},
+    annotations={"destructiveHint": True, "openWorldHint": False},
+    timeout=30.0,
+)
 def db_pg96_kill_session(pid: int) -> dict[str, Any]:
     """
     Terminates a database session by its process ID (PID).
@@ -4735,7 +4802,12 @@ def db_pg96_kill_session(pid: int) -> dict[str, Any]:
 
 
 
-@mcp.tool(tags={"public"}, annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False}, timeout=30.0)
+@mcp.tool(
+    description="Return current PostgreSQL connection and server metadata.",
+    tags={"public"},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
+    timeout=30.0,
+)
 def db_pg96_server_info() -> dict[str, Any]:
     """
     Retrieves information about the current PostgreSQL server connection and version.
@@ -4778,7 +4850,12 @@ def db_pg96_server_info() -> dict[str, Any]:
             }
 
 
-@mcp.tool(tags={"public"}, annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False}, timeout=60.0)
+@mcp.tool(
+    description="List PostgreSQL runtime parameters, optionally filtered by regex.",
+    tags={"public"},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
+    timeout=60.0,
+)
 def db_pg96_get_db_parameters(pattern: str | None = None) -> list[dict[str, Any]]:
     """
     Retrieves database configuration parameters (GUCs).
@@ -4840,7 +4917,12 @@ def db_pg96_get_db_parameters(pattern: str | None = None) -> list[dict[str, Any]
             return cur.fetchall()
 
 
-@mcp.tool(tags={"public"}, annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False}, timeout=90.0)
+@mcp.tool(
+    description="List PostgreSQL objects with filtering, sorting, and detail controls.",
+    tags={"public"},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
+    timeout=90.0,
+)
 def db_pg96_list_objects(
     object_type: str,
     schema: str | None = None,
@@ -5157,7 +5239,12 @@ def db_pg96_list_objects(
 
 
 
-@mcp.tool(tags={"public"}, annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False}, timeout=90.0)
+@mcp.tool(
+    description="Detect unused and duplicate indexes and summarize index health.",
+    tags={"public"},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
+    timeout=90.0,
+)
 def db_pg96_analyze_indexes(
     schema: str | None = None,
     limit: int = 50,
@@ -5298,7 +5385,12 @@ def db_pg96_analyze_indexes(
             )
 
 
-@mcp.tool(tags={"public"}, annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False}, timeout=120.0)
+@mcp.tool(
+    description="Build a logical data model analysis for a schema with findings.",
+    tags={"public"},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
+    timeout=120.0,
+)
 def db_pg96_analyze_logical_data_model(
     schema: str = "public",
     include_views: bool = False,
@@ -5778,7 +5870,12 @@ def db_pg96_analyze_logical_data_model(
 
 
 
-@mcp.tool(tags={"public"}, annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False}, timeout=60.0)
+@mcp.tool(
+    description="Describe a table's columns, indexes, size, and approximate row count.",
+    tags={"public"},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
+    timeout=60.0,
+)
 def db_pg96_describe_table(schema: str, table: str) -> dict[str, Any]:
 
     with pool.connection() as conn:
@@ -5850,7 +5947,12 @@ def db_pg96_describe_table(schema: str, table: str) -> dict[str, Any]:
             }
 
 
-@mcp.tool(tags={"public"}, annotations={"openWorldHint": False}, timeout=120.0)
+@mcp.tool(
+    description="Execute a read-only SQL query with optional bound parameters.",
+    tags={"public"},
+    annotations={"openWorldHint": False},
+    timeout=120.0,
+)
 def db_pg96_run_query(
     sql: str,
     params_json: str | None = None,
@@ -5918,7 +6020,12 @@ def db_pg96_run_query(
             }
 
 
-@mcp.tool(tags={"public"}, annotations={"openWorldHint": False}, timeout=120.0)
+@mcp.tool(
+    description="Run EXPLAIN on a read-only SQL statement in text or JSON format.",
+    tags={"public"},
+    annotations={"openWorldHint": False},
+    timeout=120.0,
+)
 def db_pg96_explain_query(
     sql: str,
     analyze: bool = False,
@@ -5981,6 +6088,7 @@ def db_pg96_explain_query(
 
 
 @mcp.tool(
+    description="Evaluate virtual indexes with HypoPG and return the best candidate set.",
     tags={"public"},
     annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
     timeout=180.0,
@@ -6185,7 +6293,12 @@ def db_pg96_create_virtual_indexes(schema_name: str, sql_statement: str) -> dict
             }
 
 
-@mcp.tool(tags={"public"}, annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False}, timeout=15.0)
+@mcp.tool(
+    description="Return a simple server liveness response.",
+    tags={"public"},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
+    timeout=15.0,
+)
 def db_pg96_ping() -> dict[str, Any]:
     """
     Check if the MCP server is responsive.
@@ -6196,7 +6309,12 @@ def db_pg96_ping() -> dict[str, Any]:
     return {"ok": True}
 
 
-@mcp.tool(tags={"public"}, annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False}, timeout=30.0)
+@mcp.tool(
+    description="Return MCP server metadata including transport and resolved database.",
+    tags={"public"},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
+    timeout=30.0,
+)
 def db_pg96_server_info_mcp() -> dict[str, Any]:
     """
     Get information about the MCP server configuration and status.
@@ -6673,7 +6791,7 @@ SESSION_MONITOR_HTML = (
                                 <th>session start</th>
                                 <th>wait event</th>
                                 <th>state</th>
-                                <th>query</th>
+                                <th>query preview</th>
                             </tr>
                         </thead>
                         <tbody id="sessionsTableBody">
@@ -6735,11 +6853,11 @@ SESSION_MONITOR_HTML = (
                         'session_start',
                         'wait_event',
                         'state',
-                        'query'
+                        'query_preview'
                     ];
                     for (const field of fields) {
                         const td = document.createElement('td');
-                        if (field === 'query') {
+                        if (field === 'query_preview') {
                             td.className = 'query-cell';
                         }
                         td.textContent = formatCellValue(row[field]);
@@ -6808,18 +6926,38 @@ SESSION_MONITOR_HTML = (
                         fetch(`/api/sessions?instance=${instance}`),
                         fetch(`/api/sessions/list?instance=${instance}`)
                     ]);
+
+                    const readErrorBody = async (response) => {
+                        try {
+                            const parsed = await response.clone().json();
+                            if (parsed && typeof parsed === 'object') {
+                                return parsed.error || JSON.stringify(parsed);
+                            }
+                        } catch (_) {
+                            // Fall through to text body extraction.
+                        }
+                        try {
+                            const text = await response.text();
+                            return text || '(empty body)';
+                        } catch (_) {
+                            return '(unable to read response body)';
+                        }
+                    };
+
+                    if (!summaryResponse.ok || !sessionsResponse.ok) {
+                        const summaryErr = !summaryResponse.ok
+                            ? `summary ${summaryResponse.status}: ${await readErrorBody(summaryResponse)}`
+                            : null;
+                        const sessionsErr = !sessionsResponse.ok
+                            ? `sessions ${sessionsResponse.status}: ${await readErrorBody(sessionsResponse)}`
+                            : null;
+                        const combined = [summaryErr, sessionsErr].filter(Boolean).join(' | ');
+                        throw new Error(combined || 'Error fetching data');
+                    }
+
                     const data = await summaryResponse.json();
                     const sessionsPayload = await sessionsResponse.json();
-                    if (!summaryResponse.ok || !sessionsResponse.ok) {
-                        errorDiv.style.display = 'block';
-                        errorDiv.textContent = data.error || sessionsPayload.error || 'Error fetching data';
-                        badge.textContent = 'Instance --';
-                        renderSessionsTable([]);
-                        sessionsTableMeta.textContent = 'Unable to load sessions';
-                        return;
-                    } else {
-                        errorDiv.style.display = 'none';
-                    }
+                    errorDiv.style.display = 'none';
                     const now = new Date().toLocaleTimeString();
                     document.getElementById('activeVal').textContent = data.active;
                     document.getElementById('idleVal').textContent = data.idle;
@@ -6843,7 +6981,7 @@ SESSION_MONITOR_HTML = (
                     renderSessionsTable(sessionsPayload.sessions);
                 } catch (error) {
                     errorDiv.style.display = 'block';
-                    errorDiv.textContent = 'Error fetching data';
+                    errorDiv.textContent = error && error.message ? error.message : 'Error fetching data';
                     badge.textContent = 'Instance --';
                     renderSessionsTable([]);
                     sessionsTableMeta.textContent = 'Unable to load sessions';
@@ -6944,6 +7082,9 @@ async def api_sessions_list(request: Request) -> JSONResponse:
             status_code=400
         )
 
+    list_limit = max(1, SESSION_LIST_MAX_ROWS)
+    preview_chars = max(16, SESSION_QUERY_PREVIEW_CHARS)
+
     def _query_fn() -> list[dict[str, Any]]:
         with pool.connection() as conn:
             with conn.cursor() as cur:
@@ -6960,10 +7101,16 @@ async def api_sessions_list(request: Request) -> JSONResponse:
                         backend_start AS session_start,
                         wait_event AS wait_event,
                         state AS state,
-                        query AS query
+                        CASE
+                            WHEN query IS NULL THEN NULL
+                            WHEN length(query) > %(preview_chars)s THEN left(query, %(preview_chars)s) || '...'
+                            ELSE query
+                        END AS query_preview
                     FROM public.get_stat_activity()
                     ORDER BY backend_start DESC NULLS LAST, pid DESC
-                    """
+                    LIMIT %(list_limit)s
+                    """,
+                    {"preview_chars": preview_chars, "list_limit": list_limit},
                 )
                 return cur.fetchall()
 
@@ -6983,7 +7130,12 @@ async def api_sessions_list(request: Request) -> JSONResponse:
 async def health_check(_request: Request) -> JSONResponse:
     return JSONResponse({"status": "healthy"})
 
-@mcp.tool(tags={"public"}, annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False}, timeout=30.0)
+@mcp.tool(
+    description="Return the sessions monitor dashboard URL.",
+    tags={"public"},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
+    timeout=30.0,
+)
 def db_pg96_monitor_sessions() -> str:
     """
     Get the link to the real-time database sessions monitor dashboard.
@@ -7135,7 +7287,12 @@ def main() -> None:
 from fastmcp.dependencies import Progress
 
 
-@mcp.tool(tags={"public"}, task=True, annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False})
+@mcp.tool(
+    description="Async logical data model analysis with progress updates.",
+    tags={"public"},
+    task=True,
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
+)
 async def db_pg96_analyze_logical_data_model_async(
     schema: str = "public",
     include_views: bool = False,
@@ -7458,7 +7615,12 @@ async def db_pg96_analyze_logical_data_model_async(
             )
 
 
-@mcp.tool(tags={"public"}, task=True, annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False})
+@mcp.tool(
+    description="Async index analysis for unused and duplicate index detection.",
+    tags={"public"},
+    task=True,
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
+)
 async def db_pg96_analyze_indexes_async(
     schema: str | None = None,
     detail_level: str = "compact",
@@ -7597,7 +7759,12 @@ async def db_pg96_analyze_indexes_async(
             )
 
 
-@mcp.tool(tags={"public"}, task=True, annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False})
+@mcp.tool(
+    description="Async bloat analysis for tables and indexes.",
+    tags={"public"},
+    task=True,
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
+)
 async def db_pg96_check_bloat_async(
     limit: int = 50,
     progress: Progress = Progress(),
@@ -7720,7 +7887,12 @@ async def db_pg96_check_bloat_async(
             return cur.fetchall()
 
 
-@mcp.tool(tags={"public"}, task=True, annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False})
+@mcp.tool(
+    description="Async session analysis with active, idle, and lock diagnostics.",
+    tags={"public"},
+    task=True,
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
+)
 async def db_pg96_analyze_sessions_async(
     include_idle: bool = True,
     include_active: bool = True,
@@ -7875,7 +8047,12 @@ async def db_pg96_analyze_sessions_async(
             return results
 
 
-@mcp.tool(tags={"public"}, task=True, annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False})
+@mcp.tool(
+    description="Async partitioning recommendation analysis based on table size and activity.",
+    tags={"public"},
+    task=True,
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
+)
 async def db_pg96_recommend_partitioning_async(
     schema: str = "public",
     min_size_gb: float = 1.0,
