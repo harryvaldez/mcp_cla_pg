@@ -62,10 +62,16 @@ For hardening-audit artifacts (credential scoping, rate limiting/circuit breaker
 ## 📌 Current Release
 
 - Git tag: `v1.1.0`
-- Docker tags: `harryvaldez/mcp-postgres:latest`, `harryvaldez/mcp-postgres:93f6fbc`, `harryvaldez/mcp-postgres:v1.1.0`, `harryvaldez/mcp-postgres:1.0.0`
-- Image digest: `sha256:86ca24f17a6a77eb0823d7e63a3d3c7d72ac38d4efb08caea93b536c2f3a3583`
+- Docker tags: `harryvaldez/mcp-postgres:latest`, `harryvaldez/mcp-postgres:ab4d9d2`, `harryvaldez/mcp-postgres:93f6fbc`, `harryvaldez/mcp-postgres:v1.1.0`, `harryvaldez/mcp-postgres:1.0.0`
+- Image digest: `sha256:139dd0d2b1c82cc73c04c738272168e030c8b8c1da83f58103da95b6534865ba`
 
-Pinned image reference (recommended for production): `harryvaldez/mcp-postgres@sha256:86ca24f17a6a77eb0823d7e63a3d3c7d72ac38d4efb08caea93b536c2f3a3583`
+Pinned image reference (recommended for production): `harryvaldez/mcp-postgres@sha256:139dd0d2b1c82cc73c04c738272168e030c8b8c1da83f58103da95b6534865ba`
+
+### Latest Publish Snapshot (2026-04-12)
+
+- Git commit: `ab4d9d2` (pushed to `main`)
+- Docker tags pushed: `harryvaldez/mcp-postgres:latest`, `harryvaldez/mcp-postgres:ab4d9d2`
+- Docker image digest: `sha256:139dd0d2b1c82cc73c04c738272168e030c8b8c1da83f58103da95b6534865ba`
 
 ### Latest Publish Snapshot (2026-04-07)
 
@@ -83,6 +89,7 @@ Pinned image reference (recommended for production): `harryvaldez/mcp-postgres@s
 
 | Date | Git commit | Docker tags | Image digest |
 |------|------------|-------------|--------------|
+| 2026-04-12 | `ab4d9d2` | `latest`, `ab4d9d2` | `sha256:139dd0d2b1c82cc73c04c738272168e030c8b8c1da83f58103da95b6534865ba` |
 | 2026-04-07 | `93f6fbc` | `latest`, `93f6fbc` | `sha256:86ca24f17a6a77eb0823d7e63a3d3c7d72ac38d4efb08caea93b536c2f3a3583` |
 | 2026-03-17 | `547e383` | `latest`, `1.0.0` | `sha256:602e3d7d7603ca6da1987e41fb1a21ef2d4bbaf90f601dee0828d7d535701dd5` |
 | 2026-03-05 | `4aafa3e` | `latest`, `4aafa3e` | `sha256:81c7d249e4202277adcb6a20e4fbb21952e31b3d7b633e6ca8869f986a62b073` |
