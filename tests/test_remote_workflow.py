@@ -3,6 +3,9 @@ import json
 import time
 import urllib.request
 import urllib.error
+import socket
+import ipaddress
+from urllib.parse import urlparse
 
 # --- Configuration ---
 # These must be set as environment variables
@@ -12,8 +15,46 @@ WORKFLOW_ID = os.environ.get("N8N_WORKFLOW_ID", "MyYz15IkOxsSZL82pBIkO")
 
 import pytest
 
+
+def _load_allowlist() -> set[str]:
+    configured = os.environ.get("OUTBOUND_URL_ALLOWLIST", "")
+    defaults = "claritasllc.app.n8n.cloud,github.com,login.microsoftonline.com"
+    raw = configured if configured.strip() else defaults
+    return {part.strip().lower() for part in raw.split(",") if part.strip()}
+
+
+def _host_allowed(hostname: str, allowlist: set[str]) -> bool:
+    host = hostname.lower()
+    for allowed in allowlist:
+        if host == allowed or host.endswith(f".{allowed}"):
+            return True
+    return False
+
+
+def _validate_outbound_url(url: str) -> str:
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"}:
+        raise ValueError(f"Unsupported URL scheme: {parsed.scheme}")
+    if not parsed.hostname:
+        raise ValueError("URL is missing hostname")
+
+    host = parsed.hostname
+    allowlist = _load_allowlist()
+    allow_local = os.environ.get("ALLOW_PRIVATE_OUTBOUND", "false").lower() == "true"
+
+    infos = socket.getaddrinfo(host, parsed.port or (443 if parsed.scheme == "https" else 80), proto=socket.IPPROTO_TCP)
+    for info in infos:
+        ip_obj = ipaddress.ip_address(info[4][0])
+        if (ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_reserved or ip_obj.is_multicast) and not allow_local:
+            if not _host_allowed(host, allowlist):
+                raise ValueError(f"Blocked private/internal destination for host '{host}' ({ip_obj})")
+
+    if not _host_allowed(host, allowlist):
+        raise ValueError(f"Host '{host}' is not in outbound allowlist")
+    return url
+
 def trigger_workflow():
-    url = f"{N8N_BASE_URL.rstrip('/')}/api/v1/executions"
+    url = _validate_outbound_url(f"{N8N_BASE_URL.rstrip('/')}/api/v1/executions")
     print(f"Triggering workflow execution: {url}")
     
     # Payload to execute the workflow
@@ -41,7 +82,7 @@ def trigger_workflow():
         return None
 
 def get_execution_status(execution_id):
-    url = f"{N8N_BASE_URL.rstrip('/')}/api/v1/executions/{execution_id}"
+    url = _validate_outbound_url(f"{N8N_BASE_URL.rstrip('/')}/api/v1/executions/{execution_id}")
     print(f"Checking execution status: {execution_id}...", end="\r")
     
     req = urllib.request.Request(url)

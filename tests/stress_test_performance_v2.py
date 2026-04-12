@@ -9,15 +9,32 @@ import sys
 import psycopg
 from psycopg_pool import ConnectionPool
 
-# Configuration for readonly user
-os.environ["DATABASE_URL"] = "postgresql://postgres_readonly:readonly123@localhost:5432/mcp_db"
-os.environ["MCP_ALLOW_WRITE"] = "false"
+# Configuration for readonly user is loaded from environment.
+os.environ.setdefault("MCP_ALLOW_WRITE", "false")
+
+
+def _get_database_url() -> str:
+    explicit = os.environ.get("DATABASE_URL")
+    if explicit and explicit.strip():
+        return explicit
+
+    host = os.environ.get("POSTGRES_HOST", "localhost")
+    port = os.environ.get("POSTGRES_PORT", "5432")
+    db = os.environ.get("POSTGRES_DB", "mcp_db")
+    user = os.environ.get("POSTGRES_READONLY_USER")
+    password = os.environ.get("POSTGRES_READONLY_PASSWORD")
+    if not user or not password:
+        raise RuntimeError(
+            "Set DATABASE_URL or both POSTGRES_READONLY_USER and POSTGRES_READONLY_PASSWORD for stress tests."
+        )
+    return f"postgresql://{user}:{password}@{host}:{port}/{db}"
 
 def create_connection_pool():
     """Create a connection pool with optimized settings."""
     try:
+        database_url = _get_database_url()
         pool = ConnectionPool(
-            conninfo=os.environ["DATABASE_URL"],
+            conninfo=database_url,
             min_size=1,
             max_size=10,
             max_idle=30,

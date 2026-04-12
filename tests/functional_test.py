@@ -19,7 +19,9 @@ HOST = "localhost"
 PORT = 15432
 DB = "mcp_test"
 USER = "postgres"
-PASSWORD = "postgres"
+PASSWORD = os.environ.get("POSTGRES_PASSWORD")
+if not PASSWORD:
+    pytest.skip("POSTGRES_PASSWORD must be set for functional tests.", allow_module_level=True)
 DATABASE_URL = f"postgresql://{USER}:{PASSWORD}@{HOST}:{PORT}/{DB}"
 
 os.environ["DATABASE_URL"] = DATABASE_URL

@@ -1,12 +1,35 @@
 import json
 import sys
 import os
+from pathlib import Path
+
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+
+def _resolve_safe_json_path(file_path: str) -> Path:
+    candidate = Path(file_path)
+    resolved = candidate.resolve() if candidate.is_absolute() else (BASE_DIR / candidate).resolve()
+
+    if not resolved.is_file():
+        raise FileNotFoundError(f"File {resolved} not found.")
+
+    if not str(resolved).lower().endswith(".json"):
+        raise ValueError("Only .json files are allowed.")
+
+    try:
+        resolved.relative_to(BASE_DIR)
+    except ValueError as exc:
+        raise ValueError("Path traversal detected: file must remain inside repository base directory.") from exc
+
+    return resolved
 
 def validate_workflow(file_path):
     print(f"Validating workflow file: {file_path}")
     is_valid = True
     try:
-        with open(file_path, 'r') as f:
+        safe_path = _resolve_safe_json_path(file_path)
+        with safe_path.open('r', encoding='utf-8') as f:
             workflow = json.load(f)
 
         # 1. Structure Validation
@@ -84,9 +107,6 @@ def validate_workflow(file_path):
 
 if __name__ == "__main__":
     file_path = "n8n-mcp-workflow.json"
-    if not os.path.exists(file_path):
-        print(f"File {file_path} not found.")
-        sys.exit(1)
 
     if validate_workflow(file_path):
         print("\n🎉 Workflow validation successful.")

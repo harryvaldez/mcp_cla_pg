@@ -5,6 +5,7 @@ import sys
 import time
 import traceback
 import urllib.request
+import urllib.parse
 from typing import Any, Dict, List
 
 import psycopg
@@ -19,6 +20,15 @@ SERVER_PORT = 8000
 DB_NAME = "mcp_test"
 USER = "postgres"
 PASSWORD = "postgres"
+
+
+def _validate_local_http_url(url: str) -> str:
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in {"http", "https"}:
+        raise ValueError(f"Unsupported URL scheme for test target: {parsed.scheme}")
+    if parsed.hostname not in {"localhost", "127.0.0.1", "::1"}:
+        raise ValueError(f"Blocked non-local test URL host: {parsed.hostname}")
+    return url
 
 def _run(cmd: List[str], *, check: bool = True, capture: bool = False) -> subprocess.CompletedProcess:
     return subprocess.run(
@@ -90,10 +100,10 @@ def _seed_sample_data() -> None:
 
 def _wait_for_server(timeout_s: int = 60) -> None:
     deadline = time.time() + timeout_s
-    url = f"http://localhost:{SERVER_PORT}/health"
+    url = _validate_local_http_url(f"http://localhost:{SERVER_PORT}/health")
     while time.time() < deadline:
         try:
-            with urllib.request.urlopen(url) as response:
+            with urllib.request.urlopen(url, timeout=5) as response:
                 if response.getcode() == 200:
                     return
         except:
@@ -102,7 +112,7 @@ def _wait_for_server(timeout_s: int = 60) -> None:
 
 def _test_docker_http() -> None:
     # Test tools via Stateless HTTP transport
-    url = f"http://localhost:{SERVER_PORT}/mcp"
+    url = _validate_local_http_url(f"http://localhost:{SERVER_PORT}/mcp")
     
     print(f"Connecting to /mcp at {url}...")
     req = urllib.request.Request(url)
@@ -127,7 +137,7 @@ def _test_docker_http() -> None:
             }
         )
         try:
-            with urllib.request.urlopen(req) as response:
+            with urllib.request.urlopen(req, timeout=15) as response:
                 if is_notification:
                     return {}
                 
@@ -216,7 +226,10 @@ def _test_docker_http() -> None:
     # Test write operations
     username = f"test_docker_user_{int(time.time())}"
     print(f"Testing db_pg96_create_db_user: {username}...")
-    call_tool("tools/call", {"name": "db_pg96_create_db_user", "arguments": {"username": username, "password": "password123", "privileges": "read", "database": DB_NAME}})
+    new_user_password = os.environ.get("TEST_NEW_USER_PASSWORD")
+    if not new_user_password:
+        raise RuntimeError("TEST_NEW_USER_PASSWORD environment variable is required for db_pg96_create_db_user test.")
+    call_tool("tools/call", {"name": "db_pg96_create_db_user", "arguments": {"username": username, "password": new_user_password, "privileges": "read", "database": DB_NAME}})
     print(f"Testing db_pg96_drop_db_user: {username}...")
     call_tool("tools/call", {"name": "db_pg96_drop_db_user", "arguments": {"username": username}})
 

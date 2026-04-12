@@ -244,9 +244,12 @@ def _test_uv_stdio() -> None:
 
             username = f"test_uv_user_{int(time.time())}"
             print(f"Testing db_pg96_create_db_user: {username}...")
+            new_user_password = os.environ.get("TEST_NEW_USER_PASSWORD")
+            if not new_user_password:
+                raise RuntimeError("TEST_NEW_USER_PASSWORD environment variable is required for db_pg96_create_db_user test.")
             client.send_request("tools/call", {
                 "name": "db_pg96_create_db_user",
-                "arguments": {"username": username, "password": "password123", "privileges": "read", "database": DB}
+                "arguments": {"username": username, "password": new_user_password, "privileges": "read", "database": DB}
             })
             print(f"Testing db_pg96_drop_db_user: {username}...")
             client.send_request("tools/call", {

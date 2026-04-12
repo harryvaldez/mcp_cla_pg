@@ -95,7 +95,7 @@ class MCPClient:
             env={**os.environ, **env},
             text=True,
             bufsize=1,
-            shell=sys.platform == "win32"
+            shell=False
         )
         self.request_id = 1
 
@@ -151,7 +151,8 @@ def _test_npx_stdio() -> None:
     
     # Run npx . which runs bin/mcp-postgres.js
     # We use 'npx' command which should be in PATH
-    cmd = ["npx", ".", "--no-banner"] # FastMCP might support --no-banner
+    npx_cmd = "npx.cmd" if sys.platform == "win32" else "npx"
+    cmd = [npx_cmd, ".", "--no-banner"]
     
     print("Starting MCP server via npx...")
     client = MCPClient(cmd, env)
@@ -238,9 +239,12 @@ def _test_npx_stdio() -> None:
         # Test write operations
         username = f"test_npx_user_{int(time.time())}"
         print(f"Testing db_pg96_create_db_user: {username}...")
+        new_user_password = os.environ.get("TEST_NEW_USER_PASSWORD")
+        if not new_user_password:
+            raise RuntimeError("TEST_NEW_USER_PASSWORD environment variable is required for db_pg96_create_db_user test.")
         client.send_request("tools/call", {
             "name": "db_pg96_create_db_user",
-            "arguments": {"username": username, "password": "password123", "privileges": "read", "database": DB}
+            "arguments": {"username": username, "password": new_user_password, "privileges": "read", "database": DB}
         })
         print(f"Testing db_pg96_drop_db_user: {username}...")
         client.send_request("tools/call", {

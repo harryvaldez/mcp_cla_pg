@@ -27,6 +27,13 @@ def get_sanitized_url(url: str) -> str:
     except Exception:
         return "<unparseable_url>"
 
+
+def _build_dsn(host: str, port: Any, db_name: str, username: str | None, password: str | None) -> str | None:
+    """Build a DSN only when both username and password are provided."""
+    if not username or not password:
+        return None
+    return f"postgresql://{username}:{password}@{host}:{port}/{db_name}"
+
 def test_direct_connection():
     """Test direct database connection using environment variables."""
     print("Testing direct database connection...")
@@ -36,19 +43,29 @@ def test_direct_connection():
     db_port = os.environ.get("POSTGRES_PORT", 5432)
     db_name = os.environ.get("POSTGRES_DB", "mcp_db")
     
-    # Read-only user
-    ro_user = os.environ.get("POSTGRES_READONLY_USER", "postgres_readonly")
-    ro_pass = os.environ.get("POSTGRES_READONLY_PASSWORD", "readonly123")
-    
-    # Superuser
-    su_user = os.environ.get("POSTGRES_USER", "postgres")
-    su_pass = os.environ.get("POSTGRES_PASSWORD", "password123")
+    ro_user = os.environ.get("POSTGRES_READONLY_USER")
+    ro_pass = os.environ.get("POSTGRES_READONLY_PASSWORD")
+    su_user = os.environ.get("POSTGRES_USER")
+    su_pass = os.environ.get("POSTGRES_PASSWORD")
 
-    conn_strings = [
-        f"postgresql://{ro_user}:{ro_pass}@{db_host}:{db_port}/{db_name}",
-        f"postgresql://{su_user}:{su_pass}@{db_host}:{db_port}/{db_name}",
-        f"postgresql://{su_user}:{su_pass}@127.0.0.1:{db_port}/{db_name}"
-    ]
+    conn_strings = []
+    ro_dsn = _build_dsn(db_host, db_port, db_name, ro_user, ro_pass)
+    if ro_dsn:
+        conn_strings.append(ro_dsn)
+
+    su_dsn = _build_dsn(db_host, db_port, db_name, su_user, su_pass)
+    if su_dsn:
+        conn_strings.append(su_dsn)
+
+    su_loopback_dsn = _build_dsn("127.0.0.1", db_port, db_name, su_user, su_pass)
+    if su_loopback_dsn:
+        conn_strings.append(su_loopback_dsn)
+
+    if not conn_strings:
+        return [{
+            "success": False,
+            "error": "No connection credentials available. Set POSTGRES_READONLY_USER/POSTGRES_READONLY_PASSWORD or POSTGRES_USER/POSTGRES_PASSWORD."
+        }]
 
     results = []
     for conn_str in conn_strings:
@@ -62,7 +79,7 @@ def test_direct_connection():
                     end_time = time.time()
 
                     results.append({
-                        "connection_string": conn_str,
+                        "connection_string": get_sanitized_url(conn_str),
                         "success": True,
                         "execution_time": end_time - start_time,
                         "version": result[0][:50] + "..." if result and result[0] else "N/A",
@@ -72,7 +89,7 @@ def test_direct_connection():
 
         except Exception as e:
             results.append({
-                "connection_string": conn_str,
+                "connection_string": get_sanitized_url(conn_str),
                 "success": False,
                 "error": str(e)
             })
@@ -85,13 +102,14 @@ def test_connection_pooling():
     try:
         from psycopg_pool import ConnectionPool
 
-        # Build connection string from environment variables
         db_host = os.environ.get("POSTGRES_HOST", "localhost")
         db_port = os.environ.get("POSTGRES_PORT", 5432)
         db_name = os.environ.get("POSTGRES_DB", "mcp_db")
-        su_user = os.environ.get("POSTGRES_USER", "postgres")
-        su_pass = os.environ.get("POSTGRES_PASSWORD", "password123")
-        conninfo = f"postgresql://{su_user}:{su_pass}@{db_host}:{db_port}/{db_name}"
+        su_user = os.environ.get("POSTGRES_USER")
+        su_pass = os.environ.get("POSTGRES_PASSWORD")
+        conninfo = _build_dsn(db_host, db_port, db_name, su_user, su_pass)
+        if not conninfo:
+            return {"error": "POSTGRES_USER and POSTGRES_PASSWORD are required for connection pooling test."}
 
         pool = ConnectionPool(
             conninfo=conninfo,
@@ -147,14 +165,16 @@ def test_mcp_tools():
     original_allow_write = os.environ.get("MCP_ALLOW_WRITE")
 
     try:
-        # Set environment for readonly user for the scope of this test
-        ro_user = os.environ.get("POSTGRES_READONLY_USER", "postgres_readonly")
-        ro_pass = os.environ.get("POSTGRES_READONLY_PASSWORD", "readonly123")
+        ro_user = os.environ.get("POSTGRES_READONLY_USER")
+        ro_pass = os.environ.get("POSTGRES_READONLY_PASSWORD")
         db_host = os.environ.get("POSTGRES_HOST", "localhost")
         db_port = os.environ.get("POSTGRES_PORT", 5432)
         db_name = os.environ.get("POSTGRES_DB", "mcp_db")
-        
-        os.environ["DATABASE_URL"] = f"postgresql://{ro_user}:{ro_pass}@{db_host}:{db_port}/{db_name}"
+        readonly_dsn = _build_dsn(db_host, db_port, db_name, ro_user, ro_pass)
+        if not readonly_dsn:
+            return [{"tool": "import_error", "success": False, "error": "POSTGRES_READONLY_USER and POSTGRES_READONLY_PASSWORD are required for MCP tool tests."}]
+
+        os.environ["DATABASE_URL"] = readonly_dsn
         os.environ["MCP_ALLOW_WRITE"] = "false"
 
         # Dynamically import server to use the temporary environment

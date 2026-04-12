@@ -1,0 +1,235 @@
+============================= test session starts =============================
+platform win32 -- Python 3.14.2, pytest-9.0.2, pluggy-1.6.0
+rootdir: C:\Users\HarryValdez\OneDrive\Documents\trae\mcp-postgres
+configfile: pytest.ini
+testpaths: tests
+plugins: anyio-4.12.1, asyncio-1.3.0, docker-3.2.5, mock-3.15.1
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 29 items
+
+tests\functional_test.py F
+
+================================== FAILURES ===================================
+____________________________ test_functional_suite ____________________________
+
+db_pool = <psycopg_pool.pool.ConnectionPool 'pool-6' at 0x1e567fc6fd0>
+
+    def test_functional_suite(db_pool):
+        print("=== Starting Functional Tests ===")
+        def get_tool(name: str) -> Any:
+            tool = asyncio.run(server_module.mcp.get_tool(name))
+            assert tool is not None, f"Tool '{name}' not found"
+            return cast(Any, tool)
+    
+        db_pool.open()
+        try:
+            # 1. Test Connection
+            print("\n1. Testing db_pg96_ping...")
+            tool = get_tool('db_pg96_ping')
+            result = tool.fn()
+            assert result["ok"] is True
+            print(f"Result: {result}")
+    
+            # 2. Test Server Info
+            print("\n2. Testing db_pg96_server_info...")
+            tool = get_tool('db_pg96_server_info')
+            result = tool.fn()
+            assert "version" in result
+            assert "database" in result
+            print(f"Result: {result}")
+    
+            # 3. Get DB Parameters
+            print("\n3. Testing db_pg96_get_db_parameters...")
+            tool = get_tool('db_pg96_get_db_parameters')
+            result = tool.fn()
+            assert isinstance(result, list)
+            print(f"Result (first 2): {json.dumps(result[:2], indent=2, default=str)}")
+    
+            # 4. List Databases
+            print("\n4. Testing db_pg96_list_objects (database)...")
+            tool = get_tool('db_pg96_list_objects')
+            result = tool.fn(object_type="database")
+            assert isinstance(result, list)
+            print(f"Result (first 2): {json.dumps(result[:2], indent=2, default=str)}")
+    
+            # 5. List Schemas
+            print("\n5. Testing db_pg96_list_objects (schema)...")
+            tool = get_tool('db_pg96_list_objects')
+            result = tool.fn(object_type="schema")
+            assert isinstance(result, list)
+>           print(f"Result (first 5): {[r['name'] for r in result[:5]]}")
+                                        ^^^^^^^^^
+E           KeyError: 'name'
+
+tests\functional_test.py:177: KeyError
+---------------------------- Captured stdout setup ----------------------------
+#1 [internal] load local bake definitions
+#1 reading from stdin 613B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 924B done
+#2 DONE 0.0s
+
+#3 [internal] load metadata for docker.io/library/python:3.13-slim
+#3 ...
+
+#4 [auth] library/python:pull token for registry-1.docker.io
+#4 DONE 0.0s
+
+#3 [internal] load metadata for docker.io/library/python:3.13-slim
+#3 DONE 0.9s
+
+#5 [internal] load .dockerignore
+#5 transferring context: 2B done
+#5 DONE 0.0s
+
+#6 [internal] load build context
+#6 transferring context: 68B done
+#6 DONE 0.0s
+
+#7 [1/6] FROM docker.io/library/python:3.13-slim@sha256:d168b8d9eb761f4d3fe305ebd04aeb7e7f2de0297cec5fb2f8f6403244621664
+#7 resolve docker.io/library/python:3.13-slim@sha256:d168b8d9eb761f4d3fe305ebd04aeb7e7f2de0297cec5fb2f8f6403244621664 0.0s done
+#7 DONE 0.0s
+
+#8 [3/6] RUN apt-get update && apt-get upgrade -y &&     apt-get clean &&     rm -rf /var/lib/apt/lists/*
+#8 CACHED
+
+#9 [4/6] COPY requirements.txt /app/requirements.txt
+#9 CACHED
+
+#10 [5/6] RUN pip install --no-cache-dir --upgrade pip setuptools wheel &&     pip install --no-cache-dir -r /app/requirements.txt
+#10 CACHED
+
+#11 [2/6] WORKDIR /app
+#11 CACHED
+
+#12 [6/6] COPY server.py /app/server.py
+#12 CACHED
+
+#13 exporting to image
+#13 exporting layers done
+#13 exporting manifest sha256:db6d49e58b8c277bfadbb48c83b40e84bdc6338c9e05824ccb6b37ebcc9a7660 0.0s done
+#13 exporting config sha256:96b1ba668f047c0aa26d7c980213f2b69331f92c3912e9ba3458336034a21a26 0.0s done
+#13 exporting attestation manifest sha256:c1bc0cf072d3b27954b9e02f27e1a91e213d6048bf9d7720cb30af1b003d7209
+#13 exporting attestation manifest sha256:c1bc0cf072d3b27954b9e02f27e1a91e213d6048bf9d7720cb30af1b003d7209 0.0s done
+#13 exporting manifest list sha256:7cb15b26cea9cd368668ee65e36262fb6c17cdc13528e653466c712af8a06328 0.0s done
+#13 naming to docker.io/library/mcp-postgres-mcp-postgres:latest done
+#13 unpacking to docker.io/library/mcp-postgres-mcp-postgres:latest 0.0s done
+#13 DONE 0.2s
+
+#14 resolving provenance for metadata file
+#14 DONE 0.0s
+---------------------------- Captured stderr setup ----------------------------
+ Container mcp-postgres-mcp-postgres-1 Stopping 
+ Container mcp-postgres-mcp-postgres-1 Stopped 
+ Container mcp-postgres-mcp-postgres-1 Removing 
+ Container mcp-postgres-mcp-postgres-1 Removed 
+ Container mcp-postgres-postgres96-1 Stopping 
+ Container mcp-postgres-postgres96-1 Stopped 
+ Container mcp-postgres-postgres96-1 Removing 
+ Container mcp-postgres-postgres96-1 Removed 
+ Network mcp-postgres_default Removing 
+ Network mcp-postgres_default Removed 
+ Image mcp-postgres-mcp-postgres Building 
+ Image mcp-postgres-mcp-postgres Built 
+ Network mcp-postgres_default Creating 
+ Network mcp-postgres_default Created 
+ Container mcp-postgres-postgres96-1 Creating 
+ Container mcp-postgres-postgres96-1 Created 
+ Container mcp-postgres-mcp-postgres-1 Creating 
+ Container mcp-postgres-mcp-postgres-1 Created 
+ Container mcp-postgres-postgres96-1 Starting 
+ Container mcp-postgres-postgres96-1 Started 
+ Container mcp-postgres-postgres96-1 Waiting 
+ Container mcp-postgres-postgres96-1 Healthy 
+ Container mcp-postgres-mcp-postgres-1 Starting 
+ Container mcp-postgres-mcp-postgres-1 Started 
+ Container mcp-postgres-mcp-postgres-1 Waiting 
+ Container mcp-postgres-postgres96-1 Waiting 
+ Container mcp-postgres-postgres96-1 Healthy 
+ Container mcp-postgres-mcp-postgres-1 Healthy 
+----------------------------- Captured log setup ------------------------------
+WARNING  mcp-postgres:server.py:639 Failed to register CopilotSkillsProvider: 'charmap' codec can't decode byte 0x9d in position 2064: character maps to <undefined>
+WARNING  mcp-postgres:server.py:682 FastMCP skills provider enabled but no providers could be registered.
+WARNING  mcp-postgres:server.py:1836 Least-privilege table scope enforcement is DISABLED (MCP_ENFORCE_TABLE_SCOPE=false).
+WARNING  mcp-postgres:server.py:1836 Least-privilege table scope enforcement is DISABLED (MCP_ENFORCE_TABLE_SCOPE=false).
+---------------------------- Captured stdout call -----------------------------
+=== Starting Functional Tests ===
+
+1. Testing db_pg96_ping...
+Result: {'ok': True}
+
+2. Testing db_pg96_server_info...
+Result: {'database': 'lenexa', 'user': 'postgres', 'server_addr': '10.100.2.20', 'server_port': 5444, 'version': 'PostgreSQL 9.6.24 on x86_64-pc-linux-gnu (Debian 9.6.24-1.pgdg90+1), compiled by gcc (Debian 6.3.0-18+deb9u1) 6.3.0 20170516, 64-bit', 'allow_write': True, 'default_max_rows': 500, 'statement_timeout_ms': 120000}
+
+3. Testing db_pg96_get_db_parameters...
+Result (first 2): [
+  {
+    "name": "allow_system_table_mods",
+    "setting": "off",
+    "unit": null,
+    "category": "Developer Options",
+    "short_desc": "Allows modifications of the structure of system tables.",
+    "context": "postmaster",
+    "vartype": "bool",
+    "min_val": null,
+    "max_val": null,
+    "enumvals": null,
+    "boot_val": "off",
+    "reset_val": "off",
+    "pending_restart": false
+  },
+  {
+    "name": "application_name",
+    "setting": "",
+    "unit": null,
+    "category": "Reporting and Logging / What to Log",
+    "short_desc": "Sets the application name to be reported in statistics and logs.",
+    "context": "user",
+    "vartype": "string",
+    "min_val": null,
+    "max_val": null,
+    "enumvals": null,
+    "boot_val": "",
+    "reset_val": "",
+    "pending_restart": false
+  }
+]
+
+4. Testing db_pg96_list_objects (database)...
+Result (first 2): [
+  {
+    "name": "mcp_test",
+    "size_pretty": "7063 kB",
+    "size_bytes": 7232024,
+    "allow_connections": true,
+    "owner": "postgres"
+  },
+  {
+    "name": "postgres",
+    "size_pretty": "6953 kB",
+    "size_bytes": 7119364,
+    "allow_connections": true,
+    "owner": "postgres"
+  }
+]
+
+5. Testing db_pg96_list_objects (schema)...
+
+=== Functional Tests Complete ===
+-------------------------- Captured stderr teardown ---------------------------
+ Container mcp-postgres-mcp-postgres-1 Stopping 
+ Container mcp-postgres-mcp-postgres-1 Stopped 
+ Container mcp-postgres-mcp-postgres-1 Removing 
+ Container mcp-postgres-mcp-postgres-1 Removed 
+ Container mcp-postgres-postgres96-1 Stopping 
+ Container mcp-postgres-postgres96-1 Stopped 
+ Container mcp-postgres-postgres96-1 Removing 
+ Container mcp-postgres-postgres96-1 Removed 
+ Network mcp-postgres_default Removing 
+ Network mcp-postgres_default Removed 
+=========================== short test summary info ===========================
+FAILED tests/functional_test.py::test_functional_suite - KeyError: 'name'
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!
+============================= 1 failed in 22.67s ==============================

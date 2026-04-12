@@ -4,6 +4,8 @@ import os
 import urllib.request
 import urllib.error
 import socket
+import ipaddress
+from urllib.parse import urlparse
 
 # --- Configuration ---
 # Load from environment variables
@@ -11,6 +13,50 @@ N8N_BASE_URL = os.environ.get("N8N_BASE_URL", "https://claritasllc.app.n8n.cloud
 API_KEY = os.environ.get("N8N_API_KEY")
 WORKFLOW_ID_RAW = os.environ.get("N8N_WORKFLOW_ID", "/MyYz15IkOxsSZL82pBIkO")
 REQUEST_TIMEOUT = int(os.environ.get("REQUEST_TIMEOUT", 10))
+
+
+def _load_allowlist() -> set[str]:
+    configured = os.environ.get("OUTBOUND_URL_ALLOWLIST", "")
+    defaults = "claritasllc.app.n8n.cloud,github.com,login.microsoftonline.com"
+    raw = configured if configured.strip() else defaults
+    return {part.strip().lower() for part in raw.split(",") if part.strip()}
+
+
+def _host_allowed(hostname: str, allowlist: set[str]) -> bool:
+    host = hostname.lower()
+    for allowed in allowlist:
+        if host == allowed or host.endswith(f".{allowed}"):
+            return True
+    return False
+
+
+def validate_outbound_url(url: str) -> str:
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"}:
+        raise ValueError(f"Unsupported URL scheme: {parsed.scheme}")
+    if not parsed.hostname:
+        raise ValueError("URL is missing hostname")
+
+    allowlist = _load_allowlist()
+    host = parsed.hostname
+    allow_local = os.environ.get("ALLOW_PRIVATE_OUTBOUND", "false").lower() == "true"
+
+    try:
+        infos = socket.getaddrinfo(host, parsed.port or (443 if parsed.scheme == "https" else 80), proto=socket.IPPROTO_TCP)
+    except socket.gaierror as exc:
+        raise ValueError(f"Unable to resolve host '{host}'") from exc
+
+    for info in infos:
+        ip_str = info[4][0]
+        ip_obj = ipaddress.ip_address(ip_str)
+        if (ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_reserved or ip_obj.is_multicast) and not allow_local:
+            if not _host_allowed(host, allowlist):
+                raise ValueError(f"Blocked private/internal destination for host '{host}' ({ip_obj})")
+
+    if not _host_allowed(host, allowlist):
+        raise ValueError(f"Host '{host}' is not in outbound allowlist")
+
+    return url
 
 # Validate essential configuration
 if not API_KEY:
@@ -22,6 +68,7 @@ WORKFLOW_ID = WORKFLOW_ID_RAW.strip("/")
 
 def fetch_workflow(workflow_id):
     url = f"{N8N_BASE_URL.rstrip('/')}/api/v1/workflows/{workflow_id}"
+    validate_outbound_url(url)
     print(f"Fetching workflow from: {url}")
     
     req = urllib.request.Request(url)
