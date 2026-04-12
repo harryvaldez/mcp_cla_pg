@@ -241,6 +241,7 @@ Example rendered prompt result shape:
 - Name: `maintenance_recommendations`
 - Args:
   - `profile: "oltp" | "olap"` (default `"oltp"`)
+  - `schema_name: str` (default `"smsadmin"`)
 - Output: `PromptResult` with one checklist message and metadata.
 
 Example rendered prompt result shape:
@@ -251,7 +252,7 @@ Example rendered prompt result shape:
     {"role": "user", "content": "Produce a deterministic PostgreSQL maintenance checklist..."},
     {"role": "user", "content": "Use this order: security baseline, vacuum/analyze hygiene..."}
   ],
-  "meta": {"prompt": "maintenance_recommendations", "profile": "oltp"}
+  "meta": {"prompt": "maintenance_recommendations", "profile": "oltp", "schema_name": "smsadmin"}
 }
 ```
 

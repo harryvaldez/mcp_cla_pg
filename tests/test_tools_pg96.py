@@ -864,9 +864,11 @@ def test_prompt_instance_routing_references_correct_alias(monkeypatch):
     maintenance_messages = asyncio.run(
         server_module_local.maintenance_recommendations_prompt(
             profile="oltp",
+            schema_name="smsadmin",
             instance="02",
         )
     )
     maintenance_text = "\n".join(str(msg) for msg in maintenance_messages)
     assert "db_02_pg96_db_sec_perf_metrics" in maintenance_text
     assert "db_02_pg96_analyze_table_health" in maintenance_text
+    assert "schema_name=smsadmin" in maintenance_text

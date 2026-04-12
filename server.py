@@ -1021,10 +1021,15 @@ async def explain_slow_query_prompt(
     description="Generate profile-aware PostgreSQL maintenance checklist aligned with security/performance thresholds.",
     tags={"public"},
 )
-async def maintenance_recommendations_prompt(profile: str = "oltp", instance: str = "01") -> list[Message]:
+async def maintenance_recommendations_prompt(
+    profile: str = "oltp",
+    schema_name: str = "smsadmin",
+    instance: str = "01",
+) -> list[Message]:
     normalized_instance = _normalize_instance_id(instance)
     sec_perf_tool = _resolve_instance_tool_name("db_pg96_db_sec_perf_metrics", normalized_instance)
     table_health_tool = _resolve_instance_tool_name("db_pg96_analyze_table_health", normalized_instance)
+    normalized_schema_name = (schema_name or "smsadmin").strip() or "smsadmin"
     profile_value = (profile or "oltp").lower()
     if profile_value == "olap":
         cache_threshold = 80
@@ -1052,7 +1057,8 @@ async def maintenance_recommendations_prompt(profile: str = "oltp", instance: st
         Message(
             (
                 f"For deterministic instance routing, use {sec_perf_tool} and {table_health_tool} "
-                f"for instance {normalized_instance}."
+                f"for instance {normalized_instance}. Use schema_name={normalized_schema_name} "
+                f"when calling {table_health_tool}."
             )
         ),
     ]
