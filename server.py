@@ -1759,7 +1759,10 @@ def _signal_handler(signum, frame):
 _REGISTER_SIGNAL_HANDLERS = _env_bool("MCP_REGISTER_SIGNAL_HANDLERS", True)
 
 if _REGISTER_SIGNAL_HANDLERS:
-    signal.signal(signal.SIGINT, _signal_handler)
+    try:
+        signal.signal(signal.SIGINT, _signal_handler)
+    except (AttributeError, OSError, ValueError) as exc:
+        logger.debug("Skipping SIGINT handler registration: %s", exc)
     if hasattr(signal, "SIGTERM"):
         try:
             signal.signal(signal.SIGTERM, _signal_handler)
@@ -2305,6 +2308,33 @@ def _normalize_pg_whitespace(value: str) -> str:
     return re.sub(r"\s+", " ", value.strip())
 
 
+def _strip_pg_type_modifiers(type_expr: str) -> str:
+    working = type_expr.strip()
+
+    while working.endswith("[]"):
+        working = working[:-2].rstrip()
+
+    if working.upper().endswith("%TYPE"):
+        working = working[:-5].rstrip()
+
+    zone_suffixes = (
+        " with local time zone",
+        " without time zone",
+        " with time zone",
+    )
+    lowered = working.lower()
+    for suffix in zone_suffixes:
+        if lowered.endswith(suffix):
+            working = working[:-len(suffix)].rstrip()
+            break
+
+    modifier_match = _PG_TYPE_MODIFIER.search(working)
+    if modifier_match and modifier_match.end() == len(working):
+        working = working[:modifier_match.start()].rstrip()
+
+    return working
+
+
 def _validate_pg_identifier_token(token: str, *, dotted: bool) -> None:
     pattern = _PG_IDENTIFIER_TOKEN if dotted else _PG_ARGUMENT_NAME_TOKEN
     if not pattern.fullmatch(token):
@@ -2320,16 +2350,7 @@ def _validate_pg_type_expression(type_expr: str) -> str:
         if blocked in normalized:
             raise ValueError("Unsafe PostgreSQL type expression.")
 
-    working = normalized
-    while working.endswith("[]"):
-        working = working[:-2].rstrip()
-
-    if working.upper().endswith("%TYPE"):
-        working = working[:-5].rstrip()
-
-    modifier_match = _PG_TYPE_MODIFIER.search(working)
-    if modifier_match:
-        working = working[:modifier_match.start()].rstrip()
+    working = _strip_pg_type_modifiers(normalized)
 
     tokens = _split_sql_tokens(working)
     if not tokens:
@@ -2520,7 +2541,10 @@ def _execute_safe(cur, sql: Any, params: Any = None) -> None:
             logger.debug(f"Executing SQL: {query_str} | Params: {params}")
 
         # Set session-level timeout for this specific query execution
-        cur.execute("SET statement_timeout = %s", (STATEMENT_TIMEOUT_MS,))
+        cur.execute(
+            "SELECT pg_catalog.set_config('statement_timeout', %s, false)",
+            (str(int(STATEMENT_TIMEOUT_MS)),),
+        )
         cur.execute(sql, params)
     except PsycopgError as e:
         _rollback_cursor_connection(cur)
@@ -2557,7 +2581,10 @@ async def _execute_safe_async(cur, sql: Any, params: Any = None) -> None:
                 query_str = query_str[:1000] + "..."
             logger.debug(f"Executing SQL: {query_str} | Params: {params}")
 
-        await cur.execute("SET statement_timeout = %s", (STATEMENT_TIMEOUT_MS,))
+        await cur.execute(
+            "SELECT pg_catalog.set_config('statement_timeout', %s, false)",
+            (str(int(STATEMENT_TIMEOUT_MS)),),
+        )
         await cur.execute(sql, params)
     except PsycopgError as e:
         await _rollback_cursor_connection_async(cur)
