@@ -29,8 +29,13 @@ def _import_server_with_fake_pool(monkeypatch, pool_instance):
     return importlib.import_module("server")
 
 
+import os
+
 def test_credential_scope_enforcement_blocks_out_of_scope_tables(monkeypatch):
-    monkeypatch.setenv("DATABASE_URL", "postgres://test:test@localhost:5432/testdb")
+    test_db_url = os.environ.get("TEST_DATABASE_URL")
+    if not test_db_url:
+        pytest.skip("TEST_DATABASE_URL not set in environment")
+    monkeypatch.setenv("DATABASE_URL", test_db_url)
     monkeypatch.setenv("MCP_ALLOW_WRITE", "false")
     monkeypatch.setenv("MCP_ENFORCE_TABLE_SCOPE", "true")
     monkeypatch.setenv("MCP_ALLOWED_TABLES", "public.allowed_table")
@@ -58,7 +63,10 @@ def test_credential_scope_enforcement_blocks_out_of_scope_tables(monkeypatch):
 
 
 def test_query_rate_circuit_breaker_opens_after_sustained_rejections(monkeypatch):
-    monkeypatch.setenv("DATABASE_URL", "postgres://test:test@localhost:5432/testdb")
+    test_db_url = os.environ.get("TEST_DATABASE_URL")
+    if not test_db_url:
+        pytest.skip("TEST_DATABASE_URL not set in environment")
+    monkeypatch.setenv("DATABASE_URL", test_db_url)
     monkeypatch.setenv("MCP_ALLOW_WRITE", "false")
 
     pool_instance = _build_fake_psycopg_pool()
@@ -82,7 +90,10 @@ def test_query_rate_circuit_breaker_opens_after_sustained_rejections(monkeypatch
 
 
 def test_audit_policy_requires_source_prompt(monkeypatch, mocker):
-    monkeypatch.setenv("DATABASE_URL", "postgres://test:test@localhost:5432/testdb")
+    test_db_url = os.environ.get("TEST_DATABASE_URL")
+    if not test_db_url:
+        pytest.skip("TEST_DATABASE_URL not set in environment")
+    monkeypatch.setenv("DATABASE_URL", test_db_url)
     monkeypatch.setenv("MCP_ALLOW_WRITE", "false")
     monkeypatch.setenv("MCP_AUDIT_REQUIRE_PROMPT", "true")
 
@@ -99,7 +110,10 @@ def test_audit_policy_requires_source_prompt(monkeypatch, mocker):
 
 
 def test_audit_writer_oserror_is_non_fatal(monkeypatch, mocker):
-    monkeypatch.setenv("DATABASE_URL", "postgres://test:test@localhost:5432/testdb")
+    test_db_url = os.environ.get("TEST_DATABASE_URL")
+    if not test_db_url:
+        pytest.skip("TEST_DATABASE_URL not set in environment")
+    monkeypatch.setenv("DATABASE_URL", test_db_url)
     monkeypatch.setenv("MCP_ALLOW_WRITE", "false")
 
     pool_instance = _build_fake_psycopg_pool()
