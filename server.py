@@ -1097,12 +1097,14 @@ async def runtime_context_brief_prompt(ctx: Context = CurrentContext()) -> list[
     try:
         resources_map = await ctx.list_resources()
         resource_count = len(resources_map)
-    except Exception:
+    except Exception as exc:
+        logger.debug("Unable to enumerate runtime resources for prompt context: %s", exc)
         resource_count = -1
     try:
         prompts_list = await ctx.list_prompts()
         prompt_count = len(prompts_list)
-    except Exception:
+    except Exception as exc:
+        logger.debug("Unable to enumerate runtime prompts for prompt context: %s", exc)
         prompt_count = -1
 
     return [
@@ -1649,6 +1651,7 @@ SSH_PORT = _env_int("SSH_PORT", 22)
 
 # Global reference to keep tunnel alive
 _ssh_tunnel = None
+_ssh_tunnel_lock = threading.Lock()
 
 if SSH_HOST and SSH_USER:
     logger.info(f"Configuring SSH tunnel to {SSH_USER}@{SSH_HOST}:{SSH_PORT}...")
@@ -1729,14 +1732,19 @@ if SSH_HOST and SSH_USER:
 def _cleanup_ssh_tunnel():
     """Cleanup function to stop SSH tunnel on process exit."""
     global _ssh_tunnel
-    if _ssh_tunnel is not None:
-        try:
-            logger.info("Closing SSH tunnel...")
-            _ssh_tunnel.stop()
-            _ssh_tunnel = None
-            logger.info("SSH tunnel closed.")
-        except Exception as e:
-            logger.error(f"Error closing SSH tunnel: {e}")
+    with _ssh_tunnel_lock:
+        tunnel = _ssh_tunnel
+        _ssh_tunnel = None
+
+    if tunnel is None:
+        return
+
+    try:
+        logger.info("Closing SSH tunnel...")
+        tunnel.stop()
+        logger.info("SSH tunnel closed.")
+    except Exception as e:
+        logger.error(f"Error closing SSH tunnel: {e}")
 
 
 # Register cleanup handlers
@@ -1748,11 +1756,18 @@ def _signal_handler(signum, frame):
     _cleanup_ssh_tunnel()
     sys.exit(0)
 
-signal.signal(signal.SIGINT, _signal_handler)
-signal.signal(signal.SIGTERM, _signal_handler)
+_REGISTER_SIGNAL_HANDLERS = _env_bool("MCP_REGISTER_SIGNAL_HANDLERS", True)
+
+if _REGISTER_SIGNAL_HANDLERS:
+    signal.signal(signal.SIGINT, _signal_handler)
+    if hasattr(signal, "SIGTERM"):
+        try:
+            signal.signal(signal.SIGTERM, _signal_handler)
+        except (AttributeError, OSError, ValueError) as exc:
+            logger.debug("Skipping SIGTERM handler registration: %s", exc)
 
 
-pool = ConnectionPool(
+primary_pool = ConnectionPool(
     conninfo=DATABASE_URL,
     min_size=POOL_MIN_SIZE,
     max_size=POOL_MAX_SIZE,
@@ -1762,7 +1777,7 @@ pool = ConnectionPool(
     kwargs={"row_factory": dict_row, "options": "-c DateStyle=ISO,MDY"},
 )
 
-pool_instance_01 = pool
+pool_instance_01 = primary_pool
 pool_instance_02 = (
     ConnectionPool(
         conninfo=DATABASE_URL_INSTANCE_2,
@@ -1832,12 +1847,27 @@ class _PoolRouter:
             except Exception:
                 logger.exception("Failed to close pooled connection for one instance")
 
+    @property
+    def closed(self) -> bool:
+        candidates = [candidate for candidate in [pool_instance_01, pool_instance_02] if candidate is not None]
+        if not candidates:
+            return True
+        return all(getattr(candidate, "closed", False) for candidate in candidates)
+
+    def __enter__(self) -> "_PoolRouter":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        self.close()
+        return False
+
     def __getattr__(self, item: str) -> Any:
         current = _resolve_pool_for_instance(_ACTIVE_DB_INSTANCE.get())
         return getattr(current, item)
 
 
-pool = _PoolRouter()
+pool_router = _PoolRouter()
+pool = pool_router
 
 
 def _run_in_instance_sync(instance_id: str, target: Any, *args: Any, **kwargs: Any) -> Any:
@@ -2106,6 +2136,21 @@ _DOUBLE_QUOTED = re.compile(r'"(?:[^"]|"")*"')
 _LINE_COMMENT = re.compile(r"--[^\n]*")
 _BLOCK_COMMENT = re.compile(r"/\*[\s\S]*?\*/")
 _DOLLAR_QUOTED = re.compile(r"\$[A-Za-z0-9_]*\$[\s\S]*?\$[A-Za-z0-9_]*\$")
+_PG_IDENTIFIER_TOKEN = re.compile(r'^(?:"(?:[^"]|"")+"|[A-Za-z_][A-Za-z0-9_$]*)(?:\.(?:"(?:[^"]|"")+"|[A-Za-z_][A-Za-z0-9_$]*))*$')
+_PG_ARGUMENT_NAME_TOKEN = re.compile(r'^(?:"(?:[^"]|"")+"|[A-Za-z_][A-Za-z0-9_$]*)$')
+_PG_TYPE_MODIFIER = re.compile(r'\(\s*\d+\s*(?:,\s*\d+\s*)?\)$')
+_PG_MULTIWORD_TYPES = {
+    "bit varying",
+    "character varying",
+    "double precision",
+    "national char varying",
+    "national character varying",
+    "time with time zone",
+    "time without time zone",
+    "timestamp with time zone",
+    "timestamp without time zone",
+}
+_PG_ARG_MODE_TOKENS = {"in", "out", "inout", "variadic"}
 
 
 def _strip_sql_noise(sql: str) -> str:
@@ -2171,6 +2216,233 @@ def _require_readonly(sql: str) -> None:
         raise ValueError(
             "Write operations are disabled. Set MCP_ALLOW_WRITE=true to enable."
         )
+
+
+def _split_top_level_csv(value: str) -> list[str]:
+    items: list[str] = []
+    current: list[str] = []
+    depth = 0
+    in_quotes = False
+    index = 0
+    while index < len(value):
+        char = value[index]
+        if char == '"':
+            current.append(char)
+            if in_quotes and index + 1 < len(value) and value[index + 1] == '"':
+                current.append(value[index + 1])
+                index += 1
+            else:
+                in_quotes = not in_quotes
+        elif not in_quotes and char == '(':
+            depth += 1
+            current.append(char)
+        elif not in_quotes and char == ')':
+            depth -= 1
+            if depth < 0:
+                raise ValueError("Invalid SQL fragment: unmatched closing parenthesis.")
+            current.append(char)
+        elif not in_quotes and char == ',' and depth == 0:
+            item = ''.join(current).strip()
+            if not item:
+                raise ValueError("Invalid SQL fragment: empty comma-separated element.")
+            items.append(item)
+            current = []
+        else:
+            current.append(char)
+        index += 1
+
+    if in_quotes or depth != 0:
+        raise ValueError("Invalid SQL fragment: unbalanced quotes or parentheses.")
+
+    tail = ''.join(current).strip()
+    if tail:
+        items.append(tail)
+    return items
+
+
+def _split_sql_tokens(value: str) -> list[str]:
+    tokens: list[str] = []
+    current: list[str] = []
+    depth = 0
+    in_quotes = False
+    index = 0
+    while index < len(value):
+        char = value[index]
+        if char == '"':
+            current.append(char)
+            if in_quotes and index + 1 < len(value) and value[index + 1] == '"':
+                current.append(value[index + 1])
+                index += 1
+            else:
+                in_quotes = not in_quotes
+        elif not in_quotes and char == '(':
+            depth += 1
+            current.append(char)
+        elif not in_quotes and char == ')':
+            depth -= 1
+            if depth < 0:
+                raise ValueError("Invalid SQL fragment: unmatched closing parenthesis.")
+            current.append(char)
+        elif not in_quotes and depth == 0 and char.isspace():
+            token = ''.join(current).strip()
+            if token:
+                tokens.append(token)
+            current = []
+        else:
+            current.append(char)
+        index += 1
+
+    if in_quotes or depth != 0:
+        raise ValueError("Invalid SQL fragment: unbalanced quotes or parentheses.")
+
+    token = ''.join(current).strip()
+    if token:
+        tokens.append(token)
+    return tokens
+
+
+def _normalize_pg_whitespace(value: str) -> str:
+    return re.sub(r"\s+", " ", value.strip())
+
+
+def _validate_pg_identifier_token(token: str, *, dotted: bool) -> None:
+    pattern = _PG_IDENTIFIER_TOKEN if dotted else _PG_ARGUMENT_NAME_TOKEN
+    if not pattern.fullmatch(token):
+        raise ValueError(f"Invalid PostgreSQL identifier token: {token!r}")
+
+
+def _validate_pg_type_expression(type_expr: str) -> str:
+    normalized = _normalize_pg_whitespace(type_expr)
+    if not normalized:
+        raise ValueError("Function type expression cannot be empty.")
+
+    for blocked in (";", "'", "--", "/*", "*/", "$$"):
+        if blocked in normalized:
+            raise ValueError("Unsafe PostgreSQL type expression.")
+
+    working = normalized
+    while working.endswith("[]"):
+        working = working[:-2].rstrip()
+
+    if working.upper().endswith("%TYPE"):
+        working = working[:-5].rstrip()
+
+    modifier_match = _PG_TYPE_MODIFIER.search(working)
+    if modifier_match:
+        working = working[:modifier_match.start()].rstrip()
+
+    tokens = _split_sql_tokens(working)
+    if not tokens:
+        raise ValueError("Function type expression cannot be empty.")
+
+    lowered = " ".join(token.lower() for token in tokens)
+    if len(tokens) > 1 and lowered not in _PG_MULTIWORD_TYPES:
+        raise ValueError(f"Unsupported PostgreSQL type expression: {type_expr!r}")
+
+    if len(tokens) == 1:
+        _validate_pg_identifier_token(tokens[0], dotted=True)
+
+    return normalized
+
+
+def _is_valid_pg_type_expression(type_expr: str) -> bool:
+    try:
+        _validate_pg_type_expression(type_expr)
+        return True
+    except ValueError:
+        return False
+
+
+def _validate_pg_function_argument(argument: str) -> str:
+    normalized = _normalize_pg_whitespace(argument)
+    if not normalized:
+        raise ValueError("Function argument definition cannot be empty.")
+
+    if "=" in normalized or re.search(r"\bdefault\b", normalized, flags=re.IGNORECASE):
+        raise ValueError("Function argument defaults are not supported in this API.")
+
+    tokens = _split_sql_tokens(normalized)
+    if not tokens:
+        raise ValueError("Function argument definition cannot be empty.")
+
+    if tokens[0].lower() in _PG_ARG_MODE_TOKENS:
+        tokens = tokens[1:]
+        if not tokens:
+            raise ValueError("Function argument definition is missing a type.")
+
+    candidate = " ".join(tokens)
+    if _is_valid_pg_type_expression(candidate):
+        return normalized
+
+    if len(tokens) < 2:
+        raise ValueError(f"Invalid function argument definition: {argument!r}")
+
+    _validate_pg_identifier_token(tokens[0], dotted=False)
+    type_expr = " ".join(tokens[1:])
+    _validate_pg_type_expression(type_expr)
+    return normalized
+
+
+def _validate_pg_function_signature(signature: str) -> str:
+    normalized = signature.strip()
+    if not normalized:
+        return ""
+    arguments = _split_top_level_csv(normalized)
+    return ", ".join(_validate_pg_function_argument(argument) for argument in arguments)
+
+
+def _validate_pg_return_type(return_type: str) -> str:
+    normalized = _normalize_pg_whitespace(return_type)
+    if not normalized:
+        raise ValueError("Return type cannot be empty.")
+
+    upper = normalized.upper()
+    if upper.startswith("SETOF "):
+        inner = normalized[6:].strip()
+        return f"SETOF {_validate_pg_type_expression(inner)}"
+
+    if upper.startswith("TABLE(") and normalized.endswith(")"):
+        inner = normalized[6:-1].strip()
+        columns = _split_top_level_csv(inner)
+        validated_columns: list[str] = []
+        for column in columns:
+            tokens = _split_sql_tokens(column)
+            if len(tokens) < 2:
+                raise ValueError(f"Invalid TABLE return column definition: {column!r}")
+            _validate_pg_identifier_token(tokens[0], dotted=False)
+            type_expr = " ".join(tokens[1:])
+            validated_columns.append(f"{tokens[0]} {_validate_pg_type_expression(type_expr)}")
+        return f"TABLE({', '.join(validated_columns)})"
+
+    return _validate_pg_type_expression(normalized)
+
+
+def _quote_regprocedure_identifier(name: str) -> str:
+    return '"' + name.replace('"', '""') + '"'
+
+
+def _trusted_sql_fragment(fragment: str) -> Any:
+    return sql.SQL(cast(Any, fragment))
+
+
+def _resolve_function_regprocedure(cur, object_name: str, function_args: str, schema: str | None = None) -> Any:
+    signature = _validate_pg_function_signature(function_args)
+    qualified_name = _quote_regprocedure_identifier(object_name)
+    if schema:
+        qualified_name = f"{_quote_regprocedure_identifier(schema)}.{qualified_name}"
+    regprocedure_name = f"{qualified_name}({signature})"
+    _execute_safe(
+        cur,
+        "SELECT to_regprocedure(%s)::text AS regprocedure",
+        (regprocedure_name,),
+    )
+    row = cur.fetchone()
+    regprocedure = row.get("regprocedure") if row else None
+    if not regprocedure:
+        if schema:
+            raise ValueError(f"Function '{schema}.{object_name}({signature})' does not exist.")
+        raise ValueError(f"Function '{object_name}({signature})' does not exist.")
+    return _trusted_sql_fragment(regprocedure)
 
 
 def _fetch_limited(cur, max_rows: int) -> list[dict[str, Any]]:
@@ -2248,7 +2520,7 @@ def _execute_safe(cur, sql: Any, params: Any = None) -> None:
             logger.debug(f"Executing SQL: {query_str} | Params: {params}")
 
         # Set session-level timeout for this specific query execution
-        cur.execute(f"SET statement_timeout = {STATEMENT_TIMEOUT_MS}")
+        cur.execute("SET statement_timeout = %s", (STATEMENT_TIMEOUT_MS,))
         cur.execute(sql, params)
     except PsycopgError as e:
         _rollback_cursor_connection(cur)
@@ -2285,7 +2557,7 @@ async def _execute_safe_async(cur, sql: Any, params: Any = None) -> None:
                 query_str = query_str[:1000] + "..."
             logger.debug(f"Executing SQL: {query_str} | Params: {params}")
 
-        await cur.execute(f"SET statement_timeout = {STATEMENT_TIMEOUT_MS}")
+        await cur.execute("SET statement_timeout = %s", (STATEMENT_TIMEOUT_MS,))
         await cur.execute(sql, params)
     except PsycopgError as e:
         await _rollback_cursor_connection_async(cur)
@@ -2892,19 +3164,20 @@ def db_pg96_alter_object(
             if schema and obj_type not in ('database', 'server', 'schema'):
                 # For functions, we might need args signature
                 if obj_type == 'function' and params.get('function_args'):
-                     # Format: "schema"."name"(args) - args are raw SQL
-                     obj_id = sql.SQL("{}.{}({})").format(
-                         sql.Identifier(schema),
-                         sql.Identifier(object_name),
-                         sql.SQL(params['function_args'])
+                     obj_id = _resolve_function_regprocedure(
+                         cur,
+                         object_name,
+                         str(params['function_args']),
+                         schema,
                      )
                 else:
                     obj_id = sql.Identifier(schema, object_name)
             else:
                 if obj_type == 'function' and params.get('function_args'):
-                     obj_id = sql.SQL("{}({})").format(
-                         sql.Identifier(object_name),
-                         sql.SQL(params['function_args'])
+                     obj_id = _resolve_function_regprocedure(
+                         cur,
+                         object_name,
+                         str(params['function_args']),
                      )
                 else:
                     obj_id = sql.Identifier(object_name)
@@ -3254,8 +3527,8 @@ def db_pg96_create_object(
                 if not schema:
                     raise ValueError("Parameter 'schema' required for creating function.")
                 
-                args = params.get('function_args', '')
-                ret_type = params.get('return_type', 'void')
+                args = _validate_pg_function_signature(str(params.get('function_args', '')))
+                ret_type = _validate_pg_return_type(str(params.get('return_type', 'void')))
                 lang = params.get('language', 'plpgsql')
                 body = params.get('body')
                 if not body:
@@ -3267,8 +3540,8 @@ def db_pg96_create_object(
                     sql.SQL(replace),
                     sql.Identifier(schema),
                     sql.Identifier(object_name),
-                    sql.SQL(args),
-                    sql.SQL(ret_type),
+                    _trusted_sql_fragment(args),
+                    _trusted_sql_fragment(ret_type),
                     sql.Literal(body), # Body as string literal
                     sql.Identifier(lang)
                 )
@@ -3438,11 +3711,7 @@ def db_pg96_drop_object(
                 # If args provided, include them in signature
                 args = params.get('function_args')
                 if args:
-                    obj_id = sql.SQL("{}.{}({})").format(
-                        sql.Identifier(schema),
-                        sql.Identifier(object_name),
-                        sql.SQL(args)
-                    )
+                    obj_id = _resolve_function_regprocedure(cur, object_name, str(args), schema)
                 else:
                     obj_id = sql.Identifier(schema, object_name)
                 

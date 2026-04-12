@@ -525,6 +525,7 @@ To prevent the MCP server from becoming unresponsive or overloading the database
 | `MCP_AUDIT_LOG_SQL_TEXT` | Include raw SQL text in audit events (otherwise hash/length only) | `false` |
 | `MCP_AUDIT_REQUIRE_PROMPT` | Require `source_prompt` for `run_query`/`explain_query` calls | `false` |
 | `MCP_SKIP_CONFIRMATION` | Set to "true" to skip startup confirmation dialog (Windows) | `false` |
+| `MCP_REGISTER_SIGNAL_HANDLERS` | Set to `false` in embedded/test runners that should not install process-level SIGINT/SIGTERM handlers at import time | `true` |
 | `MCP_LOG_LEVEL` | Logging level (DEBUG, INFO, WARNING, ERROR) | `INFO` |
 | `MCP_LOG_FILE` | Optional path to write logs to a file | *None* |
 | `FASTMCP_TASKS_ENABLED` | Optional FastMCP task protocol toggle (`true`/`false`). If unset, FastMCP default behavior is used. | *Unset* |
@@ -675,6 +676,7 @@ Additional hardening controls:
 1. **Credential Scoping (Optional Enforcement)**: set `MCP_ENFORCE_TABLE_SCOPE=true` and provide `MCP_ALLOWED_TABLES=schema1.table1,schema1.table2`. Startup fails if the DB user can `SELECT` outside that list.
 2. **Rate Limiting + Circuit Breaker**: query execution is token-bucket throttled and opens a temporary breaker under sustained overload.
 3. **Prompt Audit Logging**: `db_pg96_run_query` and `db_pg96_explain_query` can persist the exact `source_prompt` to `MCP_AUDIT_LOG_FILE`.
+4. **Function DDL Signature Validation**: write-mode function operations validate `function_args` and `return_type` before SQL generation. Defaults and unsafe raw SQL fragments are rejected, and overloaded function alter/drop paths resolve the exact PostgreSQL `regprocedure` instead of interpolating the supplied signature directly.
 
 > ⚠️ **Warning: Authentication Verification Pending**
 > **Token Auth** and **Azure AD Auth** have not been tested and are **not production-ready**.
@@ -1189,8 +1191,24 @@ To run the full test suite locally:
 python -m pytest -q
 ```
 
+On Windows, test runs that import `server.py` should set the startup toggles explicitly so pytest does not trigger the confirmation dialog or install process-wide signal handlers during import:
+
+```powershell
+$env:MCP_SKIP_CONFIRMATION='true'
+$env:MCP_REGISTER_SIGNAL_HANDLERS='false'
+python -m pytest -q
+```
+
 To run the primary integration checks used for release validation:
 ```bash
+python -m pytest -q tests/test_security_perf_oltp.py tests/test_tools_pg96.py tests/functional_test.py
+```
+
+Windows example:
+
+```powershell
+$env:MCP_SKIP_CONFIRMATION='true'
+$env:MCP_REGISTER_SIGNAL_HANDLERS='false'
 python -m pytest -q tests/test_security_perf_oltp.py tests/test_tools_pg96.py tests/functional_test.py
 ```
 
@@ -1207,7 +1225,10 @@ A: This server is explicitly versioned for PostgreSQL 9.6 compatibility to ensur
 A: Yes! Most tools are forward-compatible. The `db_pg96_` prefix just indicates the minimum supported version.
 
 **Q: How do I enable write operations?**
-A: By default, the server is read-only. To enable write tools (like creating users or killing sessions), set the environment variable `MCP_ALLOW_WRITE=true`.
+A: By default, the server is read-only. To enable write tools, set `MCP_ALLOW_WRITE=true` and `MCP_CONFIRM_WRITE=true`. If you are using `http` transport, you must also configure authentication through `FASTMCP_AUTH_TYPE` before write mode is allowed.
+
+**Q: What format should `function_args` use for function create/alter/drop operations?**
+A: Use a normal PostgreSQL signature fragment such as `arg1 integer, arg2 text` or `integer, text`. The server accepts validated type expressions, but rejects defaults and unsafe raw SQL fragments. For overloaded functions, alter/drop operations resolve the exact `regprocedure` from the validated signature.
 
 ### Common Issues
 

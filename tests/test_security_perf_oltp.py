@@ -129,6 +129,9 @@ def test_security_perf_oltp(mocker):
         assert req_ratio <= 20, "Checkpoint request ratio should meet OLTP threshold"
 
         lock_stats = perf.get("lock_stats", {})
+        assert lock_stats
+        assert lock_stats.get("deadlocks", 0) > 0
+        assert lock_stats.get("temp_files", 0) > 50
     finally:
         test_pool = getattr(server_module, "pool", None)
         if test_pool is not None and not getattr(test_pool, "closed", False):
@@ -139,9 +142,6 @@ def test_security_perf_oltp(mocker):
                     test_pool.close()
             except Exception:
                 pass
-    assert lock_stats
-    assert lock_stats.get("deadlocks", 0) > 0
-    assert lock_stats.get("temp_files", 0) > 50
 
     # Issues and Fixes
     issues = results.get("issues_found", [])
