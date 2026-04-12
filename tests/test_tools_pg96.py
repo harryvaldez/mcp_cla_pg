@@ -20,8 +20,7 @@ SERVICE = "postgres96"
 HOST = "localhost"
 PORT = 15432
 DB = "mcp_test"
-USER = "postgres"
-PASSWORD = "postgres"
+TEST_DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://localhost/mcp_test")
 
 EXPECTED_TOOLS = [
     "db_pg96_analyze_indexes",
@@ -282,7 +281,7 @@ def test_sessions_monitor_table_headers_present() -> None:
 
 
 def test_api_sessions_list_route_returns_payload_shape(monkeypatch) -> None:
-    os.environ["DATABASE_URL"] = f"postgresql://{USER}:{PASSWORD}@{HOST}:{PORT}/{DB}"
+    os.environ["DATABASE_URL"] = TEST_DATABASE_URL
     os.environ["MCP_ALLOW_WRITE"] = "false"
     os.environ["MCP_SKIP_CONFIRMATION"] = "true"
     os.environ["MCP_REGISTER_SIGNAL_HANDLERS"] = "false"
@@ -340,7 +339,7 @@ def test_api_sessions_list_route_returns_payload_shape(monkeypatch) -> None:
 
 
 def test_api_sessions_list_route_rejects_invalid_instance() -> None:
-    os.environ["DATABASE_URL"] = f"postgresql://{USER}:{PASSWORD}@{HOST}:{PORT}/{DB}"
+    os.environ["DATABASE_URL"] = TEST_DATABASE_URL
     os.environ["MCP_ALLOW_WRITE"] = "false"
     os.environ["MCP_SKIP_CONFIRMATION"] = "true"
     os.environ["MCP_REGISTER_SIGNAL_HANDLERS"] = "false"
@@ -413,7 +412,7 @@ def test_static_tools_inventory_phase4() -> None:
 def _wait_for_db(timeout_s: int = 60) -> None:
     deadline = time.time() + timeout_s
     last_err: Exception | None = None
-    dsn = f"postgresql://{USER}:{PASSWORD}@{HOST}:{PORT}/{DB}"
+    dsn = TEST_DATABASE_URL
     while time.time() < deadline:
         try:
             with psycopg.connect(dsn, autocommit=True) as conn:
@@ -428,7 +427,7 @@ def _wait_for_db(timeout_s: int = 60) -> None:
 
 
 def _seed_sample_data() -> None:
-    dsn = f"postgresql://{USER}:{PASSWORD}@{HOST}:{PORT}/{DB}"
+    dsn = TEST_DATABASE_URL
     ddl = """
     create table if not exists public.customers (
       id serial primary key,
@@ -582,7 +581,7 @@ def _coerce_rows(value: Any) -> list[Any]:
 
 
 def test_virtual_indexes_requires_readonly_sql(monkeypatch):
-    os.environ["DATABASE_URL"] = f"postgresql://{USER}:{PASSWORD}@{HOST}:{PORT}/{DB}"
+    os.environ["DATABASE_URL"] = TEST_DATABASE_URL
     os.environ["MCP_ALLOW_WRITE"] = "false"
     os.environ["MCP_SKIP_CONFIRMATION"] = "true"
     os.environ["MCP_REGISTER_SIGNAL_HANDLERS"] = "false"
@@ -599,7 +598,7 @@ def test_virtual_indexes_requires_readonly_sql(monkeypatch):
 
 
 def test_virtual_indexes_returns_baseline_when_no_candidates(monkeypatch):
-    os.environ["DATABASE_URL"] = f"postgresql://{USER}:{PASSWORD}@{HOST}:{PORT}/{DB}"
+    os.environ["DATABASE_URL"] = TEST_DATABASE_URL
     os.environ["MCP_SKIP_CONFIRMATION"] = "true"
     os.environ["MCP_REGISTER_SIGNAL_HANDLERS"] = "false"
 
@@ -622,7 +621,7 @@ def test_virtual_indexes_returns_baseline_when_no_candidates(monkeypatch):
 
 
 def test_virtual_indexes_missing_hypopg_raises_runtime_error(monkeypatch):
-    os.environ["DATABASE_URL"] = f"postgresql://{USER}:{PASSWORD}@{HOST}:{PORT}/{DB}"
+    os.environ["DATABASE_URL"] = TEST_DATABASE_URL
     os.environ["MCP_SKIP_CONFIRMATION"] = "true"
     os.environ["MCP_REGISTER_SIGNAL_HANDLERS"] = "false"
 
@@ -643,7 +642,7 @@ def test_virtual_indexes_missing_hypopg_raises_runtime_error(monkeypatch):
 
 
 def _call_all_tools() -> None:
-    os.environ["DATABASE_URL"] = f"postgresql://{USER}:{PASSWORD}@{HOST}:{PORT}/{DB}"
+    os.environ["DATABASE_URL"] = TEST_DATABASE_URL
     os.environ["MCP_ALLOW_WRITE"] = "true"
     os.environ["MCP_CONFIRM_WRITE"] = "true"
     os.environ["MCP_TRANSPORT"] = "stdio"
@@ -748,7 +747,7 @@ def _call_all_tools() -> None:
     dropped_def = _invoke(server, "db_pg96_drop_db_user", {"username": username_def})
     _assert(isinstance(dropped_def, str) and username_def in dropped_def, "drop_db_user (default db) failed")
 
-    dsn = f"postgresql://{USER}:{PASSWORD}@{HOST}:{PORT}/{DB}"
+    dsn = TEST_DATABASE_URL
     victim = psycopg.connect(dsn, autocommit=True)
     try:
         with victim.cursor() as cur:

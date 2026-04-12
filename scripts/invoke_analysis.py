@@ -6,15 +6,8 @@ import time
 # Set environment variable BEFORE importing server, as server.py initializes pool on import
 database_url = os.environ.get("DATABASE_URL")
 if not database_url:
-    db_user = os.environ.get("MCP_DB_USER")
-    db_password = os.environ.get("MCP_DB_PASSWORD")
-    db_host = os.environ.get("MCP_DB_HOST", "localhost")
-    db_port = os.environ.get("MCP_DB_PORT", "5432")
-    db_name = os.environ.get("MCP_DB_NAME", "lenexa")
-    if not db_user or not db_password:
-        print("DATABASE_URL or MCP_DB_USER/MCP_DB_PASSWORD must be set before running invoke_analysis.py")
-        sys.exit(1)
-    database_url = f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+    print("DATABASE_URL must be set before running invoke_analysis.py")
+    sys.exit(1)
 
 os.environ["DATABASE_URL"] = database_url
 os.environ["MCP_ALLOW_WRITE"] = "false"  # Required by server.py

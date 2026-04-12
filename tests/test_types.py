@@ -11,21 +11,13 @@ import pytest
 # Load environment variables from .env file
 load_dotenv()
 
-# --- Connection details from environment variables ---
-DB_USER = os.environ.get("POSTGRES_USER", "mcp_readonly")
-DB_PASSWORD = os.environ.get("POSTGRES_PASSWORD")
-DB_HOST = os.environ.get("POSTGRES_HOST", "10.100.2.20")
-DB_PORT = os.environ.get("POSTGRES_PORT", "5444")
-DB_NAME = os.environ.get("POSTGRES_DB", "lenexa")
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
-# Construct DSN
-dsn = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-
-@pytest.mark.skipif(not DB_PASSWORD, reason="POSTGRES_PASSWORD environment variable not set.")
+@pytest.mark.skipif(not DATABASE_URL, reason="DATABASE_URL environment variable not set.")
 def test_types():
     """Connects to the DB and asserts that common types are JSON serializable."""
     try:
-        with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        with psycopg.connect(DATABASE_URL, row_factory=dict_row) as conn:
             with conn.cursor() as cur:
                 cur.execute("""
                     select

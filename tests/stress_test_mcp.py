@@ -13,17 +13,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # --- Configuration ---
-# Construct DATABASE_URL from environment variables for security
-DB_USER = os.environ.get("MCP_DB_USER", "postgres_readonly")
-DB_PASSWORD = os.environ.get("MCP_DB_PASSWORD")
-DB_HOST = os.environ.get("MCP_DB_HOST", "localhost")
-DB_PORT = os.environ.get("MCP_DB_PORT", "5432")
-DB_NAME = os.environ.get("MCP_DB_NAME", "mcp_db")
+database_url = os.environ.get("DATABASE_URL")
+if not database_url:
+    raise RuntimeError("DATABASE_URL must be set for stress tests.")
 
-if not DB_PASSWORD:
-    raise RuntimeError("MCP_DB_PASSWORD must be set for stress tests.")
-
-os.environ["DATABASE_URL"] = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+os.environ["DATABASE_URL"] = database_url
 os.environ["MCP_ALLOW_WRITE"] = "false"
 
 def invoke_tool(tool_obj, **kwargs):

@@ -17,17 +17,7 @@ def _get_database_url() -> str:
     explicit = os.environ.get("DATABASE_URL")
     if explicit and explicit.strip():
         return explicit
-
-    host = os.environ.get("POSTGRES_HOST", "localhost")
-    port = os.environ.get("POSTGRES_PORT", "5432")
-    db = os.environ.get("POSTGRES_DB", "mcp_db")
-    user = os.environ.get("POSTGRES_READONLY_USER")
-    password = os.environ.get("POSTGRES_READONLY_PASSWORD")
-    if not user or not password:
-        raise RuntimeError(
-            "Set DATABASE_URL or both POSTGRES_READONLY_USER and POSTGRES_READONLY_PASSWORD for stress tests."
-        )
-    return f"postgresql://{user}:{password}@{host}:{port}/{db}"
+    raise RuntimeError("DATABASE_URL must be set for stress tests.")
 
 def create_connection_pool():
     """Create a connection pool with optimized settings."""

@@ -14,8 +14,13 @@ SERVICE = "postgres96"
 HOST = "localhost"
 PORT = 55432
 DB = "mcp_test"
-USER = "postgres"
-PASSWORD = "postgres"
+DB_DSN = os.environ.get("TEST_UV_DB_DSN") or os.environ.get("DATABASE_URL")
+
+
+def _require_dsn() -> str:
+    if not DB_DSN:
+        raise RuntimeError("TEST_UV_DB_DSN or DATABASE_URL must be set for test_uv_pg96.py")
+    return DB_DSN
 
 def _run(cmd: List[str], *, check: bool = True, capture: bool = False) -> subprocess.CompletedProcess:
     return subprocess.run(
@@ -32,7 +37,7 @@ def _compose(*args: str, check: bool = True, capture: bool = False) -> subproces
 def _wait_for_db(timeout_s: int = 60) -> None:
     deadline = time.time() + timeout_s
     last_err: Exception | None = None
-    dsn = f"postgresql://{USER}:{PASSWORD}@{HOST}:{PORT}/{DB}"
+    dsn = _require_dsn()
     while time.time() < deadline:
         try:
             with psycopg.connect(dsn, autocommit=True) as conn:
@@ -46,7 +51,7 @@ def _wait_for_db(timeout_s: int = 60) -> None:
     raise RuntimeError(f"PostgreSQL did not become ready within {timeout_s}s: {last_err}")
 
 def _seed_sample_data() -> None:
-    dsn = f"postgresql://{USER}:{PASSWORD}@{HOST}:{PORT}/{DB}"
+    dsn = _require_dsn()
     ddl = """
     create table if not exists public.customers (
       id serial primary key,
@@ -157,7 +162,7 @@ class MCPClient:
 
 def _test_uv_stdio() -> None:
     env = {
-        "DATABASE_URL": f"postgresql://{USER}:{PASSWORD}@{HOST}:{PORT}/{DB}",
+        "DATABASE_URL": _require_dsn(),
         "MCP_ALLOW_WRITE": "true",
         "MCP_CONFIRM_WRITE": "true",
         "MCP_TRANSPORT": "stdio"
@@ -226,7 +231,7 @@ def _test_uv_stdio() -> None:
                     raise RuntimeError(f"Tool {name} returned an empty or missing result")
                 print(f"  Tool {name} OK")
 
-            dsn = f"postgresql://{USER}:{PASSWORD}@{HOST}:{PORT}/{DB}"
+            dsn = _require_dsn()
             victim = psycopg.connect(dsn, autocommit=True)
             try:
                 with victim.cursor() as cur:

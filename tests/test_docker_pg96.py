@@ -4,8 +4,8 @@ import subprocess
 import sys
 import time
 import traceback
-import urllib.request
 import urllib.parse
+import http.client
 from typing import Any, Dict, List
 
 import psycopg
@@ -18,8 +18,14 @@ HOST = "localhost"
 DB_PORT = 55432
 SERVER_PORT = 8000
 DB_NAME = "mcp_test"
-USER = "postgres"
-PASSWORD = "postgres"
+DB_DSN_HOST = os.environ.get("TEST_DOCKER_DB_DSN_HOST") or os.environ.get("DATABASE_URL")
+DB_DSN_SERVICE = os.environ.get("TEST_DOCKER_DB_DSN_SERVICE")
+
+
+def _require_env_value(name: str, value: str | None) -> str:
+    if not value:
+        raise RuntimeError(f"{name} environment variable is required for this test.")
+    return value
 
 
 def _validate_local_http_url(url: str) -> str:
@@ -29,6 +35,30 @@ def _validate_local_http_url(url: str) -> str:
     if parsed.hostname not in {"localhost", "127.0.0.1", "::1"}:
         raise ValueError(f"Blocked non-local test URL host: {parsed.hostname}")
     return url
+
+
+def _http_local_request(url: str, method: str = "GET", payload: Dict[str, Any] | None = None, headers: Dict[str, str] | None = None, timeout: int = 15) -> tuple[int, str]:
+    safe_url = _validate_local_http_url(url)
+    parsed = urllib.parse.urlparse(safe_url)
+    connection_cls = http.client.HTTPSConnection if parsed.scheme == "https" else http.client.HTTPConnection
+    path = parsed.path or "/"
+    if parsed.query:
+        path = f"{path}?{parsed.query}"
+
+    body: str | None = None
+    request_headers = dict(headers or {})
+    if payload is not None:
+        body = json.dumps(payload)
+        request_headers.setdefault("Content-Type", "application/json")
+
+    connection = connection_cls(parsed.netloc, timeout=timeout)
+    try:
+        connection.request(method, path, body=body, headers=request_headers)
+        response = connection.getresponse()
+        payload_text = response.read().decode("utf-8", errors="replace")
+        return response.status, payload_text
+    finally:
+        connection.close()
 
 def _run(cmd: List[str], *, check: bool = True, capture: bool = False) -> subprocess.CompletedProcess:
     return subprocess.run(
@@ -45,7 +75,7 @@ def _compose(*args: str, check: bool = True, capture: bool = False) -> subproces
 def _wait_for_db(timeout_s: int = 60) -> None:
     deadline = time.time() + timeout_s
     last_err: Exception | None = None
-    dsn = f"postgresql://{USER}:{PASSWORD}@{HOST}:{DB_PORT}/{DB_NAME}"
+    dsn = _require_env_value("TEST_DOCKER_DB_DSN_HOST or DATABASE_URL", DB_DSN_HOST)
     while time.time() < deadline:
         try:
             with psycopg.connect(dsn, autocommit=True) as conn:
@@ -59,7 +89,7 @@ def _wait_for_db(timeout_s: int = 60) -> None:
     raise RuntimeError(f"PostgreSQL did not become ready within {timeout_s}s: {last_err}")
 
 def _seed_sample_data() -> None:
-    dsn = f"postgresql://{USER}:{PASSWORD}@{HOST}:{DB_PORT}/{DB_NAME}"
+    dsn = _require_env_value("TEST_DOCKER_DB_DSN_HOST or DATABASE_URL", DB_DSN_HOST)
     ddl = """
     create table if not exists public.customers (
       id serial primary key,
@@ -103,9 +133,9 @@ def _wait_for_server(timeout_s: int = 60) -> None:
     url = _validate_local_http_url(f"http://localhost:{SERVER_PORT}/health")
     while time.time() < deadline:
         try:
-            with urllib.request.urlopen(url, timeout=5) as response:
-                if response.getcode() == 200:
-                    return
+            status, _ = _http_local_request(url, timeout=5)
+            if status == 200:
+                return
         except:
             time.sleep(1)
     raise RuntimeError(f"Server did not become ready within {timeout_s}s")
@@ -115,7 +145,6 @@ def _test_docker_http() -> None:
     url = _validate_local_http_url(f"http://localhost:{SERVER_PORT}/mcp")
     
     print(f"Connecting to /mcp at {url}...")
-    req = urllib.request.Request(url)
     # FastMCP streamable HTTP often requires a session
     # Let's try to get one or just use the endpoint directly if stateless
     
@@ -128,48 +157,35 @@ def _test_docker_http() -> None:
         if not is_notification:
             req_data["id"] = int(time.time() * 1000)
         
-        req = urllib.request.Request(
-            url,
-            data=json.dumps(req_data).encode("utf-8"),
-            headers={
-                "Content-Type": "application/json",
-                "Accept": "application/json, text/event-stream"
-            }
-        )
         try:
-            with urllib.request.urlopen(req, timeout=15) as response:
-                if is_notification:
-                    return {}
-                
-                # Read the response. If it's chunked or SSE, we might need to parse it.
-                body = response.read().decode("utf-8")
-                if not body:
-                    return {}
-                
-                # If it's a stream of events, look for the 'data: ' line
-                if "data: " in body:
-                    for line in body.splitlines():
-                        if line.startswith("data: "):
-                            resp_data = json.loads(line[6:])
-                            if "error" in resp_data:
-                                raise RuntimeError(f"Tool error: {resp_data['error']}")
-                            return resp_data.get("result", {})
-                
-                # Otherwise try direct JSON
-                try:
-                    resp_data = json.loads(body)
-                    if "error" in resp_data:
-                        raise RuntimeError(f"Tool error: {resp_data['error']}")
-                    return resp_data.get("result", {})
-                except:
-                    print(f"Failed to parse body as JSON: {body}")
-                    raise
-        except urllib.error.HTTPError as e:
-            print(f"HTTP Error {e.code}: {e.reason}")
-            try:
-                print(f"Response body: {e.read().decode('utf-8')}")
-            except:
-                pass
+            status, body = _http_local_request(
+                url,
+                method="POST",
+                payload=req_data,
+                headers={"Accept": "application/json, text/event-stream"},
+                timeout=15,
+            )
+            if status >= 400:
+                raise RuntimeError(f"HTTP Error {status}: {body}")
+            if is_notification:
+                return {}
+
+            if not body:
+                return {}
+
+            if "data: " in body:
+                for line in body.splitlines():
+                    if line.startswith("data: "):
+                        resp_data = json.loads(line[6:])
+                        if "error" in resp_data:
+                            raise RuntimeError(f"Tool error: {resp_data['error']}")
+                        return resp_data.get("result", {})
+
+            resp_data = json.loads(body)
+            if "error" in resp_data:
+                raise RuntimeError(f"Tool error: {resp_data['error']}")
+            return resp_data.get("result", {})
+        except Exception:
             raise
 
     # 1. Initialize
@@ -233,7 +249,7 @@ def _test_docker_http() -> None:
     print(f"Testing db_pg96_drop_db_user: {username}...")
     call_tool("tools/call", {"name": "db_pg96_drop_db_user", "arguments": {"username": username}})
 
-    dsn = f"postgresql://{USER}:{PASSWORD}@{HOST}:{DB_PORT}/{DB_NAME}"
+    dsn = _require_env_value("TEST_DOCKER_DB_DSN_HOST or DATABASE_URL", DB_DSN_HOST)
     victim = psycopg.connect(dsn, autocommit=True)
     try:
         with victim.cursor() as cur:
@@ -253,7 +269,7 @@ def main() -> int:
         print("Starting stack via Docker Compose...")
         # Run the container in HTTP mode with write enabled
         # We explicitly set auth to "none" to pass the new security check for testing
-        os.environ["DATABASE_URL"] = f"postgresql://{USER}:{PASSWORD}@{DB_SERVICE}:5432/{DB_NAME}"
+        os.environ["DATABASE_URL"] = _require_env_value("TEST_DOCKER_DB_DSN_SERVICE", DB_DSN_SERVICE)
         os.environ["MCP_ALLOW_WRITE"] = "true"
         os.environ["MCP_CONFIRM_WRITE"] = "true"
         os.environ["MCP_TRANSPORT"] = "http"

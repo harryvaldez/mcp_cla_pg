@@ -29,6 +29,21 @@ This document captures approved dispositions for scanner findings that are expec
   - Destructive actions are guarded by write-mode controls (MCP_ALLOW_WRITE and MCP_CONFIRM_WRITE) and transport/auth policy checks.
   - Least-privilege operation is enforced operationally by defaulting to read-only workflows and requiring explicit opt-in for write operations.
 
+### 4) shell_hardcoded for spawn/spawnSync in bin/mcp-postgres.js
+- Finding class: medium
+- Status: Accepted with compensating controls
+- Rationale:
+  - Process execution is required to launch the Python MCP server runtime from the Node wrapper.
+  - Implementation uses explicit argument arrays and `shell: false` for both `spawnSync` probes and runtime `spawn`.
+  - No user-controlled command strings are shell-interpreted.
+
+### 5) description_empty false positives for selected tools
+- Finding class: medium
+- Status: Accepted as false positive after code verification
+- Rationale:
+  - `task_progress_demo`, `context_state_demo`, `db_pg96_create_db_user`, `db_pg96_drop_db_user`, and `db_pg96_alter_object` include non-empty `@mcp.tool(description=...)` values in code.
+  - The scanner result appears to be stale or parser-limited for this pattern.
+
 ## Approval
 - Owner: Security Team
 - Date: 2026-04-12

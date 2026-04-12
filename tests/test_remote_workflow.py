@@ -1,10 +1,9 @@
 import os
 import json
 import time
-import urllib.request
-import urllib.error
 import socket
 import ipaddress
+import http.client
 from urllib.parse import urlparse
 
 # --- Configuration ---
@@ -53,8 +52,28 @@ def _validate_outbound_url(url: str) -> str:
         raise ValueError(f"Host '{host}' is not in outbound allowlist")
     return url
 
+
+def _http_json_request(method: str, url: str, headers: dict[str, str], timeout: int, body: bytes | None = None):
+    safe_url = _validate_outbound_url(url)
+    parsed = urlparse(safe_url)
+    connection_cls = http.client.HTTPSConnection if parsed.scheme == "https" else http.client.HTTPConnection
+    path = parsed.path or "/"
+    if parsed.query:
+        path = f"{path}?{parsed.query}"
+
+    connection = connection_cls(parsed.netloc, timeout=timeout)
+    try:
+        connection.request(method, path, body=body, headers=headers)
+        response = connection.getresponse()
+        payload = response.read().decode()
+        if response.status >= 400:
+            raise RuntimeError(f"HTTP Error {response.status} {response.reason}: {payload}")
+        return json.loads(payload) if payload else {}
+    finally:
+        connection.close()
+
 def trigger_workflow():
-    url = _validate_outbound_url(f"{N8N_BASE_URL.rstrip('/')}/api/v1/executions")
+    url = f"{N8N_BASE_URL.rstrip('/')}/api/v1/executions"
     print(f"Triggering workflow execution: {url}")
     
     # Payload to execute the workflow
@@ -64,33 +83,35 @@ def trigger_workflow():
     }
     
     data = json.dumps(payload).encode('utf-8')
-    req = urllib.request.Request(url, data=data, method='POST')
-    req.add_header('X-N8N-API-KEY', API_KEY)
-    req.add_header('Content-Type', 'application/json')
     
     try:
-        with urllib.request.urlopen(req, timeout=30) as response:
-            result = json.loads(response.read().decode())
-            print("✅ Workflow execution started.")
-            return result
-    except urllib.error.HTTPError as e:
-        print(f"❌ HTTP Error: {e.code} {e.reason}")
-        print(f"Response: {e.read().decode()}")
-        return None
+        result = _http_json_request(
+            "POST",
+            url,
+            {
+                "X-N8N-API-KEY": API_KEY,
+                "Content-Type": "application/json",
+            },
+            timeout=30,
+            body=data,
+        )
+        print("✅ Workflow execution started.")
+        return result
     except Exception as e:
         print(f"❌ Error triggering workflow: {e}")
         return None
 
 def get_execution_status(execution_id):
-    url = _validate_outbound_url(f"{N8N_BASE_URL.rstrip('/')}/api/v1/executions/{execution_id}")
+    url = f"{N8N_BASE_URL.rstrip('/')}/api/v1/executions/{execution_id}"
     print(f"Checking execution status: {execution_id}...", end="\r")
     
-    req = urllib.request.Request(url)
-    req.add_header('X-N8N-API-KEY', API_KEY)
-    
     try:
-        with urllib.request.urlopen(req, timeout=10) as response:
-            return json.loads(response.read().decode())
+        return _http_json_request(
+            "GET",
+            url,
+            {"X-N8N-API-KEY": API_KEY},
+            timeout=10,
+        )
     except Exception as e:
         print(f"\n❌ Error fetching execution: {e}")
         return None

@@ -1,10 +1,9 @@
 import json
 import sys
 import os
-import urllib.request
-import urllib.error
 import socket
 import ipaddress
+import http.client
 from urllib.parse import urlparse
 
 # --- Configuration ---
@@ -58,6 +57,35 @@ def validate_outbound_url(url: str) -> str:
 
     return url
 
+
+def _http_json_request(method: str, url: str, headers: dict[str, str], timeout: int, body: bytes | None = None) -> dict | None:
+    safe_url = validate_outbound_url(url)
+    parsed = urlparse(safe_url)
+    connection_cls = http.client.HTTPSConnection if parsed.scheme == "https" else http.client.HTTPConnection
+    path = parsed.path or "/"
+    if parsed.query:
+        path = f"{path}?{parsed.query}"
+
+    connection = connection_cls(parsed.netloc, timeout=timeout)
+    try:
+        connection.request(method, path, body=body, headers=headers)
+        response = connection.getresponse()
+        payload = response.read().decode()
+        if response.status >= 400:
+            print(f"❌ HTTP Error: {response.status} {response.reason}")
+            if payload:
+                print(f"Response: {payload}")
+            return None
+        return json.loads(payload) if payload else {}
+    except (socket.timeout, OSError) as e:
+        print(f"❌ Error: Request timed out or failed: {e}")
+        return None
+    except json.JSONDecodeError as e:
+        print(f"❌ Error: Invalid JSON response: {e}")
+        return None
+    finally:
+        connection.close()
+
 # Validate essential configuration
 if not API_KEY:
     print("❌ Error: N8N_API_KEY environment variable not set.")
@@ -68,29 +96,13 @@ WORKFLOW_ID = WORKFLOW_ID_RAW.strip("/")
 
 def fetch_workflow(workflow_id):
     url = f"{N8N_BASE_URL.rstrip('/')}/api/v1/workflows/{workflow_id}"
-    validate_outbound_url(url)
     print(f"Fetching workflow from: {url}")
-    
-    req = urllib.request.Request(url)
-    req.add_header('X-N8N-API-KEY', API_KEY)
-    
-    try:
-        with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as response:
-            data = json.loads(response.read().decode())
-            return data
-    except urllib.error.HTTPError as e:
-        print(f"❌ HTTP Error: {e.code} {e.reason}")
-        try:
-            print(f"Response: {e.read().decode()}")
-        except Exception:
-            pass # Can fail if response body is empty
-        return None
-    except (socket.timeout, urllib.error.URLError) as e:
-        print(f"❌ Error: Request timed out or failed: {e}")
-        return None
-    except Exception as e:
-        print(f"❌ An unexpected error occurred while fetching workflow: {e}")
-        return None
+    return _http_json_request(
+        "GET",
+        url,
+        {"X-N8N-API-KEY": API_KEY},
+        REQUEST_TIMEOUT,
+    )
 
 def validate_workflow(workflow_data):
     print("\nValidating Workflow...")

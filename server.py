@@ -6011,14 +6011,11 @@ def db_pg96_analyze_logical_data_model(
             analysis_id = str(uuid.uuid4())
             DATA_MODEL_CACHE[analysis_id] = result_data
             
-            # Construct URL
-            # Use MCP_PORT if set, otherwise default to 8085 for UI to avoid 8000 conflicts
-            port = os.environ.get("MCP_PORT", "8085")
-            host = os.environ.get("MCP_HOST", "localhost")
-            if host == "0.0.0.0":
-                host = "localhost"
-            
-            url = f"http://{host}:{port}/data-model-analysis?id={analysis_id}"
+            # Construct report URL.
+            # Prefer a relative path to avoid hardcoding host-based URLs in responses.
+            report_path = f"/data-model-analysis?id={analysis_id}"
+            report_base_url = (os.environ.get("MCP_REPORT_BASE_URL") or "").strip()
+            url = f"{report_base_url.rstrip('/')}{report_path}" if report_base_url else report_path
             
             legacy_response = {
                 "message": "Analysis complete. View the interactive report at the URL below.",

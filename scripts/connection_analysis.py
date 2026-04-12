@@ -28,43 +28,27 @@ def get_sanitized_url(url: str) -> str:
         return "<unparseable_url>"
 
 
-def _build_dsn(host: str, port: Any, db_name: str, username: str | None, password: str | None) -> str | None:
-    """Build a DSN only when both username and password are provided."""
-    if not username or not password:
+def _get_env_dsn(name: str) -> str | None:
+    value = os.environ.get(name)
+    if not value:
         return None
-    return f"postgresql://{username}:{password}@{host}:{port}/{db_name}"
+    candidate = value.strip()
+    return candidate or None
 
 def test_direct_connection():
     """Test direct database connection using environment variables."""
     print("Testing direct database connection...")
 
-    # Build connection strings from environment variables
-    db_host = os.environ.get("POSTGRES_HOST", "localhost")
-    db_port = os.environ.get("POSTGRES_PORT", 5432)
-    db_name = os.environ.get("POSTGRES_DB", "mcp_db")
-    
-    ro_user = os.environ.get("POSTGRES_READONLY_USER")
-    ro_pass = os.environ.get("POSTGRES_READONLY_PASSWORD")
-    su_user = os.environ.get("POSTGRES_USER")
-    su_pass = os.environ.get("POSTGRES_PASSWORD")
-
     conn_strings = []
-    ro_dsn = _build_dsn(db_host, db_port, db_name, ro_user, ro_pass)
-    if ro_dsn:
-        conn_strings.append(ro_dsn)
-
-    su_dsn = _build_dsn(db_host, db_port, db_name, su_user, su_pass)
-    if su_dsn:
-        conn_strings.append(su_dsn)
-
-    su_loopback_dsn = _build_dsn("127.0.0.1", db_port, db_name, su_user, su_pass)
-    if su_loopback_dsn:
-        conn_strings.append(su_loopback_dsn)
+    for env_name in ("POSTGRES_READONLY_DSN", "POSTGRES_SUPERUSER_DSN", "POSTGRES_SUPERUSER_LOOPBACK_DSN", "DATABASE_URL"):
+        dsn = _get_env_dsn(env_name)
+        if dsn and dsn not in conn_strings:
+            conn_strings.append(dsn)
 
     if not conn_strings:
         return [{
             "success": False,
-            "error": "No connection credentials available. Set POSTGRES_READONLY_USER/POSTGRES_READONLY_PASSWORD or POSTGRES_USER/POSTGRES_PASSWORD."
+            "error": "No connection DSN available. Set POSTGRES_READONLY_DSN or POSTGRES_SUPERUSER_DSN or DATABASE_URL."
         }]
 
     results = []
@@ -102,14 +86,9 @@ def test_connection_pooling():
     try:
         from psycopg_pool import ConnectionPool
 
-        db_host = os.environ.get("POSTGRES_HOST", "localhost")
-        db_port = os.environ.get("POSTGRES_PORT", 5432)
-        db_name = os.environ.get("POSTGRES_DB", "mcp_db")
-        su_user = os.environ.get("POSTGRES_USER")
-        su_pass = os.environ.get("POSTGRES_PASSWORD")
-        conninfo = _build_dsn(db_host, db_port, db_name, su_user, su_pass)
+        conninfo = _get_env_dsn("POSTGRES_SUPERUSER_DSN") or _get_env_dsn("DATABASE_URL")
         if not conninfo:
-            return {"error": "POSTGRES_USER and POSTGRES_PASSWORD are required for connection pooling test."}
+            return {"error": "POSTGRES_SUPERUSER_DSN or DATABASE_URL is required for connection pooling test."}
 
         pool = ConnectionPool(
             conninfo=conninfo,
@@ -165,14 +144,9 @@ def test_mcp_tools():
     original_allow_write = os.environ.get("MCP_ALLOW_WRITE")
 
     try:
-        ro_user = os.environ.get("POSTGRES_READONLY_USER")
-        ro_pass = os.environ.get("POSTGRES_READONLY_PASSWORD")
-        db_host = os.environ.get("POSTGRES_HOST", "localhost")
-        db_port = os.environ.get("POSTGRES_PORT", 5432)
-        db_name = os.environ.get("POSTGRES_DB", "mcp_db")
-        readonly_dsn = _build_dsn(db_host, db_port, db_name, ro_user, ro_pass)
+        readonly_dsn = _get_env_dsn("POSTGRES_READONLY_DSN") or _get_env_dsn("DATABASE_URL")
         if not readonly_dsn:
-            return [{"tool": "import_error", "success": False, "error": "POSTGRES_READONLY_USER and POSTGRES_READONLY_PASSWORD are required for MCP tool tests."}]
+            return [{"tool": "import_error", "success": False, "error": "POSTGRES_READONLY_DSN or DATABASE_URL is required for MCP tool tests."}]
 
         os.environ["DATABASE_URL"] = readonly_dsn
         os.environ["MCP_ALLOW_WRITE"] = "false"

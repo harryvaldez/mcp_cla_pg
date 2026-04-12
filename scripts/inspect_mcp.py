@@ -2,8 +2,10 @@
 import os
 import sys
 
-# Mock env vars to avoid errors
-os.environ["DATABASE_URL"] = "postgres://user:pass@localhost:5432/db"
+# Require env vars from runtime configuration
+if not os.environ.get("DATABASE_URL"):
+    print("DATABASE_URL must be set before running inspect_mcp.py")
+    sys.exit(1)
 os.environ["MCP_ALLOW_WRITE"] = "true"
 os.environ["MCP_CONFIRM_WRITE"] = "true"
 os.environ["FASTMCP_AUTH_TYPE"] = "apikey"
