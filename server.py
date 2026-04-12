@@ -110,7 +110,6 @@ from datetime import datetime, date, timedelta, timezone
 from urllib.parse import quote, urlparse, urlunparse, urlsplit, urlunsplit
 from typing import Any, Literal, Optional, cast
 
-from sshtunnel import SSHTunnelForwarder
 from fastmcp.server.server import FastMCP
 from fastmcp.prompts import Message
 from fastmcp.server.context import Context
@@ -1563,7 +1562,7 @@ if not DATABASE_URL_INSTANCE_1:
 # Keep the existing variable name for compatibility in the rest of the module.
 DATABASE_URL = DATABASE_URL_INSTANCE_1
 
-# Capture original connection details before any SSH tunneling modification
+# Capture the original connection details for reporting
 # This ensures we report the correct target server info to the user
 try:
     _parsed_initial = urlparse(DATABASE_URL)
@@ -1647,119 +1646,9 @@ AUDIT_LOG_SQL_TEXT = _env_bool("MCP_AUDIT_LOG_SQL_TEXT", False)
 AUDIT_REQUIRE_PROMPT = _env_bool("MCP_AUDIT_REQUIRE_PROMPT", False)
 AUDIT_LOG_REQUIRED = _env_bool("MCP_AUDIT_LOG_REQUIRED", False)
 
-
-# SSH Tunnel Configuration
-SSH_HOST = os.environ.get("SSH_HOST")
-SSH_USER = os.environ.get("SSH_USER")
-SSH_PASSWORD = os.environ.get("SSH_PASSWORD")
-SSH_PKEY = os.environ.get("SSH_PKEY")
-SSH_PORT = _env_int("SSH_PORT", 22)
-
-# Global reference to keep tunnel alive
-_ssh_tunnel = None
-_ssh_tunnel_lock = threading.Lock()
-
-if SSH_HOST and SSH_USER:
-    logger.info(f"Configuring SSH tunnel to {SSH_USER}@{SSH_HOST}:{SSH_PORT}...")
-    
-    # Parse destination from DATABASE_URL
-    # DATABASE_URL is guaranteed to be set by previous checks
-    try:
-        parsed_db_url = urlparse(DATABASE_URL)
-        
-        remote_bind_host = parsed_db_url.hostname
-        remote_bind_port = parsed_db_url.port or 5432
-        
-        if not remote_bind_host:
-            raise RuntimeError(
-                "SSH requested but DATABASE_URL lacks a host. Provide a URL like postgresql://user:pass@host:5432/db"
-            )
-    
-        # Read allow_agent configuration from environment variable
-        allow_ssh_agent = os.environ.get("ALLOW_SSH_AGENT", "false").lower() in ("true", "1", "yes", "on")
-        
-        ssh_args = {
-            "ssh_address_or_host": (SSH_HOST, SSH_PORT),
-            "ssh_username": SSH_USER,
-            "remote_bind_address": (remote_bind_host, remote_bind_port),
-            "allow_agent": allow_ssh_agent, # Configurable via ALLOW_SSH_AGENT environment variable
-        }
-        
-        if SSH_PASSWORD:
-            ssh_args["ssh_password"] = SSH_PASSWORD
-        if SSH_PKEY:
-            ssh_args["ssh_pkey"] = SSH_PKEY
-            
-        logger.info(f"Starting SSH tunnel to remote bind: {remote_bind_host}:{remote_bind_port}")
-        _ssh_tunnel = SSHTunnelForwarder(**ssh_args)
-        _ssh_tunnel.start()
-        
-        logger.info(f"SSH tunnel established. Local bind port: {_ssh_tunnel.local_bind_port}")
-        
-        # Reconstruct DATABASE_URL with local port using robust split/unsplit to preserve components
-        parts = urlsplit(DATABASE_URL)
-        userinfo = ''
-        if parts.username:
-            userinfo = parts.username
-            if parts.password:
-                userinfo += f":{quote(parts.password)}"
-            userinfo += '@'
-        new_netloc = f"{userinfo}127.0.0.1:{_ssh_tunnel.local_bind_port}"
-        DATABASE_URL = urlunsplit((parts.scheme, new_netloc, parts.path, parts.query, parts.fragment))
-
-        logger.info("Updated DATABASE_URL to use SSH tunnel.")
-
-        # Also rewrite DATABASE_URL_INSTANCE_2 if it shares the same remote host:port
-        if DATABASE_URL_INSTANCE_2:
-            try:
-                parts2 = urlsplit(DATABASE_URL_INSTANCE_2)
-                if parts2.hostname == remote_bind_host and (parts2.port or 5432) == remote_bind_port:
-                    userinfo2 = ''
-                    if parts2.username:
-                        userinfo2 = parts2.username
-                        if parts2.password:
-                            userinfo2 += f":{quote(parts2.password)}"
-                        userinfo2 += '@'
-                    new_netloc2 = f"{userinfo2}127.0.0.1:{_ssh_tunnel.local_bind_port}"
-                    DATABASE_URL_INSTANCE_2 = urlunsplit(
-                        (parts2.scheme, new_netloc2, parts2.path, parts2.query, parts2.fragment)
-                    )
-                    logger.info("Updated DATABASE_URL_INSTANCE_2 to use SSH tunnel.")
-            except Exception as e2:
-                logger.warning("Could not rewrite DATABASE_URL_INSTANCE_2 for SSH tunnel: %s", e2)
-        
-    except Exception as e:
-        logger.error(f"Failed to establish SSH tunnel: {e}")
-        # We raise here because if the user asked for SSH and it fails, we shouldn't proceed
-        # attempting to connect directly (which would likely timeout or fail anyway)
-        raise RuntimeError(f"SSH Tunnel setup failed: {e}") from e
-
-
-def _cleanup_ssh_tunnel():
-    """Cleanup function to stop SSH tunnel on process exit."""
-    global _ssh_tunnel
-    with _ssh_tunnel_lock:
-        tunnel = _ssh_tunnel
-        _ssh_tunnel = None
-
-    if tunnel is None:
-        return
-
-    try:
-        logger.info("Closing SSH tunnel...")
-        tunnel.stop()
-        logger.info("SSH tunnel closed.")
-    except Exception as e:
-        logger.error(f"Error closing SSH tunnel: {e}")
-
-
-# Register cleanup handlers
-atexit.register(_cleanup_ssh_tunnel)
-
 # Register signal handlers for graceful shutdown
 def _signal_handler(signum, frame):
     logger.info(f"Received signal {signum}, cleaning up...")
-    _cleanup_ssh_tunnel()
     sys.exit(0)
 
 _REGISTER_SIGNAL_HANDLERS = _env_bool("MCP_REGISTER_SIGNAL_HANDLERS", True)

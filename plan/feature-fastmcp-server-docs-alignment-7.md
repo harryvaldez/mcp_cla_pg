@@ -131,7 +131,7 @@ Copy all lines below exactly into one apply patch tool call.
 +- **Multiple Transports**: Supports `http` (recommended), `stdio`, and legacy `sse` compatibility mode. HTTPS is supported via SSL configuration variables.
  - **Secure Authentication**: Built-in support for **Azure AD (Microsoft Entra ID)** and standard token auth.
  - **HTTPS Support**: Native SSL/TLS support for secure remote connections.
- - **SSH Tunneling**: Built-in support for connecting via SSH bastion hosts.
+ - **Python 3.13**: Built on the latest Python runtime for improved performance and security.
 @@
  | `DATABASE_URL` | Full PostgreSQL connection string | *Required* |
  | `MCP_HOST` | Host to bind the server to | `0.0.0.0` |
