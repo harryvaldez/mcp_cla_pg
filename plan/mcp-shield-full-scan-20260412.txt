@@ -1,0 +1,1 @@
+[*] MCP Shield v3.0.1 -- FULL audit (layers 1+2+3) https://github.com/harryvaldez/mcp_cla_pg
