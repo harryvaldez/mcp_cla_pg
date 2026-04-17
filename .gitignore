@@ -13,3 +13,30 @@ tmp_fastmcp_214/
 pg_settings.csv
 pg_settings.txt
 .vscode/
+
+# Test and coverage outputs
+.pytest_cache/
+.coverage
+.coverage.*
+coverage/
+htmlcov/
+test_results.json
+pytest-report.xml
+junit*.xml
+
+# Build and packaging artifacts
+build/
+dist/
+*.egg-info/
+pip-wheel-metadata/
+
+# Runtime and temporary artifacts
+*.tmp
+*.temp
+*.out
+
+# Large local evidence artifacts (regenerable)
+baseline_*_evidence.txt
+stress_test_results_*.json
+connection_analysis_*.json
+smsadmin_analysis.json

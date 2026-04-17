@@ -1,0 +1,30 @@
+.git
+.gitignore
+
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+
+# Local environments
+.venv/
+fresh_env/
+
+# Tests and planning artifacts not needed in runtime image
+tests/
+plan/
+
+# Local/editor artifacts
+.vscode/
+
+# Repo docs/evidence artifacts
+*.md
+*.json
+*.csv
+*.txt
+
+# Keep runtime inputs explicitly included
+!requirements.txt
+!server.py
