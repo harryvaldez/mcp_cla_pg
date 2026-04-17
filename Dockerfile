@@ -1,3 +1,11 @@
+FROM python:3.13-slim AS builder
+
+WORKDIR /app
+
+COPY requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir --prefix=/install -r /app/requirements.txt
+
+
 FROM python:3.13-slim
 
 WORKDIR /app
@@ -5,17 +13,12 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# Security updates: Upgrade system packages to fix CVEs
-RUN apt-get update && apt-get upgrade -y && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
-COPY requirements.txt /app/requirements.txt
-# Upgrade pip/setuptools/wheel to fix python packaging vulnerabilities
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir -r /app/requirements.txt
-
+COPY --from=builder /install /usr/local
 COPY server.py /app/server.py
+
+RUN useradd --create-home --uid 10001 appuser && \
+    chown -R appuser:appuser /app
+USER appuser
 
 ENV MCP_TRANSPORT=http
 ENV MCP_HOST=0.0.0.0
