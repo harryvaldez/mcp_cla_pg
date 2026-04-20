@@ -1,4 +1,46 @@
+# mcp-postgres
 
+FastMCP server for PostgreSQL with dual-instance support, operational diagnostics, and safe-by-default runtime controls.
+---
+
+## Documentation
+- **User Manual:** [docs/users-manual.md](docs/users-manual.md) — End-user setup, configuration, troubleshooting, and all usage examples
+- [DEPLOYMENT.md](DEPLOYMENT.md) — Deployment and advanced setup
+- [CONTRIBUTING.md](CONTRIBUTING.md) — Contribution process
+- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) — Community expectations
+- [SECURITY.md](SECURITY.md) — Security policy
+- [LICENSE](LICENSE) — License
+---
+
+## Project Overview
+mcp-postgres exposes PostgreSQL diagnostics and automation tools via FastMCP, supporting two independently configured database instances. Designed for AI clients, DBAs, and compliance teams seeking a consistent, safe, and extensible interface.
+
+For all setup, quickstart, usage examples, configuration, troubleshooting, and advanced instructions, see the [User Manual](docs/users-manual.md).
+---
+
+## License
+MIT License. See [LICENSE](LICENSE).
+
+...existing code...
+
+
+# mcp-postgres
+
+![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
+![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
+![Python Version](https://img.shields.io/badge/python-3.13%2B-blue)
+
+
+**User Manual:** See the new [USER_MANUAL.md](USER_MANUAL.md) for end-user setup, configuration, and troubleshooting instructions.
+
+FastMCP server for PostgreSQL with dual-instance support, operational diagnostics, and safe-by-default runtime controls.
+
+Use this project when you want AI clients or MCP-compatible tools to query and inspect PostgreSQL through a consistent tool interface.
+
+---
+
+## Table of Contents
+---
 
 # mcp-postgres
 
@@ -8,55 +50,55 @@
 
 FastMCP server for PostgreSQL with dual-instance support, operational diagnostics, and safe-by-default runtime controls.
 
-Use this project when you want AI clients or MCP-compatible tools to query and inspect PostgreSQL through a consistent tool interface.
+---
+
+## Documentation
+
+- **User Manual:** [docs/users-manual.md](docs/users-manual.md) — End-user setup, configuration, and troubleshooting
+- [DEPLOYMENT.md](DEPLOYMENT.md) — Deployment and advanced setup
+- [CONTRIBUTING.md](CONTRIBUTING.md) — Contribution process
+- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) — Community expectations
+- [SECURITY.md](SECURITY.md) — Security policy
+- [LICENSE](LICENSE) — License
 
 ---
 
-## Table of Contents
+## Project Overview
 
-- [Why This Project Is Useful](#why-this-project-is-useful)
-- [Documentation](#documentation)
-- [Features](#features)
-- [Quick Start](#quick-start)
-- [Prerequisites](#prerequisites)
-- [Key Environment Variables](#key-environment-variables)
-- [Where To Get Help](#where-to-get-help)
-- [Who Maintains And Contributes](#who-maintains-and-contributes)
-- [Troubleshooting](#troubleshooting)
-- [Security Notes](#security-notes)
-- [License](#license)
-- [About](#about)
+mcp-postgres exposes PostgreSQL diagnostics and automation tools via FastMCP, supporting two independently configured database instances. Designed for AI clients, DBAs, and compliance teams seeking a consistent, safe, and extensible interface.
+
+Key features:
+- Dual-instance support (`db_01_*` and `db_02_*`)
+- Diagnostics endpoints and reporting utilities
+- Runtime safety controls (write protection, audit logging, rate limiting)
+
+# mcp-postgres
+
+FastMCP server for PostgreSQL with dual-instance support, operational diagnostics, and safe-by-default runtime controls.
 
 ---
-
 
 ## Why This Project Is Useful
-
 - Provides a structured MCP tool surface for PostgreSQL operations
-- Supports two independently configured PostgreSQL instances in one server
+- Supports two independently configured PostgreSQL instances
 - Includes diagnostics endpoints and model/report utilities
 - Applies runtime safety controls for write mode, rate limiting, and audit behavior
 
 ---
 
-
 ## Documentation
-
 - [User Manual](docs/users-manual.md)
 - [Contributing Guide](CONTRIBUTING.md)
 - [Code of Conduct](CODE_OF_CONDUCT.md)
-- [Security Policy](SECURITY_FINDINGS_DISPOSITIONS.md)
+- [Security Policy](SECURITY.md)
+- [License](LICENSE)
 
 ---
 
-
 ## Features
-
 - PostgreSQL MCP tools exposed through FastMCP
 - Support for two configured database instances (`db_01_*` and `db_02_*`)
-- Web UI routes:
-  - `/data-model-analysis?id=<report_id>`
-  - `/sessions-monitor?instance=01` (or `instance=02`)
+- Diagnostics endpoints and reporting utilities
 - Optional runtime controls for audit logging, rate limiting, and write safety
 
 ---
@@ -64,236 +106,58 @@ Use this project when you want AI clients or MCP-compatible tools to query and i
 
 ## Quick Start
 
-See [DEPLOYMENT.md](DEPLOYMENT.md) for full instructions.
+See [DEPLOYMENT.md](DEPLOYMENT.md) for all setup and deployment instructions, including local, Docker, and cloud deployment.
 
 ---
 
-
 ## Prerequisites
-
 - Python 3.13+
 - PostgreSQL credentials for at least one instance
 - Optional: Docker Desktop for container workflows
 
-### Local Setup (Windows PowerShell)
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install --upgrade pip
-pip install -r requirements.txt
-# Create an `.env` file and define at least one PostgreSQL instance:
-# DATABASE_URL=postgresql://user:password@localhost:5432/dbname
-MCP_TRANSPORT=http
-MCP_HOST=0.0.0.0
-MCP_PORT=8000
-```
-
-### Run Locally
-
-```powershell
-.\.venv\Scripts\Activate.ps1
-python server.py
-```
-
-### Run with Docker
-
-```bash
-docker build -t mcp-postgres:local .
-docker run -d --name mcp-postgres -p 8085:8000 --env MCP_TRANSPORT=http --env-file .env mcp-postgres:local
-```
-
 ---
 
-
 ## Key Environment Variables
-
-- `DATABASE_URL`, `DATABASE_URL_INSTANCE_1`, `DATABASE_URL_INSTANCE_2`: PostgreSQL instance settings
+- `DATABASE_URL`, `DATABASE_URL_INSTANCE_1`, `DATABASE_URL_INSTANCE_2`: PostgreSQL connection strings
 - `MCP_TRANSPORT`, `MCP_HOST`, `MCP_PORT`: server transport and binding
 - `MCP_ALLOW_WRITE`, `MCP_CONFIRM_WRITE`: write protection controls
 - `MCP_MAX_ROWS`, `MCP_STATEMENT_TIMEOUT_MS`: query guardrails
-- `MCP_AUDIT_LOG_FILE`, `MCP_AUDIT_LOG_SQL_TEXT`: audit logging controls
-- `MCP_LOG_LEVEL`, `MCP_LOG_FILE`: runtime logging controls
+- `MCP_AUDIT_LOG_FILE`: audit logging controls
 
 ---
-
 
 ## Where To Get Help
-
 - Start with the [User Manual](docs/users-manual.md)
 - Open a repository issue for bugs or defects
-- Use repository discussions for questions, implementation ideas, and usage patterns (if enabled)
+- Use repository discussions for questions and usage patterns (if enabled)
 
 ---
-
 
 ## Who Maintains And Contributes
-
-This project is maintained by repository maintainers and improved through community contributions.
-
-- Contribution process: [CONTRIBUTING.md](CONTRIBUTING.md)
-- Community expectations: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
-- Vulnerability reporting process: [SECURITY_FINDINGS_DISPOSITIONS.md](SECURITY_FINDINGS_DISPOSITIONS.md)
+- Maintained by Harry Valdez and community contributors
+- [Contributing Guide](CONTRIBUTING.md)
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Security Policy](SECURITY.md)
 
 ---
-
 
 ## Troubleshooting
-
-- Connection failures: validate host, port, and credentials in `.env`.
-- No report page output: verify `id` is provided for `/data-model-analysis`.
-- Session monitor errors: verify `instance` query parameter is `01` or `02` and instance is configured.
+- ODBC/connection errors: check driver and credentials in `.env`
+- No report output: verify required parameters
+- Session monitor errors: check instance configuration
 
 ---
-
 
 ## Security Notes
-
-- Do not commit `.env`.
-- Use least-privilege PostgreSQL accounts where possible.
-- Keep `MCP_ALLOW_WRITE=false` unless write operations are explicitly required.
+- Do not commit `.env`
+- Use least-privilege DB accounts where possible
+- Keep `MCP_ALLOW_WRITE=false` unless write operations are required
 
 ---
-
 
 ## License
 
-This project is licensed under the MIT License. See [LICENSE](LICENSE).
-
----
-
-
-## About
-
-PostgreSQL MCP server (default read-only DBA tools, optional Auth0)
-
----
-
-## Contributing
-
-We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-## Code of Conduct
-
-This project follows a [Code of Conduct](CODE_OF_CONDUCT.md) to foster an open and welcoming environment.
-
-## Security Policy
-
-See [SECURITY_FINDINGS_DISPOSITIONS.md](SECURITY_FINDINGS_DISPOSITIONS.md) for vulnerability reporting and security practices.
-
-### Latest Publish Snapshot (2026-03-17)
-
-- Git commit: `547e383` (pushed to `main`)
-- Docker tags pushed: `harryvaldez/mcp-postgres:latest`, `harryvaldez/mcp-postgres:1.0.0`
-- Docker image digest: `sha256:602e3d7d7603ca6da1987e41fb1a21ef2d4bbaf90f601dee0828d7d535701dd5`
-
-### Release History
-
-| Date | Git commit | Docker tags | Image digest |
-|------|------------|-------------|--------------|
-| 2026-04-12 | `ab4d9d2` | `latest`, `ab4d9d2` | `sha256:139dd0d2b1c82cc73c04c738272168e030c8b8c1da83f58103da95b6534865ba` |
-| 2026-04-07 | `93f6fbc` | `latest`, `93f6fbc` | `sha256:86ca24f17a6a77eb0823d7e63a3d3c7d72ac38d4efb08caea93b536c2f3a3583` |
-| 2026-03-17 | `547e383` | `latest`, `1.0.0` | `sha256:602e3d7d7603ca6da1987e41fb1a21ef2d4bbaf90f601dee0828d7d535701dd5` |
-| 2026-03-05 | `4aafa3e` | `latest`, `4aafa3e` | `sha256:81c7d249e4202277adcb6a20e4fbb21952e31b3d7b633e6ca8869f986a62b073` |
-| 2026-03-05 | `c6286d4` | `latest`, `c6286d4` | `sha256:81c7d249e4202277adcb6a20e4fbb21952e31b3d7b633e6ca8869f986a62b073` |
-| 2026-03-05 | `39fcfd2` | `latest`, `39fcfd2` | `sha256:d3bb0c2903f5a6e249d2d803fc87929f3ea9e350b15ab47c89e9998e0a3d82a8` |
-
-### v1.1.0 Release Notes
-
-- **Background Tasks Support**: Added FastMCP background tasks (SEP-1686) for long-running operations.
-- **New Async Tools**: Added 6 new async tools with `task=True` for background execution:
-  - `db_pg96_analyze_logical_data_model_async`
-  - `db_pg96_analyze_indexes_async`
-  - `db_pg96_check_bloat_async`
-  - `db_pg96_analyze_sessions_async`
-  - `db_pg96_recommend_partitioning_async`
-- **Progress Reporting**: Added Progress dependency for real-time progress updates during background task execution.
-- Server-level tasks support via `FASTMCP_TASKS_ENABLED` or `MCP_TASKS_ENABLED` environment variable.
-- **Phase 4 FastMCP Alignment**: Advanced server capabilities including:
-  - **Capabilities Resource**: Standardized `data://server/capabilities` resource exposing server metadata and feature discovery.
-  - **Runtime Context Prompt**: New `runtime_context_brief` prompt for contextual information injection.
-  - **Server Composition**: Child server mounting with namespace routing for modular architecture.
-  - **Dependency Injection**: Built-in support for context-aware tool dependencies via `CurrentContext` and `CurrentFastMCP`.
-  - **Elicitation Patterns**: Structured prompts for guided user interactions and decision workflows.
-  - **Enhanced Logging**: Structured logging with configurable levels and outputs via `MCP_LOG_LEVEL` and `MCP_LOG_FILE`.
-  - **Advanced Configuration**: Comprehensive server configuration through environment variables with safe defaults.
-
-### v1.0.3 Release Notes
-
-- Upgraded server and dependencies to **FastMCP v3** compatibility (`>=3.0.0,<4`).
-- Migrated auth provider imports to FastMCP v3 module paths under `fastmcp.server.auth...`.
-- Updated tool alias invocation and tests for v3 decorator behavior (direct callable usage).
-- Completed end-to-end validation and fixed deterministic pool teardown in integration tests.
-
-## 🚀 Features
-
-- **Deep Inspection**: Discover schemas, tables, indexes, and their sizes.
-- **Logical Modeling**: Analyze foreign keys and table relationships to understand the data model.
-- **Performance Analysis**: Detect table bloat, missing indexes, and lock contention.
-- **Security Audits**: Analyze database privileges and security settings.
-- **Safe Execution**: Read-only by default, with optional write capabilities for specific maintenance tasks.
-- **Multiple Transports**: Supports `http` (recommended), `stdio`, and legacy `sse` compatibility mode. HTTPS is supported via SSL configuration variables.
-- **Secure Authentication**: Built-in support for **Azure AD (Microsoft Entra ID)** and standard token auth.
-- **HTTPS Support**: Native SSL/TLS support for secure remote connections.
-- **Python 3.13**: Built on the latest Python runtime for improved performance and security.
-- **Broad Compatibility**: Fully tested with **PostgreSQL 9.6+**. (Note: PostgreSQL 9.6 reached EOL in Nov 2021; we recommend using supported releases, e.g., PostgreSQL 12+, for production.)
-
-### FastMCP Compatibility (v3)
-
-- This server targets **FastMCP v3** (`>=3.0.0,<4`).
-- Decorated exports such as `db_pg96_*` are regular callables in FastMCP v3. If you are writing tests or scripts, call functions directly (for example, `db_pg96_ping()`), rather than expecting wrapper attributes like `.fn` on decorated results.
-- For auth provider extensions, use FastMCP v3 module paths under `fastmcp.server.auth...`.
-- Background Tasks support follows FastMCP v3 task protocol features. Server-level task support can be toggled with `FASTMCP_TASKS_ENABLED` (or `MCP_TASKS_ENABLED`).
-
----
-
-## 🧾 LLM Calling Cheat Sheet
-
-Use these prompt patterns to minimize tokens and expand only when needed.
-
-- **List largest tables (compact first)**
-  - `using postgres_readonly, call db_pg96_list_objects(object_type='table', order_by='size', limit=20, detail_level='compact', max_items=10, response_format='envelope')`
-- **Table health triage**
-  - `using postgres_readonly, call db_pg96_analyze_table_health(schema='public', profile='oltp', detail_level='compact', max_tables=10, response_format='envelope')`
-- **Security/perf triage**
-  - `using postgres_readonly, call db_pg96_db_sec_perf_metrics(profile='oltp', detail_level='compact', max_items_per_list=10, response_format='envelope')`
-- **Index triage**
-  - `using postgres_readonly, call db_pg96_analyze_indexes(schema='public', limit=20, detail_level='compact', max_items_per_category=10, response_format='envelope')`
-- **Logical model triage**
-  - `using postgres_readonly, call db_pg96_analyze_logical_data_model(schema='public', max_entities=50, detail_level='compact', response_format='envelope')`
-
-If the response has `truncated=true`, increase only the relevant max parameter and re-run.
-
----
-
-## Resources
-
-This server exposes read-only FastMCP resources for deterministic runtime and configuration discovery.
-
-### data://server/status
-
-- URI: `data://server/status`
-- MIME type: `application/json`
-- Parameters: none
-- Payload shape:
-
-```json
-{
-  "contents": [
-    {
-      "content": "{\"ok\":true,\"transport\":\"http\",\"allow_write\":false,\"statement_timeout_ms\":30000,\"default_max_rows\":1000,\"database\":{\"host\":\"localhost\",\"port\":5432,\"name\":\"postgres\"},\"request_id\":\"...\",\"timestamp_utc\":\"2026-04-01T12:00:00+00:00\"}",
-      "mime_type": "application/json"
-    }
-  ],
-  "meta": {
-    "resource": "server_status"
-  }
-}
-```
-
-### data://db/settings{?pattern,limit}
-
-- URI template: `data://db/settings{?pattern,limit}`
+MIT License. See [LICENSE](LICENSE).
 - MIME type: `application/json`
 - Query args:
   - `pattern`: optional PostgreSQL regex (case-insensitive)
