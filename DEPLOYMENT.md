@@ -33,6 +33,209 @@ By default, the server binds to `0.0.0.0` (all interfaces) when running via Dock
 
 ---
 
+## 📦 Installation & Usage
+
+### Quick Start with `.env`
+
+Use the provided environment template to bootstrap local configuration.
+
+PowerShell:
+```powershell
+Copy-Item .env.sample .env
+```
+
+bash:
+```bash
+cp .env.sample .env
+```
+
+Then edit `.env` (at minimum set `DATABASE_URL`, `MCP_ALLOW_WRITE`, and `MCP_CONFIRM_WRITE`) and run:
+
+```bash
+uv run mcp-postgres
+```
+
+### ⚡ Quickstart: Docker + n8n
+
+Spin up a complete environment with **PostgreSQL**, **MCP Server**, and **n8n** in one command.
+
+1.  **Download the Compose File**:
+    Save [docker-compose-n8n.yml](docker-compose-n8n.yml) to your project directory.
+
+2.  **Start the Stack**:
+    ```bash
+    docker compose -f docker-compose-n8n.yml up -d
+    ```
+
+3.  **Connect n8n**:
+    *   Open n8n at [http://localhost:5678](http://localhost:5678).
+    *   Add an **AI Agent** node.
+    *   Add an **MCP Tool** to the agent.
+    *   Set **Source** to `Remote (SSE)`.
+    *   Set **URL** to `http://mcp-postgres:8000/sse` (Note: use container name).
+    *   **Execute!** You can now ask the AI agent to "count rows in tables" or "check database stats".
+
+---
+
+For detailed deployment instructions on **Azure Container Apps**, **AWS ECS**, and **Docker**, see the sections below.
+
+> **Note**: For details on the required database privileges for read-only and read-write modes, see the **[Database Privileges](#database-privileges)** section below.
+
+### Option 1: VS Code & Claude Desktop
+
+This section explains how to configure the server for Claude Desktop and VS Code extensions.
+
+1.  **Claude Desktop Integration**:
+    Edit your `claude_desktop_config.json` (usually in `~/Library/Application Support/Claude/` on macOS or `%APPDATA%\Claude\` on Windows).
+
+2.  **VS Code Extension Configuration**:
+    For extensions like Cline or Roo Code, go to the extension settings in VS Code and look for "MCP Servers" configuration.
+
+You can use either of the following methods to configure the server.
+
+#### Method A: Using Docker (Recommended)
+This method ensures you have all dependencies pre-installed. Note the `-i` flag (interactive) and `MCP_TRANSPORT=stdio`.
+
+```json
+{
+  "mcpServers": {
+    "postgres": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-e", "DATABASE_URL=postgresql://user:password@host.docker.internal:5432/dbname",
+        "-e", "MCP_TRANSPORT=stdio",
+        "harryvaldez/mcp-postgres:latest"
+      ]
+    }
+  }
+}
+```
+
+#### Method B: Using Local Python (uv)
+If you prefer running the Python code directly and have `uv` installed:
+
+```json
+{
+  "mcpServers": {
+    "postgres": {
+      "command": "uv",
+      "args": ["run", "mcp-postgres"],
+      "env": {
+        "DATABASE_URL": "postgresql://user:password@localhost:5432/dbname"
+      }
+    }
+  }
+}
+```
+
+### Option 2: Docker (Recommended)
+
+The Docker image is available on Docker Hub at `harryvaldez/mcp-postgres`.
+
+```bash
+# 1. Pull the image
+docker pull harryvaldez/mcp-postgres:latest
+
+# Optional: pull immutable digest-pinned image
+docker pull harryvaldez/mcp-postgres@sha256:13d89ff087aa0f2f7eacbdadec279d0a8810812b2fefd4b8f057ba763be4676d
+
+# 2. Run in HTTP Mode (SSE)
+docker run -d \
+  --name mcp-postgres-http \
+  -e DATABASE_URL=postgresql://user:password@host.docker.internal:5432/dbname \
+  -e MCP_TRANSPORT=http \
+  -e MCP_ALLOW_WRITE=false
+  -p 8000:8000 \
+  harryvaldez/mcp-postgres@sha256:13d89ff087aa0f2f7eacbdadec279d0a8810812b2fefd4b8f057ba763be4676d
+
+# 3. Run in Write Mode (HTTP - Secure)
+docker run -d \
+  --name mcp-postgres-write \
+  -e DATABASE_URL=postgresql://user:password@host.docker.internal:5432/dbname \
+  -e MCP_TRANSPORT=http \
+  -e MCP_ALLOW_WRITE=true \
+  -e MCP_CONFIRM_WRITE=true \
+  # ⚠️ Untested / Not Production Ready
+  -e FASTMCP_AUTH_TYPE=azure-ad \
+  -e FASTMCP_AZURE_AD_TENANT_ID=... \
+  -e FASTMCP_AZURE_AD_CLIENT_ID=... \
+  -p 8001:8000 \
+  harryvaldez/mcp-postgres@sha256:13d89ff087aa0f2f7eacbdadec279d0a8810812b2fefd4b8f057ba763be4676d
+```
+
+### Option 3: Local Python (uv)
+
+```bash
+# Set connection string
+export DATABASE_URL=postgresql://user:password@localhost:5432/dbname
+
+# Run in HTTP Mode (SSE)
+export MCP_TRANSPORT=http
+uv run .
+
+# Run in Write Mode (HTTP)
+export MCP_TRANSPORT=http
+export MCP_ALLOW_WRITE=true
+export MCP_CONFIRM_WRITE=true
+export FASTMCP_AUTH_TYPE=azure-ad # ⚠️ Untested / Not Production Ready
+# ... set auth vars ...
+uv run .
+```
+
+### Option 4: Node.js (npx)
+
+```bash
+# Set connection string
+export DATABASE_URL=postgresql://user:password@localhost:5432/dbname
+
+# Run in HTTP Mode (SSE)
+export MCP_TRANSPORT=http
+npx .
+
+# Run in Write Mode (HTTP)
+export MCP_TRANSPORT=http
+export MCP_ALLOW_WRITE=true
+export MCP_CONFIRM_WRITE=true
+export FASTMCP_AUTH_TYPE=azure-ad # ⚠️ Untested / Not Production Ready
+# ... set auth vars ...
+npx .
+```
+
+### Option 5: n8n Integration (AI Agent)
+
+You can use this MCP server as a "Remote Tool" in n8n to empower AI agents with database capabilities.
+
+1.  **Download Workflow**: Get the [n8n-mcp-workflow.json](n8n-mcp-workflow.json).
+2.  **Import to n8n**:
+    *   Open your n8n dashboard.
+    *   Go to **Workflows** -> **Import from File**.
+    *   Select `n8n-mcp-workflow.json`.
+3.  **Configure Credentials**:
+    *   Open the **AI Agent** node.
+    *   Set your **OpenAI** credentials.
+    *   If your MCP server is protected, open the **Postgres MCP** node and update the `Authorization` header in "Header Parameters".
+4.  **Run**: Click "Execute Workflow" to test the connection (defaults to `db_pg96_ping`).
+
+### Troubleshooting n8n Connection
+
+If n8n (Cloud) cannot connect to your local MCP server:
+1.  **Public Accessibility**: Your server must be reachable from the internet. `localhost` or local names won't work from n8n Cloud.
+2.  **Firewall**: Ensure your firewall allows inbound traffic on the MCP port (default 8085).
+    ```powershell
+    # Allow port 8085 on Windows
+    netsh advfirewall firewall add rule name="MCP Server 8085" dir=in action=allow protocol=TCP localport=8085
+    ```
+3.  **Quick Fix (ngrok)**: Use [ngrok](https://ngrok.com/) to tunnel your local server to the internet.
+    ```bash
+    ngrok http 8085
+    ```
+    Then use the generated `https://....ngrok-free.app/sse` URL in n8n.
+
+---
+
 ## 💻 Local Development
 
 ### Option 1: Python (uv)
