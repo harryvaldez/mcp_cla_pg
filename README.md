@@ -1,83 +1,185 @@
-# PostgreSQL MCP Server
 
-A powerful Model Context Protocol (MCP) server for PostgreSQL database administration, designed for AI agents like **VS Code**, **Claude**, and **Codex**.
 
-This server exposes a suite of DBA-grade tools to inspect schemas, analyze performance, check security, and troubleshoot issues—all through a safe, controlled interface.
+# mcp-postgres
 
-## 🧪 Audit Evidence
+![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
+![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
+![Python Version](https://img.shields.io/badge/python-3.13%2B-blue)
 
-## 🖥️ Dual-Instance Session Monitor
+FastMCP server for PostgreSQL with dual-instance support, operational diagnostics, and safe-by-default runtime controls.
 
-The real-time session monitor now supports explicit instance selection for environments with multiple database instances.
+Use this project when you want AI clients or MCP-compatible tools to query and inspect PostgreSQL through a consistent tool interface.
 
-- **Monitor URL:** `/sessions-monitor?instance=01|02` (defaults to `01`)
-- **API URL:** `/api/sessions?instance=01|02` (defaults to `01`)
-- **Session List API URL:** `/api/sessions/list?instance=01|02` (defaults to `01`)
-- **UI:** The monitor page includes an instance selector and badge. Changing the instance updates the stats and chart in real time.
-- **UI Session Table:** The monitor page also shows per-session rows with columns: `PID`, `database name`, `username`, `application name`, `client address`, `client hostname`, `session start`, `wait event`, `state`, `query`.
-- **Backend:** All session stats are routed to the correct instance using the dual-instance context and connection pools.
+---
 
-**Example:**
+## Table of Contents
 
+- [Why This Project Is Useful](#why-this-project-is-useful)
+- [Documentation](#documentation)
+- [Features](#features)
+- [Quick Start](#quick-start)
+- [Prerequisites](#prerequisites)
+- [Key Environment Variables](#key-environment-variables)
+- [Where To Get Help](#where-to-get-help)
+- [Who Maintains And Contributes](#who-maintains-and-contributes)
+- [Troubleshooting](#troubleshooting)
+- [Security Notes](#security-notes)
+- [License](#license)
+- [About](#about)
+
+---
+
+
+## Why This Project Is Useful
+
+- Provides a structured MCP tool surface for PostgreSQL operations
+- Supports two independently configured PostgreSQL instances in one server
+- Includes diagnostics endpoints and model/report utilities
+- Applies runtime safety controls for write mode, rate limiting, and audit behavior
+
+---
+
+
+## Documentation
+
+- [User Manual](docs/users-manual.md)
+- [Contributing Guide](CONTRIBUTING.md)
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Security Policy](SECURITY_FINDINGS_DISPOSITIONS.md)
+
+---
+
+
+## Features
+
+- PostgreSQL MCP tools exposed through FastMCP
+- Support for two configured database instances (`db_01_*` and `db_02_*`)
+- Web UI routes:
+  - `/data-model-analysis?id=<report_id>`
+  - `/sessions-monitor?instance=01` (or `instance=02`)
+- Optional runtime controls for audit logging, rate limiting, and write safety
+
+---
+
+
+## Quick Start
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for full instructions.
+
+---
+
+
+## Prerequisites
+
+- Python 3.13+
+- PostgreSQL credentials for at least one instance
+- Optional: Docker Desktop for container workflows
+
+### Local Setup (Windows PowerShell)
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install --upgrade pip
+pip install -r requirements.txt
+# Create an `.env` file and define at least one PostgreSQL instance:
+# DATABASE_URL=postgresql://user:password@localhost:5432/dbname
+MCP_TRANSPORT=http
+MCP_HOST=0.0.0.0
+MCP_PORT=8000
 ```
-http://localhost:8000/sessions-monitor?instance=02
+
+### Run Locally
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+python server.py
 ```
 
-**API Example:**
+### Run with Docker
 
-```
-GET /api/sessions?instance=02
-Response: { "active": 3, "idle": 5, "idle_in_transaction": 0, "total": 8, "timestamp": 1712428800.0, "instance": "02" }
-
-GET /api/sessions/list?instance=02
-Response: {
-  "instance_id": "02",
-  "host": "10.100.2.21",
-  "database": "lenexa",
-  "count": 2,
-  "sessions": [
-    {
-      "pid": 12345,
-      "database_name": "lenexa",
-      "username": "postgres",
-      "application_name": "psql",
-      "client_address": "10.0.0.12",
-      "client_hostname": "-",
-      "session_start": "2026-04-07 10:45:00",
-      "wait_event": "ClientRead",
-      "state": "idle",
-      "query": "SELECT 1"
-    }
-  ],
-  "timestamp": 1712428800.0
-}
+```bash
+docker build -t mcp-postgres:local .
+docker run -d --name mcp-postgres -p 8085:8000 --env MCP_TRANSPORT=http --env-file .env mcp-postgres:local
 ```
 
-If the `instance` parameter is omitted, instance `01` is used by default. The UI always displays the active instance.
+---
 
 
-For hardening-audit artifacts (credential scoping, rate limiting/circuit breaker, and prompt audit logging), see [AUDIT_EVIDENCE_PACK.md](AUDIT_EVIDENCE_PACK.md).
+## Key Environment Variables
+
+- `DATABASE_URL`, `DATABASE_URL_INSTANCE_1`, `DATABASE_URL_INSTANCE_2`: PostgreSQL instance settings
+- `MCP_TRANSPORT`, `MCP_HOST`, `MCP_PORT`: server transport and binding
+- `MCP_ALLOW_WRITE`, `MCP_CONFIRM_WRITE`: write protection controls
+- `MCP_MAX_ROWS`, `MCP_STATEMENT_TIMEOUT_MS`: query guardrails
+- `MCP_AUDIT_LOG_FILE`, `MCP_AUDIT_LOG_SQL_TEXT`: audit logging controls
+- `MCP_LOG_LEVEL`, `MCP_LOG_FILE`: runtime logging controls
+
+---
 
 
-## 📌 Current Release
+## Where To Get Help
 
-- Git tag: `v1.1.0`
-- Docker tags: `harryvaldez/mcp-postgres:latest`, `harryvaldez/mcp-postgres:ab4d9d2`, `harryvaldez/mcp-postgres:93f6fbc`, `harryvaldez/mcp-postgres:v1.1.0`, `harryvaldez/mcp-postgres:1.0.0`
-- Image digest: `sha256:139dd0d2b1c82cc73c04c738272168e030c8b8c1da83f58103da95b6534865ba`
+- Start with the [User Manual](docs/users-manual.md)
+- Open a repository issue for bugs or defects
+- Use repository discussions for questions, implementation ideas, and usage patterns (if enabled)
 
-Pinned image reference (recommended for production): `harryvaldez/mcp-postgres@sha256:139dd0d2b1c82cc73c04c738272168e030c8b8c1da83f58103da95b6534865ba`
+---
 
-### Latest Publish Snapshot (2026-04-12)
 
-- Git commit: `ab4d9d2` (pushed to `main`)
-- Docker tags pushed: `harryvaldez/mcp-postgres:latest`, `harryvaldez/mcp-postgres:ab4d9d2`
-- Docker image digest: `sha256:139dd0d2b1c82cc73c04c738272168e030c8b8c1da83f58103da95b6534865ba`
+## Who Maintains And Contributes
 
-### Latest Publish Snapshot (2026-04-07)
+This project is maintained by repository maintainers and improved through community contributions.
 
-- Git commit: `93f6fbc` (pushed to `main`)
-- Docker tags pushed: `harryvaldez/mcp-postgres:latest`, `harryvaldez/mcp-postgres:93f6fbc`
-- Docker image digest: `sha256:86ca24f17a6a77eb0823d7e63a3d3c7d72ac38d4efb08caea93b536c2f3a3583`
+- Contribution process: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Community expectations: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+- Vulnerability reporting process: [SECURITY_FINDINGS_DISPOSITIONS.md](SECURITY_FINDINGS_DISPOSITIONS.md)
+
+---
+
+
+## Troubleshooting
+
+- Connection failures: validate host, port, and credentials in `.env`.
+- No report page output: verify `id` is provided for `/data-model-analysis`.
+- Session monitor errors: verify `instance` query parameter is `01` or `02` and instance is configured.
+
+---
+
+
+## Security Notes
+
+- Do not commit `.env`.
+- Use least-privilege PostgreSQL accounts where possible.
+- Keep `MCP_ALLOW_WRITE=false` unless write operations are explicitly required.
+
+---
+
+
+## License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE).
+
+---
+
+
+## About
+
+PostgreSQL MCP server (default read-only DBA tools, optional Auth0)
+
+---
+
+## Contributing
+
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+## Code of Conduct
+
+This project follows a [Code of Conduct](CODE_OF_CONDUCT.md) to foster an open and welcoming environment.
+
+## Security Policy
+
+See [SECURITY_FINDINGS_DISPOSITIONS.md](SECURITY_FINDINGS_DISPOSITIONS.md) for vulnerability reporting and security practices.
 
 ### Latest Publish Snapshot (2026-03-17)
 
