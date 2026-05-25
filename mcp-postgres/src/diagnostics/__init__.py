@@ -1,0 +1,1 @@
+"""Diagnostics package - health, readiness, metrics, security endpoints."""

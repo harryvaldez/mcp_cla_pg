@@ -1,0 +1,10 @@
+global:
+  requests_per_minute: 1200
+  burst: 200
+actor:
+  requests_per_minute: 180
+  burst: 30
+session:
+  concurrent_sessions_limit: 10
+  session_ttl_minutes: 60
+  inactivity_timeout_minutes: 15
