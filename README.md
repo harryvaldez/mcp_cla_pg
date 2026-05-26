@@ -5,6 +5,7 @@ FastMCP server for PostgreSQL with dual-instance support, operational diagnostic
 
 ## Documentation
 - **User Manual:** [docs/users-manual.md](docs/users-manual.md) — End-user setup, configuration, troubleshooting, and all usage examples
+- [MCP Security Agent Workflow](docs/mcp-security-agent-workflow.md) — Review -> remediate -> re-review process for security findings
 - [DEPLOYMENT.md](DEPLOYMENT.md) — Deployment and advanced setup
 - [CONTRIBUTING.md](CONTRIBUTING.md) — Contribution process
 - [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) — Community expectations
@@ -55,6 +56,7 @@ FastMCP server for PostgreSQL with dual-instance support, operational diagnostic
 ## Documentation
 
 - **User Manual:** [docs/users-manual.md](docs/users-manual.md) — End-user setup, configuration, and troubleshooting
+- [MCP Security Agent Workflow](docs/mcp-security-agent-workflow.md) — Review -> remediate -> re-review process for security findings
 - [DEPLOYMENT.md](DEPLOYMENT.md) — Deployment and advanced setup
 - [CONTRIBUTING.md](CONTRIBUTING.md) — Contribution process
 - [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) — Community expectations
