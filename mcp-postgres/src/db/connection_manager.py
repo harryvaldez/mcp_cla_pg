@@ -59,23 +59,30 @@ class ConnectionManager:
             ctx.verify_mode = ssl.CERT_REQUIRED
         return ctx
 
+    async def _initialize_pool_for_instance(
+        self, instance_id: str, instance: EdbInstanceConfig
+    ) -> asyncpg.Pool:
+        """Create and store a connection pool for a specific instance."""
+        pool = await asyncpg.create_pool(
+            dsn=self._build_dsn(instance),
+            min_size=instance.pool_min,
+            max_size=instance.pool_max,
+            command_timeout=instance.command_timeout_sec,
+            ssl=self._build_ssl_context(instance),
+        )
+        self._pools[instance_id] = pool
+        self._health[instance_id] = {
+            "state": "initialized",
+            "checked_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "error": None,
+        }
+        return pool
+
     async def initialize_pools(self) -> None:
         """Create connection pools for all enabled instances."""
         for instance_id, instance in self._instances.items():
             try:
-                pool = await asyncpg.create_pool(
-                    dsn=self._build_dsn(instance),
-                    min_size=instance.pool_min,
-                    max_size=instance.pool_max,
-                    command_timeout=instance.command_timeout_sec,
-                    ssl=self._build_ssl_context(instance),
-                )
-                self._pools[instance_id] = pool
-                self._health[instance_id] = {
-                    "state": "initialized",
-                    "checked_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                    "error": None,
-                }
+                await self._initialize_pool_for_instance(instance_id, instance)
             except Exception as exc:
                 self._health[instance_id] = {
                     "state": "error",
@@ -88,7 +95,24 @@ class ConnectionManager:
         """Acquire a connection from the specified instance's pool."""
         pool = self._pools.get(instance_id)
         if pool is None:
-            raise RuntimeError(f"Pool not initialized for instance '{instance_id}'")
+            instance = self._instances.get(instance_id)
+            if instance is None:
+                raise RuntimeError(f"Unknown instance '{instance_id}'")
+
+            try:
+                # Lazy init makes tools resilient when startup pool init was skipped/failed.
+                pool = await self._initialize_pool_for_instance(instance_id, instance)
+            except Exception as exc:
+                error_msg = str(exc)
+                self._health[instance_id] = {
+                    "state": "error",
+                    "checked_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    "error": error_msg,
+                }
+                raise RuntimeError(
+                    f"Failed to initialize pool for instance '{instance_id}': {error_msg}"
+                ) from exc
+
         async with pool.acquire() as conn:
             yield conn
 

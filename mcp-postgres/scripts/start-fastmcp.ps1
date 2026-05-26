@@ -2,7 +2,7 @@
 # Start FastMCP EDB96 server in Docker
 param(
     [switch]$Build,
-    [switch]$Detached = $true,
+    [switch]$Detached,
     [string]$ComposeFile = "docker/docker-compose.yml"
 )
 
@@ -34,7 +34,8 @@ if ($Build) {
     docker compose -f $ComposeFile build
 }
 
-$detachArg = if ($Detached) { "-d" } else { "" }
+$runDetached = if ($PSBoundParameters.ContainsKey("Detached")) { [bool]$Detached } else { $true }
+$detachArg = if ($runDetached) { "-d" } else { "" }
 Invoke-Expression "docker compose -f $ComposeFile up $detachArg"
 
 Write-Host "Server starting. Health check available at http://localhost:8080/health" -ForegroundColor Cyan

@@ -5,6 +5,7 @@ description = "Dual-instance EnterpriseDB Advanced Server 9.6 FastMCP 3 service"
 requires-python = ">=3.11"
 dependencies = [
   "fastmcp>=3.2.0",
+  "packaging>=24.0",
   "pydantic>=2.8.0",
   "PyYAML>=6.0.1",
   "prometheus-client>=0.20.0",

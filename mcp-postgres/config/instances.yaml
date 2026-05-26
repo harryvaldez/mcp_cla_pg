@@ -3,11 +3,11 @@
 # Monitor actual usage via /metrics and tune based on observed peak concurrency.
 instances:
   - id: primary
-    host: 10.125.1.15
+    host: 10.100.2.20
     port: 5444
-    database: edb
+    database: lenexa
     auth_secret_ref: secret/pg/primary
-    sslmode: require
+    sslmode: disable
     connect_timeout_sec: 5
     command_timeout_sec: 30
     pool_min: 2
@@ -19,11 +19,11 @@ instances:
     edb_oracle_compat_mode: false
 
   - id: secondary
-    host: 10.125.1.16
+    host: 10.203.2.5
     port: 5444
-    database: edb
+    database: lenexa
     auth_secret_ref: secret/pg/secondary
-    sslmode: require
+    sslmode: disable
     connect_timeout_sec: 5
     command_timeout_sec: 30
     pool_min: 2

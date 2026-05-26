@@ -1,4 +1,4 @@
-FROM python:3.11-slim AS builder
+FROM python:3.14-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
@@ -13,10 +13,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY pyproject.toml /app/pyproject.toml
 COPY src /app/src
 
-RUN python -m pip install --upgrade pip && \
+RUN python -m pip install --upgrade pip wheel && \
+    pip install --prefix=/install --ignore-installed "packaging>=24.0" "fastmcp[server]>=3.2.0" && \
     pip install --prefix=/install .
 
-FROM python:3.11-slim AS runtime
+FROM python:3.14-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
