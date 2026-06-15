@@ -56,7 +56,7 @@ Copy-Item .env.example .env
 python -m src.server
 ```
 
-6. Health check: `curl http://localhost:8080/health`
+6. Health check: `curl http://localhost:8086/health`
 
 ### Docker Quick Start
 
@@ -68,8 +68,15 @@ docker compose -f docker/docker-compose.yml up -d
 
 | Tool | Description |
 |---|---|
-| `db_1_pg96_ping` | Check accessibility and identity of primary EDBAS 9.6 instance |
-| `db_2_pg96_ping` | Check accessibility and identity of secondary EDBAS 9.6 instance |
+| `db_n_pg96_ping` | Check accessibility and identity of an EDBAS 9.6 instance |
+| `db_n_pg96_get_slow_statements` | Analysis of long-running SQL with index recommendations |
+| `db_n_pg96_blocking_sessions` | Identify locking, deadlocks, and wait events |
+| `db_n_pg96_analyze_data_model` | Data model health, 3NF compliance, and DB constraints |
+| `db_n_pg96_extract_schema_model` | Retrieve table and column definitions |
+| `db_n_pg96_analyze_constraints_and_fks` | Check for foreign keys and mapped constraints |
+| `db_n_pg96_analyze_normalization` | Statistical anomaly and data type mismatch detection |
+| `db_n_pg96_analyze_index_statistics` | Monitor table staleness and index health |
+| `db_n_pg96_analyze_3nf_and_decomposition` | Identify row repetition and decomposition targets |
 
 ## Diagnostics Endpoints
 
@@ -81,6 +88,7 @@ docker compose -f docker/docker-compose.yml up -d
 ## Documentation Links
 
 - [Tool catalog](docs/mcp-tool-catalog.md) — Detailed tool contracts
+- [Database setup guide](docs/database-setup-guide.md) — Privilege requirements and ROLE configuration
 - [Docker runtime guide](docs/run-mcp-server-with-docker.md) — Docker deployment instructions
 - [FastMCP 3 Documentation](https://gofastmcp.com/) — FastMCP framework documentation
 - [EDBAS Documentation](https://www.enterprisedb.com/docs/) — EnterpriseDB Advanced Server docs

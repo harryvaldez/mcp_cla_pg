@@ -1,10 +1,13 @@
 services:
   fastmcp-edb96:
-    image: ghcr.io/company/fastmcp-edb96:1.0.0
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: fastmcp-edb96:local
     container_name: fastmcp-edb96
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "8086:8080"
     read_only: true
     cap_drop:
       - ALL
@@ -16,6 +19,8 @@ services:
       - ../config:/app/config:ro
       - ../policy:/app/policy:ro
       - mcp-audit-log:/var/log/mcp
+    env_file:
+      - ../.env
     environment:
       FASTMCP_CONFIG_PATH: /app/config/instances.yaml
       FASTMCP_POLICY_PATH: /app/config/runtime-policy.yaml

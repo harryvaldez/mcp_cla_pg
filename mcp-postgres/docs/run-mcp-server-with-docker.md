@@ -18,9 +18,9 @@ docker build -t fastmcp-edb96 -f docker/Dockerfile .
 ### `.env` File
 
 ```env
-SECRET_PG_PRIMARY_USERNAME=edb_readonly_user
+SECRET_PG_PRIMARY_USERNAME=mcp_readonly
 SECRET_PG_PRIMARY_PASSWORD=your_password_here
-SECRET_PG_SECONDARY_USERNAME=edb_readonly_user
+SECRET_PG_SECONDARY_USERNAME=mcp_readonly
 SECRET_PG_SECONDARY_PASSWORD=your_other_password_here
 ```
 
@@ -57,7 +57,7 @@ docker compose -f docker/docker-compose.runtime.yml up -d
 ## Verifying
 
 ```powershell
-curl http://localhost:8080/health
+curl http://localhost:8086/health
 ```
 
 Expected response:

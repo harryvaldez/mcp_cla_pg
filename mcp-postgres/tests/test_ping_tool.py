@@ -54,7 +54,7 @@ class TestPingTool:
         registered = register_pg_tools(mock_mcp, mock_state)
         assert "db_1_pg96_ping" in registered
         assert "db_2_pg96_ping" in registered
-        assert len(registered) == 2
+        assert len(registered) == 18
 
     def test_ping_sql_contains_edb_columns(self):
         from src.tools.pg_tools import _PING_SQL
