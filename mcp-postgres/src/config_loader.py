@@ -53,9 +53,7 @@ def _parse_nested_bool_map(name: str, raw: str) -> dict[str, dict[str, bool]]:
         inner: dict[str, bool] = {}
         for tool, enabled in mapping.items():
             if not isinstance(tool, str) or not isinstance(enabled, bool):
-                raise ValueError(
-                    f"{name} nested entries must map tool names to boolean values"
-                )
+                raise ValueError(f"{name} nested entries must map tool names to boolean values")
             inner[tool] = enabled
         parsed[instance] = inner
     return parsed
@@ -86,7 +84,7 @@ def apply_policy_env_overrides(
 
 
 def _load_yaml(path: str) -> dict[str, Any]:
-    with open(path, "r", encoding="utf-8") as fh:
+    with open(path, encoding="utf-8") as fh:
         data = yaml.safe_load(fh)
     if not isinstance(data, dict):
         raise ValueError(f"YAML at {path} must be a mapping")

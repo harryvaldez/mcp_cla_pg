@@ -21,9 +21,7 @@ def validate_identifier(name: str, field_name: str) -> str:
 
 def validate_positive_int(value: int, field_name: str, minimum: int, maximum: int) -> int:
     if value < minimum or value > maximum:
-        raise ValueError(
-            f"INVALID_INPUT: {field_name} must be between {minimum} and {maximum}"
-        )
+        raise ValueError(f"INVALID_INPUT: {field_name} must be between {minimum} and {maximum}")
     return value
 
 
@@ -37,4 +35,21 @@ def validate_schema_name(name: str) -> str:
         raise ValueError("INVALID_INPUT: direct access to EDBAS sys schema is restricted")
     if not value.replace("_", "").isalnum():
         raise ValueError("INVALID_INPUT: schema_name must be alphanumeric with underscores")
+    return value
+
+
+def validate_query_text(query_text: str) -> str:
+    """Validate SQL query text for HypoPG sub-tools.
+
+    Strips leading/trailing whitespace, rejects DDL/DML statements,
+    and rejects input containing SQL injection vectors (;, --).
+    Only SELECT statements are permitted for HypoPG analysis.
+    """
+    value = query_text.strip()
+    if not value:
+        raise ValueError("INVALID_INPUT: query_text is required")
+    if ";" in value or "--" in value:
+        raise ValueError("INVALID_INPUT: query_text contains invalid characters")
+    if not value.upper().lstrip().startswith("SELECT"):
+        raise ValueError("INVALID_INPUT: only SELECT queries can be analyzed by HypoPG tools")
     return value

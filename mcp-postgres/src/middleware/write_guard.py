@@ -28,9 +28,7 @@ class WriteGuard:
         # Check blocked patterns first (always denied regardless of write mode)
         for pattern in self._blocked_patterns:
             if pattern.search(normalized):
-                raise PermissionError(
-                    f"SQL blocked by policy pattern: {pattern.pattern}"
-                )
+                raise PermissionError(f"SQL blocked by policy pattern: {pattern.pattern}")
 
         # Extract leading verb
         verb = self._extract_verb(normalized).upper()

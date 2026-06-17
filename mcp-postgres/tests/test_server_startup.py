@@ -24,13 +24,16 @@ class TestServerStartup:
     def client(self):
         # Build fresh app for each test
         import importlib
+
         import src.server
+
         importlib.reload(src.server)
         # Patch pool init to avoid real DB connections
         from unittest.mock import patch
 
         with patch.object(
-            src.server.ConnectionManager, "initialize_pools",
+            src.server.ConnectionManager,
+            "initialize_pools",
             new_callable=lambda: lambda self: None,
         ):
             app = src.server.build_app()

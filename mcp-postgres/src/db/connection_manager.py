@@ -5,6 +5,7 @@ import contextlib
 import ssl
 import threading
 import time
+from collections.abc import Callable
 from typing import Any
 
 import asyncpg
@@ -18,7 +19,7 @@ class ConnectionManager:
     def __init__(
         self,
         instances: list[EdbInstanceConfig],
-        secret_resolver: callable,
+        secret_resolver: Callable[[str], dict[str, str]],
     ):
         self._instances: dict[str, EdbInstanceConfig] = {
             item.id: item for item in instances if item.enabled
@@ -27,8 +28,7 @@ class ConnectionManager:
         self._lock = threading.RLock()
         self._pools: dict[str, asyncpg.Pool] = {}
         self._health: dict[str, dict[str, Any]] = {
-            k: {"state": "unknown", "checked_at": None, "error": None}
-            for k in self._instances
+            k: {"state": "unknown", "checked_at": None, "error": None} for k in self._instances
         }
 
     def _build_dsn(self, instance: EdbInstanceConfig) -> str:
@@ -117,21 +117,21 @@ class ConnectionManager:
             yield conn
 
     async def fetch_single_row(
-        self, instance_id: str, database_name: str, sql: str
+        self, instance_id: str, database_name: str, sql: str, *args: Any
     ) -> dict[str, Any]:
         """Execute a query and return the first row as a dict."""
         async with self.acquire(instance_id) as conn:
-            row = await conn.fetchrow(sql)
+            row = await conn.fetchrow(sql, *args)
             if row is None:
                 return {}
             return dict(row)
 
     async def execute_query(
-        self, instance_id: str, database_name: str, sql: str, max_rows: int = 100
+        self, instance_id: str, database_name: str, sql: str, *args: Any, max_rows: int = 100
     ) -> list[dict[str, Any]]:
         """Execute a query and return all rows as list of dicts."""
         async with self.acquire(instance_id) as conn:
-            rows = await conn.fetch(sql)
+            rows = await conn.fetch(sql, *args)
             return [dict(r) for r in rows[:max_rows]]
 
     async def healthcheck_instance(self, instance_id: str) -> dict[str, Any]:
@@ -155,16 +155,19 @@ class ConnectionManager:
     async def healthcheck_all(self) -> dict[str, dict[str, Any]]:
         """Check connectivity for all instances."""
         tasks = {
-            instance_id: self.healthcheck_instance(instance_id)
-            for instance_id in self._instances
+            instance_id: self.healthcheck_instance(instance_id) for instance_id in self._instances
         }
         results = await asyncio.gather(*tasks.values(), return_exceptions=True)
         return {
-            instance_id: (result if not isinstance(result, BaseException) else {
-                "state": "error",
-                "checked_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                "error": str(result),
-            })
+            instance_id: (
+                result
+                if not isinstance(result, BaseException)
+                else {
+                    "state": "error",
+                    "checked_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    "error": str(result),
+                }
+            )
             for instance_id, result in zip(tasks.keys(), results)
         }
 
@@ -176,7 +179,7 @@ class ConnectionManager:
                 "min_size": pool._minsize,
                 "max_size": pool._maxsize,
                 "size": len(pool._holders),
-                "free": len(pool._queue._queue) if hasattr(pool._queue, "_queue") else 0,
+                "free": len(getattr(getattr(pool, "_queue", None), "_queue", [])),
             }
         return diagnostics
 

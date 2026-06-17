@@ -17,7 +17,9 @@ class ToolSpec:
         return f"db_{self.instance_number}_pg96_{self.toolname}"
 
 
-def generate_tool_specs(enabled_instances: list[str], toolnames: list[str] | None = None) -> list[ToolSpec]:
+def generate_tool_specs(
+    enabled_instances: list[str], toolnames: list[str] | None = None
+) -> list[ToolSpec]:
     """Generate ToolSpec entries for every combination of instance x toolname.
 
     Args:

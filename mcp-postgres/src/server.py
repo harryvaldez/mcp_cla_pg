@@ -115,6 +115,9 @@ def build_app() -> Any:
         mask_error_details=mask_errors,
     )
 
+    # Attach session-tracking middleware (auto-touches on every tool call)
+    mcp.add_middleware(state.session_manager.as_middleware())
+
     # Register dual-instance tools
     registered_tools = register_pg_tools(mcp, state)
     state.registered_tools = registered_tools
@@ -138,6 +141,7 @@ def build_app() -> Any:
     original_lifespan = getattr(mcp_app, "lifespan", None)
 
     if original_lifespan is not None:
+
         @asynccontextmanager
         async def combined_lifespan(app: Any):
             async with original_lifespan(app):
@@ -158,6 +162,7 @@ def build_app() -> Any:
     else:
         import starlette.applications
         from starlette.routing import Mount
+
         final_app = starlette.applications.Starlette(
             routes=[Mount("/", app=mcp_app)],
             lifespan=lifespan,
@@ -177,4 +182,5 @@ if __name__ == "__main__":
     log_level = os.getenv("FASTMCP_LOG_LEVEL", "info")
 
     import uvicorn
+
     uvicorn.run("src.server:app", host=host, port=port, log_level=log_level)

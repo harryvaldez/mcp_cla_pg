@@ -1,6 +1,6 @@
 """Tests for the dual-instance db_pg96_ping tool."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -12,7 +12,9 @@ class TestPingTool:
     def mock_state(self):
         state = MagicMock()
         state.connection_manager = AsyncMock()
-        state.connection_manager.list_enabled_instances = MagicMock(return_value=["primary", "secondary"])
+        state.connection_manager.list_enabled_instances = MagicMock(
+            return_value=["primary", "secondary"]
+        )
         state.session_manager = MagicMock()
         state.rate_limiter = MagicMock()
         state.rate_limiter.allow.return_value = True
@@ -44,6 +46,7 @@ class TestPingTool:
 
     def test_full_name_generation(self):
         from src.tools.tool_registry import ToolSpec
+
         spec = ToolSpec(instance="primary", instance_number=1, toolname="ping")
         assert spec.full_name == "db_1_pg96_ping"
         spec2 = ToolSpec(instance="secondary", instance_number=2, toolname="ping")
@@ -51,13 +54,15 @@ class TestPingTool:
 
     def test_registered_tools_list(self, mock_state, mock_mcp):
         from src.tools.pg_tools import register_pg_tools
+
         registered = register_pg_tools(mock_mcp, mock_state)
         assert "db_1_pg96_ping" in registered
         assert "db_2_pg96_ping" in registered
-        assert len(registered) == 18
+        assert len(registered) == 24
 
     def test_ping_sql_contains_edb_columns(self):
         from src.tools.pg_tools import _PING_SQL
+
         assert "instance_name" in _PING_SQL
         assert "database_version" in _PING_SQL
         assert "edb_compat_mode" in _PING_SQL

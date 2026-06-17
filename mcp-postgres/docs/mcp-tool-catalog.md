@@ -250,9 +250,121 @@ Analyzes data row repetition to detect M:N relationships requiring decomposition
 
 | Name | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `database_name" | string | Yes | - | Target database context |
+| `database_name` | string | Yes | - | Target database context |
 | `schema_name` | string | Yes | - | Target schema space |
 
 ### Tags
 
 `read-only`, `performance`, `instance-1` (or `instance-2`)
+
+---
+
+## `db_<n>_pg96_hypopg_create_virtual_indexes`
+
+Parses a SELECT query and creates candidate virtual indexes via HypoPG. Extracts referenced tables/columns, generates B-tree virtual index definitions, and creates them in the session.
+
+**Registered as:** `db_1_pg96_hypopg_create_virtual_indexes`, `db_2_pg96_hypopg_create_virtual_indexes`
+
+### Parameters
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `database_name` | string | Yes | - | Database to connect to |
+| `query_text` | string | Yes | - | The SELECT query to analyze for index candidates |
+| `actor` | string | No | `"system"` | Caller identity for audit logging |
+
+### Output Schema
+
+| Field | Type | Description |
+|---|---|---|
+| `virtual_indexes_created` | array | List of created virtual indexes with index_name, oid, indexdef |
+| `query_analysis` | object | Parsed table/column references from the query |
+| `count` | integer | Number of virtual indexes created |
+
+### FastMCP 3 Annotations
+
+| Annotation | Value |
+|---|---|
+| `readOnlyHint` | `false` |
+| `idempotentHint` | `false` |
+| `openWorldHint` | `false` |
+| `timeout` | `30.0` seconds |
+
+### Tags
+
+`hypopg`, `performance`, `instance-1` (or `instance-2`)
+
+---
+
+## `db_<n>_pg96_hypopg_explain_with_virtual`
+
+Runs EXPLAIN (FORMAT JSON) for a query using the current session's virtual indexes.
+
+**Registered as:** `db_1_pg96_hypopg_explain_with_virtual`, `db_2_pg96_hypopg_explain_with_virtual`
+
+### Parameters
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `database_name` | string | Yes | - | Database to connect to |
+| `query_text` | string | Yes | - | The SELECT query to explain |
+| `actor` | string | No | `"system"` | Caller identity for audit logging |
+
+### Output Schema
+
+| Field | Type | Description |
+|---|---|---|
+| `plan` | object | Raw JSON plan from EXPLAIN |
+| `total_cost` | float | Total cost extracted from the plan |
+
+### FastMCP 3 Annotations
+
+| Annotation | Value |
+|---|---|
+| `readOnlyHint` | `true` |
+| `idempotentHint` | `false` |
+| `openWorldHint` | `false` |
+| `timeout` | `30.0` seconds |
+
+### Tags
+
+`hypopg`, `performance`, `instance-1` (or `instance-2`)
+
+---
+
+## `db_<n>_pg96_hypopg_find_optimal_indexes`
+
+Finds the optimal HypoPG virtual index combination for a query. Captures baseline EXPLAIN cost, creates candidate virtual indexes, tests combinations (singletons, pairwise, triplets), ranks by cost, and returns the best recommendation.
+
+**Registered as:** `db_1_pg96_hypopg_find_optimal_indexes`, `db_2_pg96_hypopg_find_optimal_indexes`
+
+### Parameters
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `database_name` | string | Yes | - | Database to connect to |
+| `query_text` | string | Yes | - | The SELECT query to optimize |
+| `max_combinations` | integer | No | 10 | Maximum index combinations to test (min 5) |
+| `actor` | string | No | `"system"` | Caller identity for audit logging |
+
+### Output Schema
+
+| Field | Type | Description |
+|---|---|---|
+| `baseline_cost` | float | EXPLAIN total cost without any virtual indexes |
+| `baseline_plan` | object | Raw JSON baseline explain plan |
+| `ranked_plans` | array | Ranked plans (ascending by cost) with virtual_indexes_used, total_cost, cost_improvement_pct |
+| `best_recommendation` | object | The single best plan with virtual_indexes, total_cost, improvement_pct |
+
+### FastMCP 3 Annotations
+
+| Annotation | Value |
+|---|---|
+| `readOnlyHint` | `false` |
+| `idempotentHint` | `false` |
+| `openWorldHint` | `false` |
+| `timeout` | `60.0` seconds |
+
+### Tags
+
+`hypopg`, `performance`, `instance-1` (or `instance-2`)

@@ -2,10 +2,26 @@ from __future__ import annotations
 
 import threading
 import time
+from typing import TypedDict
+
+from fastmcp.server.middleware import Middleware, MiddlewareContext
+from fastmcp.tools.base import ToolResult
+
+
+class _SessionInfo(TypedDict):
+    """Per-actor session tracking record."""
+
+    created_at: float
+    last_active: float
+    last_request_id: str
 
 
 class SessionManager:
-    """Tracks actor sessions with TTL, inactivity timeout, and concurrency caps."""
+    """Tracks actor sessions with TTL, inactivity timeout, and concurrency caps.
+
+    Refactored to support FastMCP middleware: auto-tracks sessions via
+    on_call_tool hook (primary path), while keeping touch() for manual use.
+    """
 
     def __init__(
         self,
@@ -17,7 +33,7 @@ class SessionManager:
         self._inactivity_timeout = inactivity_timeout_minutes * 60
         self._concurrent_limit = concurrent_sessions_limit
         self._lock = threading.RLock()
-        self._sessions: dict[str, dict[str, float]] = {}
+        self._sessions: dict[str, _SessionInfo] = {}
 
     def touch(self, actor_id: str, request_id: str) -> None:
         """Register activity for an actor, updating their session timestamp.
@@ -26,15 +42,13 @@ class SessionManager:
         """
         now = time.time()
         with self._lock:
-            # Clean expired sessions
             self._expire_stale_locked(now)
 
             if actor_id not in self._sessions:
-                # Enforce concurrent session cap
                 if len(self._sessions) >= self._concurrent_limit:
                     oldest = min(
                         self._sessions.keys(),
-                        key=lambda k: self._sessions[k].get("last_active", 0),
+                        key=lambda k: self._sessions[k]["last_active"],
                     )
                     del self._sessions[oldest]
 
@@ -63,3 +77,31 @@ class SessionManager:
         """Return the number of currently active sessions."""
         with self._lock:
             return len(self._sessions)
+
+    # ── FastMCP Middleware integration ────────────────────────────────────
+
+    def as_middleware(self) -> SessionTrackingMiddleware:
+        """Wrap this manager as a FastMCP Middleware for automatic session tracking."""
+        return SessionTrackingMiddleware(self)
+
+
+class SessionTrackingMiddleware(Middleware):
+    """FastMCP middleware that auto-tracks actor sessions on every tool call.
+
+    Replaces manual ``state.session_manager.touch(actor, request_id)`` calls
+    in every tool.  Attach via ``mcp.add_middleware(manager.as_middleware())``.
+    """
+
+    def __init__(self, manager: SessionManager) -> None:
+        self._manager = manager
+
+    async def on_call_tool(
+        self,
+        context: MiddlewareContext,
+        call_next,
+    ) -> ToolResult:
+        fmcp_ctx = context.fastmcp_context
+        actor = fmcp_ctx.client_id or "anonymous" if fmcp_ctx else "anonymous"
+        request_id = fmcp_ctx.request_id or "unknown" if fmcp_ctx else "unknown"
+        self._manager.touch(actor, request_id)
+        return await call_next(context)

@@ -1,10 +1,8 @@
 """Tests for the RateLimiter with per-actor and global limits."""
 
-import time
-
 import pytest
 
-from src.middleware.rate_limiter import RateLimitExceededError, RateLimiter
+from src.middleware.rate_limiter import RateLimiter, RateLimitExceededError
 
 
 class TestRateLimiter:

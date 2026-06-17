@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import time
 from typing import Any
 
@@ -70,9 +69,7 @@ def register_diagnostics_routes(mcp: Any, state: Any) -> None:
                 instance_states[iid] = result
 
         # Aggregate status
-        connected = sum(
-            1 for s in instance_states.values() if s["state"] == "connected"
-        )
+        connected = sum(1 for s in instance_states.values() if s["state"] == "connected")
         total = len(instance_states)
         if total == 0:
             status = "unhealthy"
@@ -83,12 +80,14 @@ def register_diagnostics_routes(mcp: Any, state: Any) -> None:
         else:
             status = "unhealthy"
 
-        return JSONResponse({
-            "status": status,
-            "version": getattr(state, "version", "unknown"),
-            "uptime_seconds": uptime,
-            "instances": instance_states,
-        })
+        return JSONResponse(
+            {
+                "status": status,
+                "version": getattr(state, "version", "unknown"),
+                "uptime_seconds": uptime,
+                "instances": instance_states,
+            }
+        )
 
     @mcp.custom_route("/readiness", methods=["GET"])
     async def readiness(request: Request) -> JSONResponse:
@@ -101,15 +100,17 @@ def register_diagnostics_routes(mcp: Any, state: Any) -> None:
 
         all_healthy = all(pool_healthy.values()) if pool_healthy else False
 
-        return JSONResponse({
-            "ready": all_healthy,
-            "checks": {
-                "config_loaded": state.config is not None,
-                "policy_active": state.policy is not None,
-                "rate_limiter_active": state.rate_limiter is not None,
-                "instance_pools_healthy": pool_healthy,
-            },
-        })
+        return JSONResponse(
+            {
+                "ready": all_healthy,
+                "checks": {
+                    "config_loaded": state.config is not None,
+                    "policy_active": state.policy is not None,
+                    "rate_limiter_active": state.rate_limiter is not None,
+                    "instance_pools_healthy": pool_healthy,
+                },
+            }
+        )
 
     @mcp.custom_route("/metrics", methods=["GET"])
     async def metrics(request: Request) -> Response:
@@ -124,15 +125,17 @@ def register_diagnostics_routes(mcp: Any, state: Any) -> None:
         """Return security posture summary."""
         policy_raw = state.policy.model_dump_json()
         policy_checksum = hashlib.sha256(policy_raw.encode()).hexdigest()[:16]
-        return JSONResponse({
-            "write_mode": state.policy.write_mode_default,
-            "allowed_write_tools": state.policy.allowed_write_tools,
-            "blocked_patterns_count": len(state.policy.blocked_sql_patterns),
-            "policy_checksum": policy_checksum,
-            "last_secret_refresh_utc": getattr(state, "last_secret_refresh_utc", ""),
-            "ssl_enforced": True,
-            "mask_error_details": getattr(state, "mask_error_details", True),
-            "stateless_http": getattr(state, "stateless_http", True),
-            "enabled_instances": state.connection_manager.list_enabled_instances(),
-            "registered_tools": getattr(state, "registered_tools", []),
-        })
+        return JSONResponse(
+            {
+                "write_mode": state.policy.write_mode_default,
+                "allowed_write_tools": state.policy.allowed_write_tools,
+                "blocked_patterns_count": len(state.policy.blocked_sql_patterns),
+                "policy_checksum": policy_checksum,
+                "last_secret_refresh_utc": getattr(state, "last_secret_refresh_utc", ""),
+                "ssl_enforced": True,
+                "mask_error_details": getattr(state, "mask_error_details", True),
+                "stateless_http": getattr(state, "stateless_http", True),
+                "enabled_instances": state.connection_manager.list_enabled_instances(),
+                "registered_tools": getattr(state, "registered_tools", []),
+            }
+        )
