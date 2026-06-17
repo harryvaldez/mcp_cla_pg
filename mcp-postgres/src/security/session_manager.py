@@ -101,7 +101,11 @@ class SessionTrackingMiddleware(Middleware):
         call_next,
     ) -> ToolResult:
         fmcp_ctx = context.fastmcp_context
-        actor = fmcp_ctx.client_id or "anonymous" if fmcp_ctx else "anonymous"
-        request_id = fmcp_ctx.request_id or "unknown" if fmcp_ctx else "unknown"
+        if fmcp_ctx is not None:
+            actor = fmcp_ctx.client_id or "anonymous"
+            request_id = fmcp_ctx.request_id or "unknown"
+        else:
+            actor = "anonymous"
+            request_id = "unknown"
         self._manager.touch(actor, request_id)
         return await call_next(context)
