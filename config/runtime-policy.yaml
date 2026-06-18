@@ -1,0 +1,30 @@
+write_mode_default: deny
+allowed_write_tools:
+  - hypopg_create_index
+  - hypopg_drop_index
+  - hypopg_reset
+  - hypopg_get_indexdef
+  - hypopg_list_indexes
+blocked_sql_patterns:
+  - "(?i)\\b(drop|alter|truncate|create)\\b"
+  - "(?i)\\b(pg_read_file|pg_write_file|pg_sleep)\\b"
+  - "(?i)\\b(CREATE\\s+(OR\\s+REPLACE\\s+)?(PACKAGE|TYPE\\s+BODY|SYNONYM|DIRECTORY))\\b"
+max_result_rows: 5000
+max_query_duration_ms: 15000
+instance_enable_flags:
+  primary: true
+  secondary: true
+tool_enable_flags:
+  get_slow_statements: true
+  blocking_sessions: true
+  analyze_data_model: true
+  extract_schema_model: true
+  analyze_constraints_and_fks: true
+  analyze_normalization: true
+  analyze_index_statistics: true
+  analyze_3nf_and_decomposition: true
+  hypopg_create_virtual_indexes: true
+  hypopg_explain_with_virtual: true
+  hypopg_find_optimal_indexes: true
+instance_tool_enable_flags: {}
+allowed_tools: {}

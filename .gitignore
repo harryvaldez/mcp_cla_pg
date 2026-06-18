@@ -1,0 +1,23 @@
+# Environment
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Docker
+docker-compose.override.yml
+
+# IDE
+.idea/
+.vscode/settings.json
+*.swp
+*.swo

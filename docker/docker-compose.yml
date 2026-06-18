@@ -1,0 +1,58 @@
+services:
+  fastmcp-edb96:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: fastmcp-edb96:local
+    container_name: fastmcp-edb96
+    restart: unless-stopped
+    ports:
+      - "8086:8080"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=64m
+    volumes:
+      - ../config:/app/config:ro
+      - ../policy:/app/policy:ro
+      - mcp-audit-log:/var/log/mcp
+    env_file:
+      - ../.env
+    environment:
+      FASTMCP_CONFIG_PATH: /app/config/instances.yaml
+      FASTMCP_POLICY_PATH: /app/config/runtime-policy.yaml
+      FASTMCP_RATE_LIMIT_PATH: /app/config/rate-limit.yaml
+      FASTMCP_HOST: 0.0.0.0
+      FASTMCP_PORT: 8080
+      FASTMCP_LOG_LEVEL: INFO
+      FASTMCP_STATELESS_HTTP: "true"
+      FASTMCP_MASK_ERROR_DETAILS: "true"
+      FASTMCP_RATE_LIMIT_BACKEND: ${FASTMCP_RATE_LIMIT_BACKEND:-local}
+      FASTMCP_REDIS_URL: ${FASTMCP_REDIS_URL:-}
+      FASTMCP_REDIS_NAMESPACE: ${FASTMCP_REDIS_NAMESPACE:-mcp:ratelimit}
+      FASTMCP_TOOL_ENABLE_FLAGS_JSON: ${FASTMCP_TOOL_ENABLE_FLAGS_JSON:-}
+      FASTMCP_INSTANCE_TOOL_ENABLE_FLAGS_JSON: ${FASTMCP_INSTANCE_TOOL_ENABLE_FLAGS_JSON:-}
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  redis:
+    image: redis:7-alpine
+    container_name: fastmcp-edb96-redis
+    profiles: ["local-redis"]
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+volumes:
+  mcp-audit-log:
+  redis-data:

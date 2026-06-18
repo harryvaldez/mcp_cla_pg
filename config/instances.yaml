@@ -1,0 +1,35 @@
+# EnterpriseDB Advanced Server 9.6 instances with connection pooling.
+# Pool settings use conservative defaults.
+# Monitor actual usage via /metrics and tune based on observed peak concurrency.
+instances:
+  - id: primary
+    host: 10.100.2.20
+    port: 5444
+    database: lenexa
+    auth_secret_ref: secret/pg/primary
+    sslmode: disable
+    connect_timeout_sec: 5
+    command_timeout_sec: 30
+    pool_min: 2
+    pool_max: 10
+    pool_enabled: true
+    pool_idle_timeout_sec: 300
+    pool_acquire_timeout_sec: 5
+    enabled: true
+    edb_oracle_compat_mode: false
+
+  - id: secondary
+    host: 10.203.2.5
+    port: 5444
+    database: lenexa
+    auth_secret_ref: secret/pg/secondary
+    sslmode: disable
+    connect_timeout_sec: 5
+    command_timeout_sec: 30
+    pool_min: 2
+    pool_max: 10
+    pool_enabled: true
+    pool_idle_timeout_sec: 300
+    pool_acquire_timeout_sec: 5
+    enabled: true
+    edb_oracle_compat_mode: false

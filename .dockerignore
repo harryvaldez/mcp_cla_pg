@@ -1,0 +1,9 @@
+# Exclude local build metadata that can override pyproject dependency metadata
+**/*.egg-info/
+
+# Common VCS/editor noise
+.git/
+.gitignore
+.vscode/
+__pycache__/
+*.pyc
