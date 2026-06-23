@@ -190,7 +190,7 @@ Complies with standard Performance Analysis Schema reporting lock event resoluti
 | `readOnlyHint` | `true` |
 | `idempotentHint` | `false` |
 | `openWorldHint` | `false` |
-| `timeout` | `60.0` seconds |
+| `timeout` | `30.0` seconds |
 
 ### Tags
 
@@ -494,7 +494,7 @@ The `hypopg_find_optimal_indexes` tool and `get_slow_statements` use the followi
 | `hypopg_explain_with_virtual` | `true` | Read-only EXPLAIN (uses existing session state) | 30s |
 | `hypopg_find_optimal_indexes` | `false` | Creates/drops virtual indexes during testing | 60s |
 | `exec_query` | `true` | Read-only SELECT execution | 30s |
-| `analyze_table` | `true` | Read-only maintenance analysis | 60s |
+| `analyze_table` | `true` | Read-only maintenance analysis | 30s |
 | `check_table_bloat` | `true` | Read-only bloat analysis | 30s |
 | `check_table_wraparound` | `true` | Read-only wraparound check | 30s |
 | `check_table_statistics` | `true` | Read-only statistics check | 30s |
@@ -524,7 +524,7 @@ Orchestrates comprehensive single-table maintenance analysis across 4 domains: b
 
 **Output:** `Category: "Maintenance"` with `Issues` array of independent entries per analysis domain (Bloat, Wraparound, Statistics, Index Health), each with own `Impacted Metrics`, `Issue Priority`, `Recommendations/Fixes`.
 
-**Tags:** `read-only`, `maintenance` | **Timeout:** 60s
+**Tags:** `read-only`, `maintenance` | **Timeout:** 30s
 
 ### `db_<n>_pg96_check_table_bloat`
 

@@ -69,6 +69,7 @@ docker compose -f docker/docker-compose.yml up -d
 | Tool | Description |
 |---|---|
 | `db_n_pg96_ping` | Check accessibility and identity of an EDBAS 9.6 instance |
+| `db_n_pg96_exec_query` | Execute a user-supplied SELECT query |
 | `db_n_pg96_get_slow_statements` | Analysis of long-running SQL with index recommendations |
 | `db_n_pg96_blocking_sessions` | Identify locking, deadlocks, and wait events |
 | `db_n_pg96_analyze_data_model` | Data model health, 3NF compliance, and DB constraints |
@@ -77,6 +78,19 @@ docker compose -f docker/docker-compose.yml up -d
 | `db_n_pg96_analyze_normalization` | Statistical anomaly and data type mismatch detection |
 | `db_n_pg96_analyze_index_statistics` | Monitor table staleness and index health |
 | `db_n_pg96_analyze_3nf_and_decomposition` | Identify row repetition and decomposition targets |
+| `db_n_pg96_analyze_table` | Comprehensive single-table maintenance analysis |
+| `db_n_pg96_check_table_bloat` | Dead tuple ratio and vacuum staleness |
+| `db_n_pg96_check_table_wraparound` | Transaction ID wraparound risk |
+| `db_n_pg96_check_table_statistics` | Table statistics staleness |
+| `db_n_pg96_check_index_health` | Invalid, unused, and duplicate indexes |
+| `db_n_pg96_list_objects` | List database objects (tables, indexes, views) in a schema |
+| `db_n_pg96_list_tables` | List tables with row counts and sizes |
+| `db_n_pg96_list_indexes` | List indexes with type and scan stats |
+| `db_n_pg96_list_views` | List views with definition and owner |
+| `db_n_pg96_list_objects_by_type` | List objects by `pg_class.relkind` type |
+| `db_n_pg96_hypopg_create_virtual_indexes` | Generate candidate virtual indexes via HypoPG |
+| `db_n_pg96_hypopg_explain_with_virtual` | EXPLAIN a query using session's virtual indexes |
+| `db_n_pg96_hypopg_find_optimal_indexes` | Find optimal virtual index combination for a query |
 
 ## Diagnostics Endpoints
 

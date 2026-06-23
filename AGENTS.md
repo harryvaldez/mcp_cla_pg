@@ -96,7 +96,7 @@ async def _tool_impl(
     except Exception as exc:
         decision, error_code = f"TOOL_ERROR: {exc}"
         state.denied_requests += 1
-        raise RuntimeError(error_code) from exc
+        raise ToolError(error_code)
     finally:
         _log_audit_event(
             request_id=request_id, actor=actor, tool=_tool, instance=_instance,
@@ -109,6 +109,7 @@ async def _tool_impl(
 ### Key imports for tools
 ```python
 from fastmcp import Context, FastMCP
+from fastmcp.exceptions import ToolError
 from mcp.types import ToolAnnotations
 from src.middleware.rate_limiter import RateLimitExceededError
 ```
