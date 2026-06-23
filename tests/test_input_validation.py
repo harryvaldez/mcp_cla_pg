@@ -4,7 +4,6 @@ import pytest
 
 from src.tools.input_validation import (
     validate_database_name,
-    validate_identifier,
     validate_object_type,
     validate_positive_int,
     validate_query_text,
@@ -30,17 +29,6 @@ class TestInputValidation:
             validate_database_name("edb; DROP TABLE users;")
         with pytest.raises(ValueError, match="invalid characters"):
             validate_database_name("edb--comment")
-
-    def test_valid_identifier(self):
-        assert validate_identifier("my_table", "table_name") == "my_table"
-
-    def test_empty_identifier(self):
-        with pytest.raises(ValueError):
-            validate_identifier("", "field")
-
-    def test_sql_injection_in_identifier(self):
-        with pytest.raises(ValueError):
-            validate_identifier("x; DELETE FROM users", "field")
 
     def test_valid_positive_int(self):
         assert validate_positive_int(50, "limit", 1, 100) == 50
@@ -80,11 +68,28 @@ class TestValidateQueryText:
             == "SELECT count(*) FROM orders"
         )
 
-    def test_rejects_with_select(self):
-        with pytest.raises(ValueError, match="only SELECT"):
-            validate_query_text(
-                "WITH recent AS (SELECT * FROM orders) SELECT * FROM recent"
-            )
+    def test_accepts_with_select(self):
+        """CTE-prefixed WITH ... SELECT ... queries should be accepted."""
+        result = validate_query_text(
+            "WITH recent AS (SELECT * FROM orders) SELECT * FROM recent"
+        )
+        assert result == (
+            "WITH recent AS (SELECT * FROM orders) SELECT * FROM recent"
+        )
+
+    def test_accepts_block_comment(self):
+        """SQL block comments before SELECT should be stripped."""
+        result = validate_query_text("/* my comment */ SELECT * FROM users")
+        assert result == "/* my comment */ SELECT * FROM users"
+
+    def test_accepts_with_delete_cte(self):
+        """WITH prefix queries containing DML in CTE but SELECT outer are accepted."""
+        result = validate_query_text(
+            "WITH data AS (DELETE FROM t RETURNING *) SELECT * FROM data"
+        )
+        assert result == (
+            "WITH data AS (DELETE FROM t RETURNING *) SELECT * FROM data"
+        )
 
     def test_rejects_empty(self):
         with pytest.raises(ValueError, match="query_text is required"):

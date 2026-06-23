@@ -13,7 +13,7 @@ import logging
 import re
 from typing import Any
 
-import asyncpg
+from fastmcp.exceptions import ToolError
 
 logger = logging.getLogger(__name__)
 
@@ -187,7 +187,7 @@ async def hypopg_create_virtual_indexes(
         await conn.execute("SELECT hypopg_reset()")
     except Exception:
         logger.warning("hypopg_reset() failed (extension may not be loaded)")
-        raise RuntimeError("HypoPG extension is not available on this instance") from None
+        raise ToolError("HypoPG extension is not available on this instance") from None
 
     tables = query_analysis.get("tables", {})
     for table_name, info in tables.items():
@@ -230,10 +230,10 @@ async def hypopg_explain_with_virtual(
     try:
         row = await conn.fetchrow(explain_sql)
     except Exception as exc:
-        raise RuntimeError(f"EXPLAIN failed: {exc}") from exc
+        raise ToolError(f"EXPLAIN failed: {exc}") from exc
 
     if not row or not row[0]:
-        raise RuntimeError("EXPLAIN returned no plan")
+        raise ToolError("EXPLAIN returned no plan")
 
     plan_list = row[0]  # EXPLAIN FORMAT JSON returns a list
     if isinstance(plan_list, list) and len(plan_list) > 0:
@@ -271,11 +271,13 @@ async def hypopg_find_optimal_indexes(
         Dict with baseline_cost, ranked_plans (top 5+), and
         best_recommendation.
     """
-    # Step 1: Baseline cost
+    # Step 1: Baseline cost — init defaults before guarded calls
+    baseline: dict[str, Any] = {}
+    baseline_cost: float = 0.0
     try:
         await conn.execute("SELECT hypopg_reset()")
     except Exception:
-        raise RuntimeError("HypoPG extension is not available on this instance") from None
+        raise ToolError("HypoPG extension is not available on this instance") from None
 
     baseline = await hypopg_explain_with_virtual(conn, query_text)
     baseline_cost = baseline["total_cost"]

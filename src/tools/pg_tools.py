@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from fastmcp import Context, FastMCP
@@ -16,6 +16,7 @@ from src.tools import hypopg_tools, table_analysis
 from src.tools.input_validation import (
     validate_database_name,
     validate_object_type,
+    validate_positive_int,
     validate_query_text,
     validate_schema_name,
     validate_sql_statement,
@@ -150,7 +151,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     result = await func(conn, schema_name_v, table_name_v)
                 return {
                     "Category": "Maintenance",
-                    "Date Generated": datetime.utcnow().strftime("%Y-%m-%d"),
+                    "Date Generated": datetime.now(UTC).strftime("%Y-%m-%d"),
                     "Source DB Server Name": _i,
                     "Issues Identified": (
                         f"{issue_name} analysis for "
@@ -227,7 +228,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 row_count = len(objects)
                 return {
                     "Category": "Discovery",
-                    "Date Generated": datetime.utcnow().strftime("%Y-%m-%d"),
+                    "Date Generated": datetime.now(UTC).strftime("%Y-%m-%d"),
                     "Source DB Server Name": _i,
                     "Schema": schema_name_v,
                     "Object Count": row_count,
@@ -282,6 +283,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
             _tool: str = ping_tool_name,
             _instance: str = instance_id,
             _instance_number: int = instance_number,
+            app_state: Any = Depends(lambda: state),
         ) -> dict[str, str]:
             """Check accessibility and identity of an EDBAS 9.6 instance.
 
@@ -312,11 +314,11 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     required_privilege="read",
                     ctx=ctx,
                 )
-                state.session_manager.touch(actor, request_id)
-                state.rate_limiter.allow(actor)
+                app_state.session_manager.touch(actor, request_id)
+                app_state.rate_limiter.allow(actor)
 
                 # Execute identity query against the bound instance
-                payload = await state.connection_manager.fetch_single_row(
+                payload = await app_state.connection_manager.fetch_single_row(
                     _instance, "edb", _PING_SQL
                 )
                 row_count = 1 if payload else 0
@@ -351,7 +353,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
             except PermissionError as exc:
                 decision = "deny"
                 error_code = str(exc)
-                state.denied_requests += 1
+                app_state.denied_requests += 1
                 if ctx is not None:
                     await ctx.warning(
                         f"[{request_id}] Ping denied: {error_code}",
@@ -361,7 +363,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
             except RateLimitExceededError as exc:
                 decision = "deny"
                 error_code = str(exc)
-                state.denied_requests += 1
+                app_state.denied_requests += 1
                 if ctx is not None:
                     await ctx.warning(
                         f"[{request_id}] Rate limit exceeded: {error_code}",
@@ -371,7 +373,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
             except Exception as exc:
                 decision = "deny"
                 error_code = f"PING_ERROR: {exc}"
-                state.denied_requests += 1
+                app_state.denied_requests += 1
                 if ctx is not None:
                     await ctx.error(
                         f"[{request_id}] Ping failed: {error_code}",
@@ -436,6 +438,9 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 _auth_ctx = None
 
                 database_name = validate_database_name(database_name)
+                max_combinations = validate_positive_int(
+                    max_combinations, "max_combinations", 1, 100
+                )
 
                 try:
                     actor, _auth_ctx = await _resolve_actor_and_authorize(
@@ -482,7 +487,36 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                                 optimal = await hypopg_tools.hypopg_find_optimal_indexes(
                                     conn, query_text, max_combinations=max_combinations
                                 )
-                        except RuntimeError as hypopg_err:
+
+                                # Check for stale statistics on relevant tables
+                                query_analysis = await hypopg_tools.parse_tables_and_columns(
+                                    conn, query_text
+                                )
+                                stats_recs: list[str] = []
+                                for table_name in query_analysis.get("tables", {}):
+                                    schema_part = "public"
+                                    table_part = table_name
+                                    if "." in table_name:
+                                        schema_part, table_part = table_name.split(".", 1)
+                                    try:
+                                        stats_row = await conn.fetchrow(
+                                            """
+                                            SELECT relname, last_analyze, last_autoanalyze
+                                            FROM pg_stat_user_tables
+                                            WHERE schemaname = $1 AND relname = $2
+                                            """,
+                                            schema_part,
+                                            table_part,
+                                        )
+                                        if stats_row:
+                                            last_analyze = stats_row.get("last_analyze")
+                                            if last_analyze is None:
+                                                stats_recs.append(
+                                                    f"ANALYZE {table_name};  -- Never analyzed"
+                                                )
+                                    except Exception:
+                                        pass
+                        except ToolError as hypopg_err:
                             fixes.append(
                                 {
                                     "Long Running Statement": query_text[:200],
@@ -509,38 +543,6 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                                 }
                             )
 
-                        # Check for stale statistics on relevant tables
-                        stats_recs = []
-                        async with app_state.connection_manager.acquire(_instance) as _conn:
-                            query_analysis = await hypopg_tools.parse_tables_and_columns(
-                                _conn,
-                                query_text,
-                            )
-                        for table_name in query_analysis.get("tables", {}):
-                            schema_part = "public"
-                            table_part = table_name
-                            if "." in table_name:
-                                schema_part, table_part = table_name.split(".", 1)
-                            try:
-                                async with app_state.connection_manager.acquire(_instance) as conn:
-                                    stats_row = await conn.fetchrow(
-                                        """
-                                        SELECT relname, last_analyze, last_autoanalyze
-                                        FROM pg_stat_user_tables
-                                        WHERE schemaname = $1 AND relname = $2
-                                        """,
-                                        schema_part,
-                                        table_part,
-                                    )
-                                    if stats_row:
-                                        last_analyze = stats_row.get("last_analyze")
-                                        if last_analyze is None:
-                                            stats_recs.append(
-                                                f"ANALYZE {table_name};  -- Never analyzed"
-                                            )
-                            except Exception:
-                                pass
-
                         entry = {
                             "Long Running Statement": query_text[:200],
                             "Calls": row.get("calls"),
@@ -558,7 +560,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
 
                     result = {
                         "Category": "Performance",
-                        "Date Generated": datetime.utcnow().strftime("%Y-%m-%d"),
+                        "Date Generated": datetime.now(UTC).strftime("%Y-%m-%d"),
                         "Source DB Server Name": _instance,
                         "Issues Identified": (
                             f"Found {len(rows)} slow queries in {database_name}. "
@@ -764,26 +766,26 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                             }
                         )
 
-                    # Detect potential deadlocks by checking for cyclical patterns
-                    deadlock_count = 0
+                    # Detect potential blocking cycles (not true DB deadlocks)
+                    potential_blocking_cycles = 0
                     blocked_pids = {row.get("blocked_pid") for row in lock_rows}
                     blocking_pids = {row.get("blocking_pid") for row in lock_rows}
                     if blocked_pids & blocking_pids:
-                        deadlock_count = len(blocked_pids & blocking_pids)
+                        potential_blocking_cycles = len(blocked_pids & blocking_pids)
 
                     result = {
                         "Category": "Performance",
-                        "Date Generated": datetime.utcnow().strftime("%Y-%m-%d"),
+                        "Date Generated": datetime.now(UTC).strftime("%Y-%m-%d"),
                         "Source DB Server Name": _instance,
                         "Issues Identified": (
                             f"Detected {len(active_rows)} active sessions, "
                             f"{len(lock_rows)} blocking chains, "
-                            f"{deadlock_count} potential deadlocks, "
+                            f"{potential_blocking_cycles} potential blocking cycles, "
                             f"{len(seq_rows)} tables with seq_scan abuse."
                         ),
                         "Impacted Metrics": "Wait times, lock contention, sequence scan overhead",
                         "Issue Priority": "High"
-                        if deadlock_count > 0
+                        if potential_blocking_cycles > 0
                         else ("Medium" if len(lock_rows) > 0 else "Low"),
                         "Recommendations/Fixes": fixes,
                     }
@@ -1091,7 +1093,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
 
                     result = {
                         "Category": "Performance",
-                        "Date Generated": datetime.utcnow().strftime("%Y-%m-%d"),
+                        "Date Generated": datetime.now(UTC).strftime("%Y-%m-%d"),
                         "Source DB Server Name": _instance,
                         "Issues Identified": (
                             f"Analyzed schema '{schema_name}': {len(schema_rows)} columns mapped, "
@@ -1191,7 +1193,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     row_count = len(rows)
                     return {
                         "Category": "Performance",
-                        "Date Generated": datetime.utcnow().strftime("%Y-%m-%d"),
+                        "Date Generated": datetime.now(UTC).strftime("%Y-%m-%d"),
                         "Source DB Server Name": _instance,
                         "Issues Identified": "N/A - Model Extraction",
                         "Impacted Metrics": "None",
@@ -1309,7 +1311,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     }
                     return {
                         "Category": "Performance",
-                        "Date Generated": datetime.utcnow().strftime("%Y-%m-%d"),
+                        "Date Generated": datetime.now(UTC).strftime("%Y-%m-%d"),
                         "Source DB Server Name": _instance,
                         "Issues Identified": f"Scanned {len(all_tables)} tables, {len(rows)} constraints. {len(missing_pk)} tables missing primary keys.",  # noqa: E501
                         "Impacted Metrics": "Data Integrity, Index Performance",
@@ -1406,7 +1408,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     row_count = len(rows)
                     return {
                         "Category": "Performance",
-                        "Date Generated": datetime.utcnow().strftime("%Y-%m-%d"),
+                        "Date Generated": datetime.now(UTC).strftime("%Y-%m-%d"),
                         "Source DB Server Name": _instance,
                         "Issues Identified": f"{len(rows)} column type mismatches found across tables",  # noqa: E501
                         "Impacted Metrics": "Data Integrity, Join Performance",
@@ -1501,7 +1503,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
 
                     return {
                         "Category": "Performance",
-                        "Date Generated": datetime.utcnow().strftime("%Y-%m-%d"),
+                        "Date Generated": datetime.now(UTC).strftime("%Y-%m-%d"),
                         "Source DB Server Name": _instance,
                         "Issues Identified": f"Checked {len(rows)} tables for statistics staleness. {len(stale_tables)} tables need ANALYZE.",  # noqa: E501
                         "Impacted Metrics": "Query Plan Quality",
@@ -1611,7 +1613,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                         )
                     return {
                         "Category": "Performance",
-                        "Date Generated": datetime.utcnow().strftime("%Y-%m-%d"),
+                        "Date Generated": datetime.now(UTC).strftime("%Y-%m-%d"),
                         "Source DB Server Name": _instance,
                         "Issues Identified": f"Found {len(rows)} tables with inefficient scanning patterns suggesting normalization issues",  # noqa: E501
                         "Impacted Metrics": "Data Redundancy, Query Performance",
@@ -1850,6 +1852,9 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 _auth_ctx = None
                 database_name = validate_database_name(database_name)
                 query_text = validate_query_text(query_text)
+                max_combinations = validate_positive_int(
+                    max_combinations, "max_combinations", 1, 100
+                )
                 try:
                     actor, _auth_ctx = await _resolve_actor_and_authorize(
                         actor=actor, tool=_tool, required_privilege="read", ctx=ctx
@@ -1912,6 +1917,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 _tool: str = exec_query_tool_name,
                 _instance: str = instance_id,
                 _instance_number: int = instance_number,
+                app_state: Any = Depends(lambda: state),
             ) -> dict[str, Any]:
                 request_id = str(uuid.uuid4())
                 started = time.time()
@@ -1919,36 +1925,41 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 _auth_ctx = None
                 sql_v = validate_sql_statement(sql_statement)
                 database_name_v = validate_database_name(database_name)
+                clamped = max_rows > 1000
                 max_rows_v = max(1, min(max_rows, 1000))
                 try:
                     actor, _auth_ctx = await _resolve_actor_and_authorize(
                         actor=actor, tool=_tool, required_privilege="read", ctx=ctx
                     )
-                    state.session_manager.touch(actor, request_id)
-                    state.rate_limiter.allow(actor)
-                    state.write_guard.enforce(_tool, sql_v)
-                    rows = await state.connection_manager.execute_query(
+                    app_state.session_manager.touch(actor, request_id)
+                    app_state.rate_limiter.allow(actor)
+                    app_state.write_guard.enforce(_tool, sql_v)
+                    rows = await app_state.connection_manager.execute_query(
                         _instance, database_name_v, sql_v, max_rows_v
                     )
                     row_count = len(rows)
-                    return {
+                    result: dict[str, Any] = {
                         "rows": rows,
                         "row_count": row_count,
                         "truncated": row_count >= max_rows_v,
                         "query": sql_v,
                         "database": database_name_v,
                     }
+                    if clamped:
+                        result["warned"] = True
+                        result["clamped_from"] = max_rows
+                    return result
                 except PermissionError as exc:
                     decision, error_code = "deny", str(exc)
-                    state.denied_requests += 1
+                    app_state.denied_requests += 1
                     raise
                 except RateLimitExceededError as exc:
                     decision, error_code = "deny", str(exc)
-                    state.denied_requests += 1
+                    app_state.denied_requests += 1
                     raise
                 except Exception as exc:
                     decision, error_code = f"TOOL_ERROR: {exc}"
-                    state.denied_requests += 1
+                    app_state.denied_requests += 1
                     raise ToolError(error_code)
                 finally:
                     _log_audit_event(
@@ -1990,6 +2001,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 _tool: str = analyze_table_tool_name,
                 _instance: str = instance_id,
                 _instance_number: int = instance_number,
+                app_state: Any = Depends(lambda: state),
             ) -> dict[str, Any]:
                 request_id = str(uuid.uuid4())
                 started = time.time()
@@ -2003,10 +2015,10 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     actor, _auth_ctx = await _resolve_actor_and_authorize(
                         actor=actor, tool=_tool, required_privilege="read", ctx=ctx
                     )
-                    state.session_manager.touch(actor, request_id)
-                    state.rate_limiter.allow(actor)
-                    state.write_guard.enforce(_tool, "SELECT 1")
-                    async with state.connection_manager.acquire(_instance) as conn:
+                    app_state.session_manager.touch(actor, request_id)
+                    app_state.rate_limiter.allow(actor)
+                    app_state.write_guard.enforce(_tool, "SELECT 1")
+                    async with app_state.connection_manager.acquire(_instance) as conn:
                         if include_bloat:
                             results["table_bloat"] = (
                                 await table_analysis.check_table_bloat(
@@ -2034,7 +2046,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     row_count = 1
                     return {
                         "Category": "Maintenance",
-                        "Date Generated": datetime.utcnow().strftime("%Y-%m-%d"),
+                        "Date Generated": datetime.now(UTC).strftime("%Y-%m-%d"),
                         "Source DB Server Name": _instance,
                         "Table": f"{schema_name_v}.{table_name_v}",
                         "Database": database_name_v,
@@ -2042,15 +2054,15 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     }
                 except PermissionError as exc:
                     decision, error_code = "deny", str(exc)
-                    state.denied_requests += 1
+                    app_state.denied_requests += 1
                     raise
                 except RateLimitExceededError as exc:
                     decision, error_code = "deny", str(exc)
-                    state.denied_requests += 1
+                    app_state.denied_requests += 1
                     raise
                 except Exception as exc:
                     decision, error_code = f"TOOL_ERROR: {exc}"
-                    state.denied_requests += 1
+                    app_state.denied_requests += 1
                     raise ToolError(error_code)
                 finally:
                     _log_audit_event(
@@ -2111,6 +2123,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 _tool: str = list_objects_tool_name,
                 _instance: str = instance_id,
                 _instance_number: int = instance_number,
+                app_state: Any = Depends(lambda: state),
             ) -> dict[str, Any]:
                 request_id = str(uuid.uuid4())
                 started = time.time()
@@ -2123,10 +2136,10 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     actor, _auth_ctx = await _resolve_actor_and_authorize(
                         actor=actor, tool=_tool, required_privilege="read", ctx=ctx
                     )
-                    state.session_manager.touch(actor, request_id)
-                    state.rate_limiter.allow(actor)
-                    state.write_guard.enforce(_tool, "SELECT 1")
-                    async with state.connection_manager.acquire(_instance) as conn:
+                    app_state.session_manager.touch(actor, request_id)
+                    app_state.rate_limiter.allow(actor)
+                    app_state.write_guard.enforce(_tool, "SELECT 1")
+                    async with app_state.connection_manager.acquire(_instance) as conn:
                         if include_tables:
                             results["tables"] = (
                                 await table_analysis.list_tables_by_schema(
@@ -2148,7 +2161,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     row_count = 1
                     return {
                         "Category": "Discovery",
-                        "Date Generated": datetime.utcnow().strftime("%Y-%m-%d"),
+                        "Date Generated": datetime.now(UTC).strftime("%Y-%m-%d"),
                         "Source DB Server Name": _instance,
                         "Schema": schema_name_v,
                         "Database": database_name_v,
@@ -2156,15 +2169,15 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     }
                 except PermissionError as exc:
                     decision, error_code = "deny", str(exc)
-                    state.denied_requests += 1
+                    app_state.denied_requests += 1
                     raise
                 except RateLimitExceededError as exc:
                     decision, error_code = "deny", str(exc)
-                    state.denied_requests += 1
+                    app_state.denied_requests += 1
                     raise
                 except Exception as exc:
                     decision, error_code = f"TOOL_ERROR: {exc}"
-                    state.denied_requests += 1
+                    app_state.denied_requests += 1
                     raise ToolError(error_code)
                 finally:
                     _log_audit_event(
@@ -2235,7 +2248,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     row_count = len(objects)
                     return {
                         "Category": "Discovery",
-                        "Date Generated": datetime.utcnow().strftime("%Y-%m-%d"),
+                        "Date Generated": datetime.now(UTC).strftime("%Y-%m-%d"),
                         "Source DB Server Name": _i,
                         "Schema": schema_name_v,
                         "Object Type": object_type,

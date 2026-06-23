@@ -14,8 +14,6 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-import asyncpg
-
 logger = logging.getLogger(__name__)
 
 
@@ -208,7 +206,7 @@ async def check_index_health(
         "SELECT SUM(pg_relation_size(indexrelid)) AS total_bytes FROM pg_index WHERE indrelid = $1",
         table_oid,
     )
-    total_bloat_bytes = int(size_row["total_bytes"] or 0)
+    total_index_bytes = int(size_row["total_bytes"] or 0)
 
     # Build actions
     actions = []
@@ -224,7 +222,7 @@ async def check_index_health(
         "invalid_indexes": invalid,
         "unused_indexes": unused,
         "duplicate_indexes": duplicates,
-        "total_bloat_bytes": total_bloat_bytes,
+        "total_index_bytes": total_index_bytes,
         "recommended_actions": actions,
         "issue_count": len(invalid) + len(unused) + len(duplicates),
     }

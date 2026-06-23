@@ -9,6 +9,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock
 
 import pytest
+from fastmcp.exceptions import ToolError
 
 from src.tools import hypopg_tools
 
@@ -121,7 +122,7 @@ class TestHypopgCreateVirtualIndexes:
         mock_conn.execute = AsyncMock(
             side_effect=Exception('function hypopg_reset() does not exist')
         )
-        with pytest.raises(RuntimeError, match="HypoPG extension is not available"):
+        with pytest.raises(ToolError, match="HypoPG extension is not available"):
             await hypopg_tools.hypopg_create_virtual_indexes(
                 mock_conn,
                 {
@@ -168,7 +169,7 @@ class TestHypopgExplainWithVirtual:
         conn.fetchrow = AsyncMock(
             side_effect=Exception("syntax error")
         )
-        with pytest.raises(RuntimeError, match="EXPLAIN failed"):
+        with pytest.raises(ToolError, match="EXPLAIN failed"):
             await hypopg_tools.hypopg_explain_with_virtual(
                 conn, "SELECT invalid"
             )

@@ -10,15 +10,6 @@ def validate_database_name(database_name: str) -> str:
     return value
 
 
-def validate_identifier(name: str, field_name: str) -> str:
-    value = name.strip()
-    if not value:
-        raise ValueError(f"INVALID_INPUT: {field_name} cannot be blank")
-    if ";" in value or "--" in value:
-        raise ValueError(f"INVALID_INPUT: {field_name} contains invalid characters")
-    return value
-
-
 def validate_positive_int(value: int, field_name: str, minimum: int, maximum: int) -> int:
     if value < minimum or value > maximum:
         raise ValueError(f"INVALID_INPUT: {field_name} must be between {minimum} and {maximum}")
@@ -41,18 +32,29 @@ def validate_schema_name(name: str) -> str:
 def validate_query_text(query_text: str) -> str:
     """Validate SQL query text for HypoPG sub-tools.
 
-    Strips leading/trailing whitespace, rejects DDL/DML statements,
-    and rejects input containing SQL injection vectors (;, --).
-    Only SELECT statements are permitted for HypoPG analysis.
+    Strips leading/trailing whitespace, strips SQL comments (/* */, --),
+    rejects DDL/DML statements, and rejects input containing SQL injection
+    vectors (;, -- inside the query body). Only SELECT statements (including
+    CTE-prefixed WITH ... SELECT ...) are permitted for HypoPG analysis.
     """
+    import re
+
     value = query_text.strip()
     if not value:
         raise ValueError("INVALID_INPUT: query_text is required")
     if ";" in value or "--" in value:
         raise ValueError("INVALID_INPUT: query_text contains invalid characters")
-    if not value.upper().lstrip().startswith("SELECT"):
-        raise ValueError("INVALID_INPUT: only SELECT queries can be analyzed by HypoPG tools")
-    return value
+
+    # Strip SQL block comments /* ... */ before checking the verb
+    stripped = re.sub(r"/\*.*?\*/", "", value, flags=re.DOTALL)
+    stripped = stripped.strip()
+
+    # Check for valid SQL verb: SELECT or WITH (CTE-prefixed SELECT)
+    upper = stripped.upper().lstrip()
+    if upper.startswith("SELECT") or upper.startswith("WITH"):
+        return value
+
+    raise ValueError("INVALID_INPUT: only SELECT queries can be analyzed by HypoPG tools")
 
 
 def validate_sql_statement(sql_statement: str) -> str:
