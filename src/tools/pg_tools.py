@@ -3,21 +3,28 @@ from __future__ import annotations
 import time
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastmcp import Context, FastMCP
 from fastmcp.dependencies import Depends
+from fastmcp.exceptions import ToolError
 from fastmcp.utilities.logging import get_logger
 from mcp.types import ToolAnnotations
 
 from src.middleware.rate_limiter import RateLimitExceededError
-from src.tools import hypopg_tools
+from src.tools import hypopg_tools, table_analysis
 from src.tools.input_validation import (
     validate_database_name,
+    validate_object_type,
     validate_query_text,
     validate_schema_name,
+    validate_sql_statement,
+    validate_table_name,
 )
 from src.tools.tool_flags import is_tool_enabled
+
+if TYPE_CHECKING:
+    from src.server import AppState
 
 logger = get_logger(__name__)
 
@@ -33,7 +40,7 @@ _PING_SQL = (
 )
 
 
-def register_pg_tools(mcp: FastMCP, state: Any) -> list[str]:
+def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
     """Register dual-instance MCP tools for all enabled EDBAS instances.
 
     Every tool definition is automatically mirrored across all enabled instances.
@@ -93,6 +100,159 @@ def register_pg_tools(mcp: FastMCP, state: Any) -> list[str]:
             privilege_level=(auth_ctx or {}).get("privilege_level"),
             group_match_result=(auth_ctx or {}).get("group_match_result"),
         )
+
+    # -------------------------------------------------------------------
+    # Helper: register a maintenance sub-tool with standard lifecycle
+    # -------------------------------------------------------------------
+    def _register_sub_tool(
+        toolname: str,
+        func: Any,
+        issue_name: str,
+        metrics: str,
+    ) -> None:
+        """Register a maintenance sub-tool with the standard lifecycle."""
+        full_name = f"db_{instance_number}_pg96_{toolname}"
+
+        @mcp.tool(
+            name=full_name,
+            annotations=ToolAnnotations(
+                readOnlyHint=True, idempotentHint=False, openWorldHint=False
+            ),
+            tags={"read-only", "maintenance", f"instance-{instance_number}"},
+            timeout=30.0,
+        )
+        async def _impl(
+            schema_name: str,
+            table_name: str,
+            database_name: str = "edb",
+            actor: str = "system",
+            ctx: Context | None = None,
+            _t: str = full_name,
+            _i: str = instance_id,
+            _in: int = instance_number,
+            app_state: Any = Depends(lambda: state),
+        ) -> dict[str, Any]:
+            request_id = str(uuid.uuid4())
+            started = time.time()
+            decision, error_code, row_count = "allow", None, 0
+            _auth_ctx = None
+            schema_name_v = validate_schema_name(schema_name)
+            table_name_v = validate_table_name(table_name)
+            validate_database_name(database_name)
+            try:
+                actor, _auth_ctx = await _resolve_actor_and_authorize(
+                    actor=actor, tool=_t, required_privilege="read", ctx=ctx
+                )
+                app_state.session_manager.touch(actor, request_id)
+                app_state.rate_limiter.allow(actor)
+                app_state.write_guard.enforce(_t, "SELECT 1")
+                async with app_state.connection_manager.acquire(_i) as conn:
+                    result = await func(conn, schema_name_v, table_name_v)
+                return {
+                    "Category": "Maintenance",
+                    "Date Generated": datetime.utcnow().strftime("%Y-%m-%d"),
+                    "Source DB Server Name": _i,
+                    "Issues Identified": (
+                        f"{issue_name} analysis for "
+                        f"{schema_name_v}.{table_name_v}"
+                    ),
+                    "Impacted Metrics": metrics,
+                    "Issue Priority": "Medium",
+                    "Recommendations/Fixes": result,
+                }
+            except PermissionError as exc:
+                decision, error_code = "deny", str(exc)
+                app_state.denied_requests += 1
+                raise
+            except RateLimitExceededError as exc:
+                decision, error_code = "deny", str(exc)
+                app_state.denied_requests += 1
+                raise
+            except Exception as exc:
+                decision, error_code = f"TOOL_ERROR: {exc}"
+                app_state.denied_requests += 1
+                raise ToolError(error_code)
+            finally:
+                _log_audit_event(
+                    request_id=request_id, actor=actor, tool=_t, instance=_i,
+                    sql=toolname, decision=decision,
+                    latency_ms=int((time.time() - started) * 1000),
+                    rows=row_count, error_code=error_code, auth_ctx=_auth_ctx,
+                )
+        registered.append(full_name)
+
+    # -------------------------------------------------------------------
+    # Helper: register a discovery sub-tool with standard lifecycle
+    # -------------------------------------------------------------------
+    def _register_discovery_tool(
+        toolname: str,
+        func: Any,
+    ) -> None:
+        """Register a discovery sub-tool with the standard lifecycle."""
+        full_name = f"db_{instance_number}_pg96_{toolname}"
+
+        @mcp.tool(
+            name=full_name,
+            annotations=ToolAnnotations(
+                readOnlyHint=True, idempotentHint=False, openWorldHint=False
+            ),
+            tags={"read-only", "discovery", f"instance-{instance_number}"},
+            timeout=30.0,
+        )
+        async def _impl(
+            schema_name: str = "public",
+            database_name: str = "edb",
+            actor: str = "system",
+            ctx: Context | None = None,
+            _t: str = full_name,
+            _i: str = instance_id,
+            _in: int = instance_number,
+            app_state: Any = Depends(lambda: state),
+        ) -> dict[str, Any]:
+            request_id = str(uuid.uuid4())
+            started = time.time()
+            decision, error_code, row_count = "allow", None, 0
+            _auth_ctx = None
+            schema_name_v = validate_schema_name(schema_name)
+            validate_database_name(database_name)
+            try:
+                actor, _auth_ctx = await _resolve_actor_and_authorize(
+                    actor=actor, tool=_t, required_privilege="read", ctx=ctx
+                )
+                app_state.session_manager.touch(actor, request_id)
+                app_state.rate_limiter.allow(actor)
+                app_state.write_guard.enforce(_t, "SELECT 1")
+                async with app_state.connection_manager.acquire(_i) as conn:
+                    objects = await func(conn, schema_name_v)
+                row_count = len(objects)
+                return {
+                    "Category": "Discovery",
+                    "Date Generated": datetime.utcnow().strftime("%Y-%m-%d"),
+                    "Source DB Server Name": _i,
+                    "Schema": schema_name_v,
+                    "Object Count": row_count,
+                    "Objects": objects,
+                }
+            except PermissionError as exc:
+                decision, error_code = "deny", str(exc)
+                app_state.denied_requests += 1
+                raise
+            except RateLimitExceededError as exc:
+                decision, error_code = "deny", str(exc)
+                app_state.denied_requests += 1
+                raise
+            except Exception as exc:
+                decision, error_code = f"TOOL_ERROR: {exc}"
+                app_state.denied_requests += 1
+                raise ToolError(error_code)
+            finally:
+                _log_audit_event(
+                    request_id=request_id, actor=actor, tool=_t, instance=_i,
+                    sql="discovery_query", decision=decision,
+                    latency_ms=int((time.time() - started) * 1000),
+                    rows=row_count, error_code=error_code, auth_ctx=_auth_ctx,
+                )
+        registered.append(full_name)
 
     # -----------------------------------------------------------------------
     # Register ping tool for each enabled instance (auto-mirrored)
@@ -217,7 +377,7 @@ def register_pg_tools(mcp: FastMCP, state: Any) -> list[str]:
                         f"[{request_id}] Ping failed: {error_code}",
                         extra={"tool": _tool, "instance": _instance, "error": error_code},
                     )
-                raise RuntimeError(error_code) from exc
+                raise ToolError(error_code)
             finally:
                 latency_ms = int((time.time() - started) * 1000)
                 _log_audit_event(
@@ -260,15 +420,15 @@ def register_pg_tools(mcp: FastMCP, state: Any) -> list[str]:
                 _instance_number: int = instance_number,
                 app_state: Any = Depends(lambda: state),
             ) -> dict[str, Any]:
-                """Retrieves long-running SQL statements, execution stats, and generates execution plans.
+                """Retrieves long-running SQL statements, execution stats, and execution plans.
 
-                For each slow query, captures the baseline EXPLAIN plan, then uses HypoPG to create and test
-                virtual index combinations, ranking at least 5 improved plans by cost (ascending).
-                The best combination of virtual + existing indexes is presented as the recommendation.
+                For each slow query, captures the baseline EXPLAIN plan, then uses HypoPG
+                to test virtual index combinations, ranking improved plans by cost.
+                The best virtual + existing index combo is the recommendation.
 
                 Args:
                     database_name: Name of the database to query.
-                    max_combinations: Maximum HypoPG index combinations to test per statement (default 10).
+                    max_combinations: Maximum HypoPG index combinations to test (default 10).
                 """
                 request_id = str(uuid.uuid4())
                 started = time.time()
@@ -351,10 +511,11 @@ def register_pg_tools(mcp: FastMCP, state: Any) -> list[str]:
 
                         # Check for stale statistics on relevant tables
                         stats_recs = []
-                        query_analysis = await hypopg_tools.parse_tables_and_columns(
-                            await app_state.connection_manager.acquire(_instance).__aenter__(),
-                            query_text,
-                        )
+                        async with app_state.connection_manager.acquire(_instance) as _conn:
+                            query_analysis = await hypopg_tools.parse_tables_and_columns(
+                                _conn,
+                                query_text,
+                            )
                         for table_name in query_analysis.get("tables", {}):
                             schema_part = "public"
                             table_part = table_name
@@ -399,7 +560,11 @@ def register_pg_tools(mcp: FastMCP, state: Any) -> list[str]:
                         "Category": "Performance",
                         "Date Generated": datetime.utcnow().strftime("%Y-%m-%d"),
                         "Source DB Server Name": _instance,
-                        "Issues Identified": f"Found {len(rows)} slow queries in database {database_name}. HypoPG analysis generated index recommendations for {sum(1 for f in fixes if 'Best Recommendation' in f)} queries.",
+                        "Issues Identified": (
+                            f"Found {len(rows)} slow queries in {database_name}. "
+                            f"Index recommendations generated for "
+                            f"{sum(1 for f in fixes if 'Best Recommendation' in f)} queries."
+                        ),
                         "Impacted Metrics": "CPU usage and Disk I/O during slow query execution",
                         "Issue Priority": "High" if len(rows) > 0 else "Low",
                         "Recommendations/Fixes": fixes,
@@ -417,7 +582,7 @@ def register_pg_tools(mcp: FastMCP, state: Any) -> list[str]:
                 except Exception as exc:
                     decision, error_code = f"TOOL_ERROR: {exc}"
                     app_state.denied_requests += 1
-                    raise RuntimeError(error_code) from exc
+                    raise ToolError(error_code)
                 finally:
                     _log_audit_event(
                         request_id=request_id,
@@ -577,7 +742,7 @@ def register_pg_tools(mcp: FastMCP, state: Any) -> list[str]:
                                         f"Session PID {act_row.get('pid')} is in state "
                                         f"'{act_row.get('state')}' with wait event "
                                         f"'{act_row.get('wait_event')}'. "
-                                        f"{'Investigate long-running transaction.' if act_row.get('state') == 'idle in transaction' else 'Monitor for completion.'}"
+                                        f"{'Investigate long-running transaction.' if act_row.get('state') == 'idle in transaction' else 'Monitor for completion.'}"  # noqa: E501
                                     ),
                                 }
                             )
@@ -592,8 +757,8 @@ def register_pg_tools(mcp: FastMCP, state: Any) -> list[str]:
                                 "idx_scan": seq_row.get("idx_scan"),
                                 "scan_gap": seq_row.get("scan_gap"),
                                 "recommendation": (
-                                    f"Table '{seq_row.get('relname')}' has {seq_row.get('seq_scan')} "
-                                    f"sequential scans vs {seq_row.get('idx_scan')} index scans. "
+                                    f"Table '{seq_row.get('relname')}' has {seq_row.get('seq_scan')} "  # noqa: E501
+                                    f"seq scans vs {seq_row.get('idx_scan')} index scans. "
                                     f"Consider adding indexes on heavily filtered columns."
                                 ),
                             }
@@ -601,8 +766,8 @@ def register_pg_tools(mcp: FastMCP, state: Any) -> list[str]:
 
                     # Detect potential deadlocks by checking for cyclical patterns
                     deadlock_count = 0
-                    blocked_pids = {l.get("blocked_pid") for l in lock_rows}
-                    blocking_pids = {l.get("blocking_pid") for l in lock_rows}
+                    blocked_pids = {row.get("blocked_pid") for row in lock_rows}
+                    blocking_pids = {row.get("blocking_pid") for row in lock_rows}
                     if blocked_pids & blocking_pids:
                         deadlock_count = len(blocked_pids & blocking_pids)
 
@@ -635,7 +800,7 @@ def register_pg_tools(mcp: FastMCP, state: Any) -> list[str]:
                 except Exception as exc:
                     decision, error_code = f"TOOL_ERROR: {exc}"
                     app_state.denied_requests += 1
-                    raise RuntimeError(error_code) from exc
+                    raise ToolError(error_code)
                 finally:
                     _log_audit_event(
                         request_id=request_id,
@@ -716,8 +881,12 @@ def register_pg_tools(mcp: FastMCP, state: Any) -> list[str]:
                                COALESCE(i.indisprimary, false) AS is_pk
                         FROM pg_class c
                         JOIN pg_namespace n ON n.oid = c.relnamespace
-                        JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
-                        LEFT JOIN pg_index i ON i.indrelid = c.oid AND i.indisprimary AND a.attnum = ANY(i.indkey)
+                        JOIN pg_attribute a
+                            ON a.attrelid = c.oid AND a.attnum > 0
+                            AND NOT a.attisdropped
+                        LEFT JOIN pg_index i
+                            ON i.indrelid = c.oid AND i.indisprimary
+                            AND a.attnum = ANY(i.indkey)
                         WHERE n.nspname = $1 AND c.relkind = 'r'
                         ORDER BY c.relname, a.attnum
                     """
@@ -846,7 +1015,7 @@ def register_pg_tools(mcp: FastMCP, state: Any) -> list[str]:
                         fixes.append(
                             {
                                 "section": "Constraints & Foreign Keys",
-                                "detail": f"Found {len(pkeys)} primary keys and {len(fkeys)} foreign keys in schema",
+                                "detail": f"Found {len(pkeys)} primary keys and {len(fkeys)} foreign keys in schema",  # noqa: E501
                                 "tables": [
                                     r.get("table_name")
                                     for r in constraint_rows
@@ -860,10 +1029,10 @@ def register_pg_tools(mcp: FastMCP, state: Any) -> list[str]:
                         fixes.append(
                             {
                                 "section": "Normalization - Type Mismatches",
-                                "detail": f"Found {len(norm_rows)} column type mismatches across tables",
+                                "detail": f"Found {len(norm_rows)} column type mismatches across tables",  # noqa: E501
                                 "mismatches": [
                                     {
-                                        "columns": f"{r.get('table1')}.{r.get('col1')} ({r.get('type1')}) vs {r.get('table2')}.{r.get('col2')} ({r.get('type2')})",
+                                        "columns": f"{r.get('table1')}.{r.get('col1')} ({r.get('type1')}) vs {r.get('table2')}.{r.get('col2')} ({r.get('type2')})",  # noqa: E501
                                     }
                                     for r in norm_rows
                                 ],
@@ -881,7 +1050,7 @@ def register_pg_tools(mcp: FastMCP, state: Any) -> list[str]:
                         fixes.append(
                             {
                                 "section": "Index Statistics",
-                                "detail": f"Found {stale_count} tables with stale/missing statistics",
+                                "detail": f"Found {stale_count} tables with stale/missing statistics",  # noqa: E501
                                 "recommendations": stats_fixes,
                             }
                         )
@@ -891,7 +1060,7 @@ def register_pg_tools(mcp: FastMCP, state: Any) -> list[str]:
                         fixes.append(
                             {
                                 "section": "3NF Decomposition Analysis",
-                                "detail": f"Found {len(decomposition_rows)} tables with excessive sequential scans suggesting poor normalization",
+                                "detail": f"Found {len(decomposition_rows)} tables with excessive sequential scans suggesting poor normalization",  # noqa: E501
                                 "tables": [
                                     {
                                         "table": r.get("table_name"),
@@ -908,7 +1077,7 @@ def register_pg_tools(mcp: FastMCP, state: Any) -> list[str]:
                         fixes.append(
                             {
                                 "section": "HypoPG Index Recommendations",
-                                "detail": "Virtual index recommendations for tables with sequential scan abuse",
+                                "detail": "Virtual index recommendations for tables with sequential scan abuse",  # noqa: E501
                                 "recommendations": aggregated["hypopg_recommendations"],
                             }
                         )
@@ -950,7 +1119,7 @@ def register_pg_tools(mcp: FastMCP, state: Any) -> list[str]:
                 except Exception as exc:
                     decision, error_code = f"TOOL_ERROR: {exc}"
                     app_state.denied_requests += 1
-                    raise RuntimeError(error_code) from exc
+                    raise ToolError(error_code)
                 finally:
                     _log_audit_event(
                         request_id=request_id,
@@ -1006,8 +1175,12 @@ def register_pg_tools(mcp: FastMCP, state: Any) -> list[str]:
                                COALESCE(i.indisprimary, false) AS is_pk
                         FROM pg_class c
                         JOIN pg_namespace n ON n.oid = c.relnamespace
-                        JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
-                        LEFT JOIN pg_index i ON i.indrelid = c.oid AND i.indisprimary AND a.attnum = ANY(i.indkey)
+                        JOIN pg_attribute a
+                            ON a.attrelid = c.oid AND a.attnum > 0
+                            AND NOT a.attisdropped
+                        LEFT JOIN pg_index i
+                            ON i.indrelid = c.oid AND i.indisprimary
+                            AND a.attnum = ANY(i.indkey)
                         WHERE n.nspname = $1 AND c.relkind = 'r'
                         ORDER BY c.relname, a.attnum
                     """
@@ -1036,7 +1209,7 @@ def register_pg_tools(mcp: FastMCP, state: Any) -> list[str]:
                 except Exception as exc:
                     decision, error_code = f"TOOL_ERROR: {exc}"
                     app_state.denied_requests += 1
-                    raise RuntimeError(error_code) from exc
+                    raise ToolError(error_code)
                 finally:
                     _log_audit_event(
                         request_id=request_id,
@@ -1072,7 +1245,7 @@ def register_pg_tools(mcp: FastMCP, state: Any) -> list[str]:
                 _instance_number: int = instance_number,
                 app_state: Any = Depends(lambda: state),
             ) -> dict[str, Any]:
-                """Scans relationships to find missing foreign keys and missing required constraints."""
+                """Scans relationships to find missing foreign keys and missing required constraints."""  # noqa: E501
                 request_id = str(uuid.uuid4())
                 started = time.time()
                 decision, error_code, row_count = "allow", None, 0
@@ -1138,7 +1311,7 @@ def register_pg_tools(mcp: FastMCP, state: Any) -> list[str]:
                         "Category": "Performance",
                         "Date Generated": datetime.utcnow().strftime("%Y-%m-%d"),
                         "Source DB Server Name": _instance,
-                        "Issues Identified": f"Scanned {len(all_tables)} tables, {len(rows)} constraints. {len(missing_pk)} tables missing primary keys.",
+                        "Issues Identified": f"Scanned {len(all_tables)} tables, {len(rows)} constraints. {len(missing_pk)} tables missing primary keys.",  # noqa: E501
                         "Impacted Metrics": "Data Integrity, Index Performance",
                         "Issue Priority": "High" if missing_pk else "Low",
                         "Recommendations/Fixes": findings,
@@ -1154,7 +1327,7 @@ def register_pg_tools(mcp: FastMCP, state: Any) -> list[str]:
                 except Exception as exc:
                     decision, error_code = f"TOOL_ERROR: {exc}"
                     app_state.denied_requests += 1
-                    raise RuntimeError(error_code) from exc
+                    raise ToolError(error_code)
                 finally:
                     _log_audit_event(
                         request_id=request_id,
@@ -1235,7 +1408,7 @@ def register_pg_tools(mcp: FastMCP, state: Any) -> list[str]:
                         "Category": "Performance",
                         "Date Generated": datetime.utcnow().strftime("%Y-%m-%d"),
                         "Source DB Server Name": _instance,
-                        "Issues Identified": f"{len(rows)} column type mismatches found across tables",
+                        "Issues Identified": f"{len(rows)} column type mismatches found across tables",  # noqa: E501
                         "Impacted Metrics": "Data Integrity, Join Performance",
                         "Issue Priority": "Medium" if len(rows) > 0 else "Low",
                         "Recommendations/Fixes": rows,
@@ -1251,7 +1424,7 @@ def register_pg_tools(mcp: FastMCP, state: Any) -> list[str]:
                 except Exception as exc:
                     decision, error_code = f"TOOL_ERROR: {exc}"
                     app_state.denied_requests += 1
-                    raise RuntimeError(error_code) from exc
+                    raise ToolError(error_code)
                 finally:
                     _log_audit_event(
                         request_id=request_id,
@@ -1322,7 +1495,7 @@ def register_pg_tools(mcp: FastMCP, state: Any) -> list[str]:
                                     "table": r.get("relname"),
                                     "live_tuples": r.get("n_live_tup"),
                                     "dead_tuples": r.get("n_dead_tup"),
-                                    "recommendation": f"ANALYZE {r.get('relname')}; -- Never analyzed, {r.get('n_dead_tup', 0)} dead tuples",
+                                    "recommendation": f"ANALYZE {r.get('relname')}; -- Never analyzed, {r.get('n_dead_tup', 0)} dead tuples",  # noqa: E501
                                 }
                             )
 
@@ -1330,7 +1503,7 @@ def register_pg_tools(mcp: FastMCP, state: Any) -> list[str]:
                         "Category": "Performance",
                         "Date Generated": datetime.utcnow().strftime("%Y-%m-%d"),
                         "Source DB Server Name": _instance,
-                        "Issues Identified": f"Checked {len(rows)} tables for statistics staleness. {len(stale_tables)} tables need ANALYZE.",
+                        "Issues Identified": f"Checked {len(rows)} tables for statistics staleness. {len(stale_tables)} tables need ANALYZE.",  # noqa: E501
                         "Impacted Metrics": "Query Plan Quality",
                         "Issue Priority": "High"
                         if len(stale_tables) > 5
@@ -1350,7 +1523,7 @@ def register_pg_tools(mcp: FastMCP, state: Any) -> list[str]:
                 except Exception as exc:
                     decision, error_code = f"TOOL_ERROR: {exc}"
                     app_state.denied_requests += 1
-                    raise RuntimeError(error_code) from exc
+                    raise ToolError(error_code)
                 finally:
                     _log_audit_event(
                         request_id=request_id,
@@ -1386,7 +1559,7 @@ def register_pg_tools(mcp: FastMCP, state: Any) -> list[str]:
                 _instance_number: int = instance_number,
                 app_state: Any = Depends(lambda: state),
             ) -> dict[str, Any]:
-                """Analyzes data row repetition to detect M:N relationships requiring decomposition to 3NF."""
+                """Analyzes data row repetition to detect M:N relationships requiring decomposition to 3NF."""  # noqa: E501
                 request_id = str(uuid.uuid4())
                 started = time.time()
                 decision, error_code, row_count = "allow", None, 0
@@ -1432,7 +1605,7 @@ def register_pg_tools(mcp: FastMCP, state: Any) -> list[str]:
                                 else "Inefficient scanning pattern",
                                 "recommendation": (
                                     f"Table '{table}' has {seq} seq scans vs {idx} index scans. "
-                                    f"Consider reviewing for M:N relationship decomposition or missing indexes."
+                                    f"Consider reviewing for M:N relationship decomposition or missing indexes."  # noqa: E501
                                 ),
                             }
                         )
@@ -1440,7 +1613,7 @@ def register_pg_tools(mcp: FastMCP, state: Any) -> list[str]:
                         "Category": "Performance",
                         "Date Generated": datetime.utcnow().strftime("%Y-%m-%d"),
                         "Source DB Server Name": _instance,
-                        "Issues Identified": f"Found {len(rows)} tables with inefficient scanning patterns suggesting normalization issues",
+                        "Issues Identified": f"Found {len(rows)} tables with inefficient scanning patterns suggesting normalization issues",  # noqa: E501
                         "Impacted Metrics": "Data Redundancy, Query Performance",
                         "Issue Priority": "High"
                         if len(fixes) > 5
@@ -1458,7 +1631,7 @@ def register_pg_tools(mcp: FastMCP, state: Any) -> list[str]:
                 except Exception as exc:
                     decision, error_code = f"TOOL_ERROR: {exc}"
                     app_state.denied_requests += 1
-                    raise RuntimeError(error_code) from exc
+                    raise ToolError(error_code)
                 finally:
                     _log_audit_event(
                         request_id=request_id,
@@ -1502,7 +1675,7 @@ def register_pg_tools(mcp: FastMCP, state: Any) -> list[str]:
                 """Parses a SELECT query and creates candidate virtual indexes via HypoPG.
 
                 Extracts referenced tables/columns from the query, generates B-tree
-                virtual index definitions, and creates them in the session using hypopg_create_index().
+                virtual index definitions and creates them in the session.
 
                 Args:
                     database_name: Database to connect to.
@@ -1544,7 +1717,7 @@ def register_pg_tools(mcp: FastMCP, state: Any) -> list[str]:
                 except Exception as exc:
                     decision, error_code = f"TOOL_ERROR: {exc}"
                     app_state.denied_requests += 1
-                    raise RuntimeError(error_code) from exc
+                    raise ToolError(error_code)
                 finally:
                     _log_audit_event(
                         request_id=request_id,
@@ -1585,7 +1758,7 @@ def register_pg_tools(mcp: FastMCP, state: Any) -> list[str]:
                 _instance_number: int = instance_number,
                 app_state: Any = Depends(lambda: state),
             ) -> dict[str, Any]:
-                """Runs EXPLAIN (FORMAT JSON) for a query using the current session's virtual indexes.
+                """Runs EXPLAIN (FORMAT JSON) using the current session's virtual indexes.
 
                 Args:
                     database_name: Database to connect to.
@@ -1618,7 +1791,7 @@ def register_pg_tools(mcp: FastMCP, state: Any) -> list[str]:
                 except Exception as exc:
                     decision, error_code = f"TOOL_ERROR: {exc}"
                     app_state.denied_requests += 1
-                    raise RuntimeError(error_code) from exc
+                    raise ToolError(error_code)
                 finally:
                     _log_audit_event(
                         request_id=request_id,
@@ -1700,7 +1873,7 @@ def register_pg_tools(mcp: FastMCP, state: Any) -> list[str]:
                 except Exception as exc:
                     decision, error_code = f"TOOL_ERROR: {exc}"
                     app_state.denied_requests += 1
-                    raise RuntimeError(error_code) from exc
+                    raise ToolError(error_code)
                 finally:
                     _log_audit_event(
                         request_id=request_id,
@@ -1716,5 +1889,383 @@ def register_pg_tools(mcp: FastMCP, state: Any) -> list[str]:
                     )
 
             registered.append(hypopg_optimal_tool_name)
+
+        # ===================================================================
+        # EXEC_QUERY: Safe SELECT-only query execution
+        # ===================================================================
+        exec_query_tool_name = f"db_{instance_number}_pg96_exec_query"
+        if is_tool_enabled(state.policy, instance_id, "exec_query"):
+            @mcp.tool(
+                name=exec_query_tool_name,
+                annotations=ToolAnnotations(
+                    readOnlyHint=True, idempotentHint=False, openWorldHint=False
+                ),
+                tags={"read-only", f"instance-{instance_number}"},
+                timeout=30.0,
+            )
+            async def _exec_query(
+                sql_statement: str,
+                database_name: str = "edb",
+                max_rows: int = 100,
+                actor: str = "system",
+                ctx: Context | None = None,
+                _tool: str = exec_query_tool_name,
+                _instance: str = instance_id,
+                _instance_number: int = instance_number,
+            ) -> dict[str, Any]:
+                request_id = str(uuid.uuid4())
+                started = time.time()
+                decision, error_code, row_count = "allow", None, 0
+                _auth_ctx = None
+                sql_v = validate_sql_statement(sql_statement)
+                database_name_v = validate_database_name(database_name)
+                max_rows_v = max(1, min(max_rows, 1000))
+                try:
+                    actor, _auth_ctx = await _resolve_actor_and_authorize(
+                        actor=actor, tool=_tool, required_privilege="read", ctx=ctx
+                    )
+                    state.session_manager.touch(actor, request_id)
+                    state.rate_limiter.allow(actor)
+                    state.write_guard.enforce(_tool, sql_v)
+                    rows = await state.connection_manager.execute_query(
+                        _instance, database_name_v, sql_v, max_rows_v
+                    )
+                    row_count = len(rows)
+                    return {
+                        "rows": rows,
+                        "row_count": row_count,
+                        "truncated": row_count >= max_rows_v,
+                        "query": sql_v,
+                        "database": database_name_v,
+                    }
+                except PermissionError as exc:
+                    decision, error_code = "deny", str(exc)
+                    state.denied_requests += 1
+                    raise
+                except RateLimitExceededError as exc:
+                    decision, error_code = "deny", str(exc)
+                    state.denied_requests += 1
+                    raise
+                except Exception as exc:
+                    decision, error_code = f"TOOL_ERROR: {exc}"
+                    state.denied_requests += 1
+                    raise ToolError(error_code)
+                finally:
+                    _log_audit_event(
+                        request_id=request_id, actor=actor, tool=_tool,
+                        instance=_instance, sql=sql_v, decision=decision,
+                        latency_ms=int((time.time() - started) * 1000),
+                        rows=row_count, error_code=error_code, auth_ctx=_auth_ctx,
+                    )
+            registered.append(exec_query_tool_name)
+        else:
+            logger.info(
+                "Skipping disabled tool '%s' for instance '%s'",
+                exec_query_tool_name, instance_id,
+            )
+
+        # ===================================================================
+        # ANALYZE_TABLE: Maintenance analysis orchestrator + 4 sub-tools
+        # ===================================================================
+        analyze_table_tool_name = f"db_{instance_number}_pg96_analyze_table"
+        if is_tool_enabled(state.policy, instance_id, "analyze_table"):
+            @mcp.tool(
+                name=analyze_table_tool_name,
+                annotations=ToolAnnotations(
+                    readOnlyHint=True, idempotentHint=False, openWorldHint=False
+                ),
+                tags={"read-only", "maintenance", f"instance-{instance_number}"},
+                timeout=30.0,
+            )
+            async def _analyze_table(
+                schema_name: str,
+                table_name: str,
+                database_name: str = "edb",
+                include_bloat: bool = True,
+                include_wraparound: bool = True,
+                include_statistics: bool = True,
+                include_indexes: bool = True,
+                actor: str = "system",
+                ctx: Context | None = None,
+                _tool: str = analyze_table_tool_name,
+                _instance: str = instance_id,
+                _instance_number: int = instance_number,
+            ) -> dict[str, Any]:
+                request_id = str(uuid.uuid4())
+                started = time.time()
+                decision, error_code, row_count = "allow", None, 0
+                _auth_ctx = None
+                schema_name_v = validate_schema_name(schema_name)
+                table_name_v = validate_table_name(table_name)
+                database_name_v = validate_database_name(database_name)
+                results: dict[str, Any] = {}
+                try:
+                    actor, _auth_ctx = await _resolve_actor_and_authorize(
+                        actor=actor, tool=_tool, required_privilege="read", ctx=ctx
+                    )
+                    state.session_manager.touch(actor, request_id)
+                    state.rate_limiter.allow(actor)
+                    state.write_guard.enforce(_tool, "SELECT 1")
+                    async with state.connection_manager.acquire(_instance) as conn:
+                        if include_bloat:
+                            results["table_bloat"] = (
+                                await table_analysis.check_table_bloat(
+                                    conn, schema_name_v, table_name_v
+                                )
+                            )
+                        if include_wraparound:
+                            results["wraparound_risk"] = (
+                                await table_analysis.check_table_wraparound(
+                                    conn, schema_name_v, table_name_v
+                                )
+                            )
+                        if include_statistics:
+                            results["statistics_health"] = (
+                                await table_analysis.check_table_statistics(
+                                    conn, schema_name_v, table_name_v
+                                )
+                            )
+                        if include_indexes:
+                            results["index_health"] = (
+                                await table_analysis.check_index_health(
+                                    conn, schema_name_v, table_name_v
+                                )
+                            )
+                    row_count = 1
+                    return {
+                        "Category": "Maintenance",
+                        "Date Generated": datetime.utcnow().strftime("%Y-%m-%d"),
+                        "Source DB Server Name": _instance,
+                        "Table": f"{schema_name_v}.{table_name_v}",
+                        "Database": database_name_v,
+                        "Analysis Results": results,
+                    }
+                except PermissionError as exc:
+                    decision, error_code = "deny", str(exc)
+                    state.denied_requests += 1
+                    raise
+                except RateLimitExceededError as exc:
+                    decision, error_code = "deny", str(exc)
+                    state.denied_requests += 1
+                    raise
+                except Exception as exc:
+                    decision, error_code = f"TOOL_ERROR: {exc}"
+                    state.denied_requests += 1
+                    raise ToolError(error_code)
+                finally:
+                    _log_audit_event(
+                        request_id=request_id, actor=actor, tool=_tool,
+                        instance=_instance, sql="analyze_table",
+                        decision=decision,
+                        latency_ms=int((time.time() - started) * 1000),
+                        rows=row_count, error_code=error_code, auth_ctx=_auth_ctx,
+                    )
+            registered.append(analyze_table_tool_name)
+        else:
+            logger.info(
+                "Skipping disabled tool '%s' for instance '%s'",
+                analyze_table_tool_name, instance_id,
+            )
+
+        # Maintenance sub-tools
+        _register_sub_tool(
+            "check_table_bloat", table_analysis.check_table_bloat,
+            "Table Bloat", "Dead tuples, bloat ratio, vacuum threshold",
+        )
+        _register_sub_tool(
+            "check_table_wraparound", table_analysis.check_table_wraparound,
+            "Transaction Wraparound",
+            "Transaction age, wraparound risk, autovacuum status",
+        )
+        _register_sub_tool(
+            "check_table_statistics", table_analysis.check_table_statistics,
+            "Table Statistics",
+            "Analyze count, last analyze, n_mod_since_analyze",
+        )
+        _register_sub_tool(
+            "check_index_health", table_analysis.check_index_health,
+            "Index Health", "Index usage, scans, size, bloat",
+        )
+
+        # ===================================================================
+        # LIST_OBJECTS: Discovery orchestrator + 4 sub-tools
+        # ===================================================================
+        list_objects_tool_name = f"db_{instance_number}_pg96_list_objects"
+        if is_tool_enabled(state.policy, instance_id, "list_objects"):
+            @mcp.tool(
+                name=list_objects_tool_name,
+                annotations=ToolAnnotations(
+                    readOnlyHint=True, idempotentHint=False, openWorldHint=False
+                ),
+                tags={"read-only", "discovery", f"instance-{instance_number}"},
+                timeout=30.0,
+            )
+            async def _list_objects(
+                schema_name: str = "public",
+                include_tables: bool = True,
+                include_indexes: bool = True,
+                include_views: bool = True,
+                database_name: str = "edb",
+                actor: str = "system",
+                ctx: Context | None = None,
+                _tool: str = list_objects_tool_name,
+                _instance: str = instance_id,
+                _instance_number: int = instance_number,
+            ) -> dict[str, Any]:
+                request_id = str(uuid.uuid4())
+                started = time.time()
+                decision, error_code, row_count = "allow", None, 0
+                _auth_ctx = None
+                schema_name_v = validate_schema_name(schema_name)
+                database_name_v = validate_database_name(database_name)
+                results: dict[str, Any] = {}
+                try:
+                    actor, _auth_ctx = await _resolve_actor_and_authorize(
+                        actor=actor, tool=_tool, required_privilege="read", ctx=ctx
+                    )
+                    state.session_manager.touch(actor, request_id)
+                    state.rate_limiter.allow(actor)
+                    state.write_guard.enforce(_tool, "SELECT 1")
+                    async with state.connection_manager.acquire(_instance) as conn:
+                        if include_tables:
+                            results["tables"] = (
+                                await table_analysis.list_tables_by_schema(
+                                    conn, schema_name_v
+                                )
+                            )
+                        if include_indexes:
+                            results["indexes"] = (
+                                await table_analysis.list_indexes_by_schema(
+                                    conn, schema_name_v
+                                )
+                            )
+                        if include_views:
+                            results["views"] = (
+                                await table_analysis.list_views_by_schema(
+                                    conn, schema_name_v
+                                )
+                            )
+                    row_count = 1
+                    return {
+                        "Category": "Discovery",
+                        "Date Generated": datetime.utcnow().strftime("%Y-%m-%d"),
+                        "Source DB Server Name": _instance,
+                        "Schema": schema_name_v,
+                        "Database": database_name_v,
+                        "Objects": results,
+                    }
+                except PermissionError as exc:
+                    decision, error_code = "deny", str(exc)
+                    state.denied_requests += 1
+                    raise
+                except RateLimitExceededError as exc:
+                    decision, error_code = "deny", str(exc)
+                    state.denied_requests += 1
+                    raise
+                except Exception as exc:
+                    decision, error_code = f"TOOL_ERROR: {exc}"
+                    state.denied_requests += 1
+                    raise ToolError(error_code)
+                finally:
+                    _log_audit_event(
+                        request_id=request_id, actor=actor, tool=_tool,
+                        instance=_instance, sql="list_objects",
+                        decision=decision,
+                        latency_ms=int((time.time() - started) * 1000),
+                        rows=row_count, error_code=error_code, auth_ctx=_auth_ctx,
+                    )
+            registered.append(list_objects_tool_name)
+        else:
+            logger.info(
+                "Skipping disabled tool '%s' for instance '%s'",
+                list_objects_tool_name, instance_id,
+            )
+
+        # Discovery sub-tools (3 via helper + 1 inline for list_objects_by_type)
+        _register_discovery_tool(
+            "list_tables", table_analysis.list_tables_by_schema,
+        )
+        _register_discovery_tool(
+            "list_indexes", table_analysis.list_indexes_by_schema,
+        )
+        _register_discovery_tool(
+            "list_views", table_analysis.list_views_by_schema,
+        )
+
+        # list_objects_by_type: dedicated inline registration (needs object_type)
+        lobt_tool_name = f"db_{instance_number}_pg96_list_objects_by_type"
+        if is_tool_enabled(state.policy, instance_id, "list_objects_by_type"):
+            @mcp.tool(
+                name=lobt_tool_name,
+                annotations=ToolAnnotations(
+                    readOnlyHint=True, idempotentHint=False, openWorldHint=False
+                ),
+                tags={"read-only", "discovery", f"instance-{instance_number}"},
+                timeout=30.0,
+            )
+            async def _list_objects_by_type(
+                object_type: str,
+                schema_name: str = "public",
+                database_name: str = "edb",
+                actor: str = "system",
+                ctx: Context | None = None,
+                _t: str = lobt_tool_name,
+                _i: str = instance_id,
+                _in: int = instance_number,
+                app_state: Any = Depends(lambda: state),
+            ) -> dict[str, Any]:
+                request_id = str(uuid.uuid4())
+                started = time.time()
+                decision, error_code, row_count = "allow", None, 0
+                _auth_ctx = None
+                schema_name_v = validate_schema_name(schema_name)
+                relkind_v = validate_object_type(object_type)
+                validate_database_name(database_name)
+                try:
+                    actor, _auth_ctx = await _resolve_actor_and_authorize(
+                        actor=actor, tool=_t, required_privilege="read", ctx=ctx
+                    )
+                    app_state.session_manager.touch(actor, request_id)
+                    app_state.rate_limiter.allow(actor)
+                    app_state.write_guard.enforce(_t, "SELECT 1")
+                    async with app_state.connection_manager.acquire(_i) as conn:
+                        objects = await table_analysis.list_objects_by_type(
+                            conn, schema_name_v, relkind_v
+                        )
+                    row_count = len(objects)
+                    return {
+                        "Category": "Discovery",
+                        "Date Generated": datetime.utcnow().strftime("%Y-%m-%d"),
+                        "Source DB Server Name": _i,
+                        "Schema": schema_name_v,
+                        "Object Type": object_type,
+                        "Object Count": row_count,
+                        "Objects": objects,
+                    }
+                except PermissionError as exc:
+                    decision, error_code = "deny", str(exc)
+                    app_state.denied_requests += 1
+                    raise
+                except RateLimitExceededError as exc:
+                    decision, error_code = "deny", str(exc)
+                    app_state.denied_requests += 1
+                    raise
+                except Exception as exc:
+                    decision, error_code = f"TOOL_ERROR: {exc}"
+                    app_state.denied_requests += 1
+                    raise ToolError(error_code)
+                finally:
+                    _log_audit_event(
+                        request_id=request_id, actor=actor, tool=_t, instance=_i,
+                        sql="list_objects_by_type_query", decision=decision,
+                        latency_ms=int((time.time() - started) * 1000),
+                        rows=row_count, error_code=error_code, auth_ctx=_auth_ctx,
+                    )
+            registered.append(lobt_tool_name)
+        else:
+            logger.info(
+                "Skipping disabled tool '%s' for instance '%s'",
+                lobt_tool_name, instance_id,
+            )
 
     return registered

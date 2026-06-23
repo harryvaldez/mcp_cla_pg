@@ -58,7 +58,7 @@ class TestPingTool:
         registered = register_pg_tools(mock_mcp, mock_state)
         assert "db_1_pg96_ping" in registered
         assert "db_2_pg96_ping" in registered
-        assert len(registered) == 24
+        assert len(registered) == 46
 
     def test_ping_sql_contains_edb_columns(self):
         from src.tools.pg_tools import _PING_SQL
@@ -69,3 +69,56 @@ class TestPingTool:
         assert "edb_redwood_date" in _PING_SQL
         assert "ip_address" in _PING_SQL
         assert "current_utc_time" in _PING_SQL
+
+
+class TestExecQueryTool:
+    """Tests for db_pg96_exec_query tool registration and behavior."""
+
+    @pytest.fixture
+    def mock_state(self):
+        state = MagicMock()
+        state.connection_manager = AsyncMock()
+        state.connection_manager.list_enabled_instances = MagicMock(
+            return_value=["primary", "secondary"]
+        )
+        state.session_manager = MagicMock()
+        state.rate_limiter = MagicMock()
+        state.rate_limiter.allow.return_value = True
+        state.audit_logger = MagicMock()
+        state.policy = MagicMock()
+        state.policy.max_result_rows = 5000
+        state.auth = MagicMock()
+        state.auth.azure_auth_enabled = False
+        state.auth.auth_mode = "disabled"
+        state.denied_requests = 0
+        state.write_guard = MagicMock()
+
+        # Mock execute_query to return sample rows
+        async def mock_execute(instance_id, db, sql, max_rows=100):
+            return [
+                {"id": 1, "name": "alice"},
+                {"id": 2, "name": "bob"},
+            ]
+
+        state.connection_manager.execute_query = mock_execute
+        return state
+
+    @pytest.fixture
+    def mock_mcp(self):
+        mcp = MagicMock()
+        mcp.tool = MagicMock(return_value=lambda f: f)
+        return mcp
+
+    def test_exec_query_in_registered_list(self, mock_state, mock_mcp):
+        from src.tools.pg_tools import register_pg_tools
+
+        registered = register_pg_tools(mock_mcp, mock_state)
+        assert "db_1_pg96_exec_query" in registered
+        assert "db_2_pg96_exec_query" in registered
+
+    def test_registered_count_includes_exec_query(self, mock_state, mock_mcp):
+        from src.tools.pg_tools import register_pg_tools
+
+        registered = register_pg_tools(mock_mcp, mock_state)
+        # 23 tools per instance x 2 instances = 46
+        assert len(registered) == 46

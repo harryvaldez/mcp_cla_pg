@@ -26,5 +26,16 @@ tool_enable_flags:
   hypopg_create_virtual_indexes: true
   hypopg_explain_with_virtual: true
   hypopg_find_optimal_indexes: true
+  exec_query: true
+  analyze_table: true
+  check_table_bloat: true
+  check_table_wraparound: true
+  check_table_statistics: true
+  check_index_health: true
+  list_objects: true
+  list_tables: true
+  list_indexes: true
+  list_views: true
+  list_objects_by_type: true
 instance_tool_enable_flags: {}
 allowed_tools: {}

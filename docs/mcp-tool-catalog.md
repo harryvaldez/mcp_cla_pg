@@ -59,6 +59,72 @@ Check accessibility and identity of an EDBAS 9.6 database instance.
 
 ---
 
+## `db_<n>_pg96_exec_query`
+
+Execute a user-supplied SELECT query against an EDBAS 9.6 instance and return the result set. Only SELECT statements are permitted. Results are capped at `max_rows`.
+
+**Registered as:** `db_1_pg96_exec_query`, `db_2_pg96_exec_query`
+
+### Parameters
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `sql_statement` | string | **Yes** | — | SELECT SQL statement to execute |
+| `database_name` | string | No | `"edb"` | Target database on the instance |
+| `max_rows` | int | No | `5000` | Maximum rows to return (1–5000, capped by server policy) |
+| `actor` | string | No | `"system"` | Caller identity for audit logging |
+
+### Output Schema
+
+| Field | Type | Description |
+|---|---|---|
+| `rows` | list[dict] | Array of result rows as column→value mappings |
+| `row_count` | int | Number of rows returned |
+| `truncated` | bool | `true` if result exceeded `max_rows` |
+| `instance` | string | Instance ID that served the query |
+| `execution_ms` | int | Query execution latency in milliseconds |
+
+### FastMCP 3 Annotations
+
+| Annotation | Value |
+|---|---|
+| `readOnlyHint` | `true` |
+| `idempotentHint` | `false` |
+| `openWorldHint` | `false` |
+| `timeout` | `30.0` seconds |
+
+### Tags
+
+`read-only`, `query`, `instance-1` (or `instance-2`)
+
+### Example Response
+
+```json
+{
+  "rows": [
+    {"id": 1, "name": "alice"},
+    {"id": 2, "name": "bob"}
+  ],
+  "row_count": 2,
+  "truncated": false,
+  "instance": "primary",
+  "execution_ms": 15
+}
+```
+
+### Error Codes
+
+| Error | Description |
+|---|---|
+| `INVALID_INPUT: sql_statement is required` | Empty or missing `sql_statement` |
+| `INVALID_INPUT: only SELECT queries are allowed` | Non-SELECT verb detected |
+| `INVALID_INPUT: sql_statement contains invalid characters` | `;` or `--` found |
+| `INVALID_INPUT: max_rows must be between 1 and 5000` | `max_rows` out of range |
+| `RATE_LIMIT_EXCEEDED` | Per-actor or global rate limit exceeded |
+| `TOOL_ERROR: ...` | Database or query execution failure |
+
+---
+
 ## `db_<n>_pg96_get_slow_statements`
 
 Retrieves long-running SQL statements from `pg_stat_statements`, reporting execution stats and recommending optimizations or virtual indexes via `hypopg`.
@@ -70,6 +136,7 @@ Retrieves long-running SQL statements from `pg_stat_statements`, reporting execu
 | Name | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `database_name` | string | Yes | - | Name of the database to query |
+| `max_combinations` | integer | No | `10` | Maximum HypoPG index combinations to test per statement (min 5) |
 | `actor` | string | No | `"system"` | Caller identity for audit logging |
 
 ### Output Schema (Performance Analysis Schema)
@@ -91,7 +158,7 @@ Retrieves long-running SQL statements from `pg_stat_statements`, reporting execu
 | `readOnlyHint` | `true` |
 | `idempotentHint` | `false` |
 | `openWorldHint` | `false` |
-| `timeout` | `30.0` seconds |
+| `timeout` | `60.0` seconds |
 
 ### Tags
 
@@ -123,7 +190,7 @@ Complies with standard Performance Analysis Schema reporting lock event resoluti
 | `readOnlyHint` | `true` |
 | `idempotentHint` | `false` |
 | `openWorldHint` | `false` |
-| `timeout` | `30.0` seconds |
+| `timeout` | `60.0` seconds |
 
 ### Tags
 
@@ -133,7 +200,7 @@ Complies with standard Performance Analysis Schema reporting lock event resoluti
 
 ## `db_<n>_pg96_analyze_data_model`
 
-Evaluates physical structure health (e.g. `pg_class`, `pg_stat_user_tables`) identifying massive sequential scan impacts masking inefficient architecture for partitioning or materialized views.
+Orchestrates comprehensive data model analysis by delegating to sub-tools internally and aggregating findings. Includes HyperPG index recommendations for tables with sequential scan abuse.
 
 **Registered as:** `db_1_pg96_analyze_data_model`, `db_2_pg96_analyze_data_model`
 
@@ -147,7 +214,12 @@ Evaluates physical structure health (e.g. `pg_class`, `pg_stat_user_tables`) ide
 
 ### Output Schema
 
-Complies with standard Performance Analysis Schema highlighting structural health assessing partition boundaries and indexing efficiencies.
+Complies with standard Performance Analysis Schema. The `Recommendations/Fixes` array includes sections for:
+- Constraints & Foreign Keys
+- Normalization - Type Mismatches
+- Index Statistics (stale/missing ANALYZE)
+- 3NF Decomposition Analysis
+- HypoPG Index Recommendations (when applicable)
 
 ### FastMCP 3 Annotations
 
@@ -156,7 +228,7 @@ Complies with standard Performance Analysis Schema highlighting structural healt
 | `readOnlyHint` | `true` |
 | `idempotentHint` | `false` |
 | `openWorldHint` | `false` |
-| `timeout` | `30.0` seconds |
+| `timeout` | `60.0` seconds |
 
 ### Tags
 
@@ -368,3 +440,189 @@ Finds the optimal HypoPG virtual index combination for a query. Captures baselin
 ### Tags
 
 `hypopg`, `performance`, `instance-1` (or `instance-2`)
+
+---
+
+## HypoPG Operational Notes
+
+### Prerequisites
+
+1. **HypoPG Extension**: Must be installed on the target EDBAS 9.6 instance:
+   ```sql
+   CREATE EXTENSION IF NOT EXISTS hypopg;
+   ```
+
+2. **Required Privileges**: The database user must have `EXECUTE` on HypoPG functions:
+   ```sql
+   GRANT EXECUTE ON FUNCTION hypopg_create_index(text) TO edb_readonly_user;
+   GRANT EXECUTE ON FUNCTION hypopg_reset() TO edb_readonly_user;
+   GRANT EXECUTE ON FUNCTION hypopg_drop_index(oid) TO edb_readonly_user;
+   GRANT EXECUTE ON FUNCTION hypopg_get_indexdef(oid) TO edb_readonly_user;
+   GRANT EXECUTE ON FUNCTION hypopg_list_indexes(oid) TO edb_readonly_user;
+   ```
+
+3. **pg_stat_statements**: Required by `get_slow_statements` to retrieve query metrics.
+   ```sql
+   CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+   ```
+
+### Fallback Behavior
+
+If HypoPG is not installed or `hypopg_reset()` raises a function-not-found error:
+- `hypopg_create_virtual_indexes`: Raises `RuntimeError` with message `"HypoPG extension is not available on this instance"`.
+- `hypopg_find_optimal_indexes`: Returns only the baseline plan and cost with no ranked recommendations.
+- `get_slow_statements`: Includes a note in the output for each statement that HypoPG analysis is unavailable.
+
+### Ranking Behavior
+
+The `hypopg_find_optimal_indexes` tool and `get_slow_statements` use the following ranking algorithm:
+1. **Baseline capture**: `EXPLAIN (FORMAT JSON)` is run first without any virtual indexes.
+2. **Candidate generation**: Referenced tables/columns are extracted from the query text. Single-column B-tree virtual indexes are created for columns in `WHERE`, `JOIN ON`, and `ORDER BY` clauses.
+3. **Combination testing**: Singleton, pairwise, and triplet combinations of virtual indexes are tested, capped at `max_combinations` (default 10, minimum 5 enforced in code).
+4. **Ranking**: All tested plans plus the baseline are sorted by `total_cost` ascending. The `best_recommendation` is the plan with the lowest cost.
+5. **Cleanup**: `hypopg_reset()` is always called in a `finally` block to clear virtual indexes from the session, preventing state leaks across connections.
+
+### Tool Type Annotations
+
+| Tool | readOnlyHint | Reason | Timeout |
+|------|---|---|---|
+| `get_slow_statements` | `true` | Read-only; uses HypoPG internally but does not expose session state to caller | 60s |
+| `blocking_sessions` | `true` | Read-only session/lock queries | 30s |
+| `analyze_data_model` | `true` | Read-only schema/statistics queries | 60s |
+| Data model sub-tools | `true` | Read-only analysis | 30s |
+| `hypopg_create_virtual_indexes` | `false` | Modifies session memory state via hypopg_create_index | 30s |
+| `hypopg_explain_with_virtual` | `true` | Read-only EXPLAIN (uses existing session state) | 30s |
+| `hypopg_find_optimal_indexes` | `false` | Creates/drops virtual indexes during testing | 60s |
+| `exec_query` | `true` | Read-only SELECT execution | 30s |
+| `analyze_table` | `true` | Read-only maintenance analysis | 60s |
+| `check_table_bloat` | `true` | Read-only bloat analysis | 30s |
+| `check_table_wraparound` | `true` | Read-only wraparound check | 30s |
+| `check_table_statistics` | `true` | Read-only statistics check | 30s |
+| `check_index_health` | `true` | Read-only index health | 30s |
+| `list_objects` | `true` | Read-only object discovery | 30s |
+| `list_tables` | `true` | Read-only table listing | 30s |
+| `list_indexes` | `true` | Read-only index listing | 30s |
+| `list_views` | `true` | Read-only view listing | 30s |
+| `list_objects_by_type` | `true` | Read-only generic object listing | 30s |
+
+---
+
+## Maintenance Tools
+
+### `db_<n>_pg96_analyze_table`
+
+Orchestrates comprehensive single-table maintenance analysis across 4 domains: bloat, wraparound, statistics, and index health.
+
+**Registered as:** `db_1_pg96_analyze_table`, `db_2_pg96_analyze_table`
+
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `schema_name` | string | **Yes** | — | Schema containing the table |
+| `table_name` | string | **Yes** | — | Table to analyze |
+| `database_name` | string | No | `"edb"` | Target database |
+| `actor` | string | No | `"system"` | Caller identity |
+
+**Output:** `Category: "Maintenance"` with `Issues` array of independent entries per analysis domain (Bloat, Wraparound, Statistics, Index Health), each with own `Impacted Metrics`, `Issue Priority`, `Recommendations/Fixes`.
+
+**Tags:** `read-only`, `maintenance` | **Timeout:** 60s
+
+### `db_<n>_pg96_check_table_bloat`
+
+Analyze dead tuple ratio and vacuum staleness for a specific table.
+
+**Parameters:** `schema_name`, `table_name` (required), `database_name` (optional)
+
+**Output:** `dead_tuple_pct`, `hot_update_pct`, `last_vacuum`, `last_autovacuum`, `bloat_severity` (LOW/MEDIUM/HIGH)
+
+**Tags:** `read-only`, `maintenance` | **Timeout:** 30s
+
+### `db_<n>_pg96_check_table_wraparound`
+
+Check transaction ID wraparound risk for a specific table.
+
+**Parameters:** `schema_name`, `table_name` (required), `database_name` (optional)
+
+**Output:** `xid_age`, `risk_level` (LOW/MEDIUM/HIGH/CRITICAL), `recommended_action`
+
+**Tags:** `read-only`, `maintenance` | **Timeout:** 30s
+
+### `db_<n>_pg96_check_table_statistics`
+
+Check staleness of table statistics for the query planner.
+
+**Parameters:** `schema_name`, `table_name` (required), `database_name` (optional)
+
+**Output:** `last_analyze`, `days_since_analyze`, `n_mod_since_analyze`, `is_stale`, `recommendation`
+
+**Tags:** `read-only`, `maintenance` | **Timeout:** 30s
+
+### `db_<n>_pg96_check_index_health`
+
+Assess index health: invalid, unused, duplicate indexes, and total bloat.
+
+**Parameters:** `schema_name`, `table_name` (required), `database_name` (optional)
+
+**Output:** `invalid_indexes`, `unused_indexes`, `duplicate_indexes`, `total_bloat_bytes`, `recommended_actions`
+
+**Tags:** `read-only`, `maintenance` | **Timeout:** 30s
+
+---
+
+## Discovery Tools
+
+### `db_<n>_pg96_list_objects`
+
+List database objects of a specific type within a schema.
+
+**Registered as:** `db_1_pg96_list_objects`, `db_2_pg96_list_objects`
+
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `schema_name` | string | **Yes** | — | Schema to query |
+| `object_type` | string | **Yes** | — | Type: `table`, `index`, `view`, `sequence`, `materialized_view`, `composite_type`, `foreign_table` |
+| `database_name` | string | No | `"edb"` | Target database |
+| `actor` | string | No | `"system"` | Caller identity |
+
+**Output:** `Category: "Discovery"`, `Schema`, `Object Type`, `Object Count`, `Objects` array
+
+**Tags:** `read-only`, `discovery` | **Timeout:** 30s
+
+### `db_<n>_pg96_list_tables`
+
+List all tables in a schema with row counts, sizes, and descriptions.
+
+**Parameters:** `schema_name` (required), `database_name` (optional)
+
+**Output:** `Objects` array with `name`, `owner`, `row_count`, `size_bytes`, `description`
+
+**Tags:** `read-only`, `discovery` | **Timeout:** 30s
+
+### `db_<n>_pg96_list_indexes`
+
+List all indexes in a schema with type, size, and scan statistics.
+
+**Parameters:** `schema_name` (required), `database_name` (optional)
+
+**Output:** `Objects` array with `name`, `table_name`, `index_type`, `size_bytes`, `idx_scan`
+
+**Tags:** `read-only`, `discovery` | **Timeout:** 30s
+
+### `db_<n>_pg96_list_views`
+
+List all views in a schema with definition and owner.
+
+**Parameters:** `schema_name` (required), `database_name` (optional)
+
+**Output:** `Objects` array with `name`, `owner`, `definition` (truncated to 500 chars), `description`
+
+**Tags:** `read-only`, `discovery` | **Timeout:** 30s
+
+### `db_<n>_pg96_list_objects_by_type`
+
+Generic object lister for any `pg_class.relkind` value (sequences, materialized views, composite types, foreign tables).
+
+**Parameters:** `schema_name`, `object_type` (required), `database_name` (optional)
+
+**Output:** `Objects` array with `name`, `owner`, `size_bytes`, `description`
+
+**Tags:** `read-only`, `discovery` | **Timeout:** 30s

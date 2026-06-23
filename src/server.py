@@ -108,11 +108,22 @@ def build_app() -> Any:
         stateless_http=stateless,
     )
 
-    # Initialize FastMCP 3 server
+    # Define server lifespan for connection pool lifecycle
+    @asynccontextmanager
+    async def app_lifespan(server: FastMCP):
+        """Initialize pools on startup, close on shutdown."""
+        await state.connection_manager.initialize_pools()
+        try:
+            yield
+        finally:
+            await state.connection_manager.close_all_pools()
+
+    # Initialize FastMCP 3 server with lifespan
     mcp = FastMCP(
         "pg96-edb-dual-instance",
         version="1.0.0",
         mask_error_details=mask_errors,
+        lifespan=app_lifespan,
     )
 
     # Attach session-tracking middleware (auto-touches on every tool call)
@@ -125,52 +136,12 @@ def build_app() -> Any:
     # Register diagnostics custom routes
     register_diagnostics_routes(mcp, state)
 
-    # Build ASGI app with server lifespan for pool lifecycle
-    @asynccontextmanager
-    async def lifespan(app: Any):
-        """Initialize pools on startup, close on shutdown."""
-        await state.connection_manager.initialize_pools()
-        try:
-            yield
-        finally:
-            await state.connection_manager.close_all_pools()
-
-    mcp_app = mcp.http_app(path="/mcp", stateless_http=stateless)
-
-    # Attach lifespan to the resulting ASGI app
-    original_lifespan = getattr(mcp_app, "lifespan", None)
-
-    if original_lifespan is not None:
-
-        @asynccontextmanager
-        async def combined_lifespan(app: Any):
-            async with original_lifespan(app):
-                await state.connection_manager.initialize_pools()
-                try:
-                    yield
-                finally:
-                    await state.connection_manager.close_all_pools()
-
-        import starlette.applications
-        from starlette.routing import Mount
-
-        # Re-wrap with our lifespan
-        final_app = starlette.applications.Starlette(
-            routes=[Mount("/", app=mcp_app)],
-            lifespan=combined_lifespan,
-        )
-    else:
-        import starlette.applications
-        from starlette.routing import Mount
-
-        final_app = starlette.applications.Starlette(
-            routes=[Mount("/", app=mcp_app)],
-            lifespan=lifespan,
-        )
+    # Build ASGI app — lifespan is managed by FastMCP
+    app = mcp.http_app(path="/mcp", stateless_http=stateless)
 
     # Store state reference for debugging
-    final_app.state.runtime = state
-    return final_app
+    app.state.runtime = state
+    return app
 
 
 # Build the ASGI application instance at module level for uvicorn

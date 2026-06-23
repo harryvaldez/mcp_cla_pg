@@ -13,6 +13,8 @@ import logging
 import re
 from typing import Any
 
+import asyncpg
+
 logger = logging.getLogger(__name__)
 
 # Regex patterns for SQL parsing (EDBAS 9.6 compatible)
@@ -53,7 +55,9 @@ _RE_ORDER_BY_COL = re.compile(
 )
 
 
-async def parse_tables_and_columns(conn: Any, query_text: str) -> dict[str, Any]:
+async def parse_tables_and_columns(
+    conn: Any, query_text: str
+) -> dict[str, Any]:
     """Parse SQL text to extract referenced tables and columns.
 
     Uses regex to identify tables/columns in FROM, JOIN, WHERE,
@@ -237,7 +241,10 @@ async def hypopg_explain_with_virtual(
     else:
         plan = plan_list
 
-    total_cost = float(plan.get("Plan", {}).get("Total Cost", 0))
+    if isinstance(plan, dict):
+        total_cost = float(plan.get("Plan", {}).get("Total Cost", 0))
+    else:
+        total_cost = 0
     return {"plan": plan, "total_cost": total_cost}
 
 

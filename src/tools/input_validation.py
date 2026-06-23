@@ -53,3 +53,66 @@ def validate_query_text(query_text: str) -> str:
     if not value.upper().lstrip().startswith("SELECT"):
         raise ValueError("INVALID_INPUT: only SELECT queries can be analyzed by HypoPG tools")
     return value
+
+
+def validate_sql_statement(sql_statement: str) -> str:
+    """Validate a user-supplied SQL statement for the exec_query tool.
+
+    Only SELECT statements are permitted. Rejects SQL injection vectors.
+    """
+    value = sql_statement.strip()
+    if not value:
+        raise ValueError("INVALID_INPUT: sql_statement is required")
+    if ";" in value or "--" in value:
+        raise ValueError("INVALID_INPUT: sql_statement contains invalid characters")
+    if not value.upper().lstrip().startswith("SELECT"):
+        raise ValueError("INVALID_INPUT: only SELECT queries are allowed")
+    return value
+
+
+def validate_table_name(name: str) -> str:
+    """Validate a table name for analyze_table and related tools.
+
+    Strips whitespace, rejects SQL injection vectors, enforces
+    alphanumeric+underscore pattern (same as validate_schema_name).
+    """
+    value = name.strip()
+    if not value:
+        raise ValueError("INVALID_INPUT: table_name is required")
+    if ";" in value or "--" in value:
+        raise ValueError("INVALID_INPUT: table_name contains invalid characters")
+    if not value.replace("_", "").isalnum():
+        raise ValueError("INVALID_INPUT: table_name must be alphanumeric with underscores")
+    return value
+
+
+# Mapping from user-friendly object_type strings to pg_class.relkind values
+OBJECT_TYPE_MAP: dict[str, str] = {
+    "table": "r",
+    "index": "i",
+    "view": "v",
+    "sequence": "S",
+    "materialized_view": "m",
+    "composite_type": "c",
+    "foreign_table": "f",
+}
+
+
+def validate_object_type(object_type: str) -> str:
+    """Validate and map an object_type string to a pg_class.relkind value.
+
+    Accepts user-friendly names (table, index, view, etc.) and returns
+    the corresponding pg_class.relkind character. Rejects unknown types.
+    """
+    value = object_type.strip().lower()
+    if not value:
+        raise ValueError("INVALID_INPUT: object_type is required")
+    if ";" in value or "--" in value:
+        raise ValueError("INVALID_INPUT: object_type contains invalid characters")
+    if value not in OBJECT_TYPE_MAP:
+        allowed = ", ".join(sorted(OBJECT_TYPE_MAP.keys()))
+        raise ValueError(
+            f"INVALID_INPUT: unknown object_type '{object_type}'. "
+            f"Allowed types: {allowed}"
+        )
+    return OBJECT_TYPE_MAP[value]
