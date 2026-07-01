@@ -53,7 +53,7 @@ class TestGetSlowStatements:
     def test_registered_count_matches(self, mock_state, mock_mcp):
         """Verify total registered count matches expected value."""
         registered = register_pg_tools(mock_mcp, mock_state)
-        assert len(registered) == 46
+        assert len(registered) == 54
 
     def test_hypopg_sub_tools_registered(self, mock_state, mock_mcp):
         """Verify HypoPG sub-tools are in the registered list."""
@@ -198,6 +198,67 @@ class TestAnalyzeTable:
         assert "db_1_pg96_check_index_health" in registered
 
 
+class TestAnalyzeSettSec:
+    """Tests for analyze_sett_sec tool registration and naming."""
+
+    @pytest.fixture
+    def mock_state(self):
+        state = MagicMock()
+        state.connection_manager = AsyncMock()
+        state.connection_manager.list_enabled_instances = MagicMock(
+            return_value=["primary", "secondary"]
+        )
+        state.connection_manager.acquire = MagicMock()
+        state.session_manager = MagicMock()
+        state.rate_limiter = MagicMock()
+        state.rate_limiter.allow.return_value = True
+        state.audit_logger = MagicMock()
+        state.policy = MagicMock()
+        state.auth = MagicMock()
+        state.auth.azure_auth_enabled = False
+        state.auth.auth_mode = "disabled"
+        state.denied_requests = 0
+        state.write_guard = MagicMock()
+        return state
+
+    @pytest.fixture
+    def mock_mcp(self):
+        mcp = MagicMock()
+        mcp.tool = MagicMock(return_value=lambda f: f)
+        return mcp
+
+    def test_analyze_sett_sec_registered(self, mock_state, mock_mcp):
+        """Property 1: All 8 new tool names present in both instances."""
+        registered = register_pg_tools(mock_mcp, mock_state)
+        assert "db_1_pg96_analyze_sett_sec" in registered
+        assert "db_2_pg96_analyze_sett_sec" in registered
+        assert "db_1_pg96_check_db_parameters" in registered
+        assert "db_2_pg96_check_db_parameters" in registered
+        assert "db_1_pg96_compute_db_metrics" in registered
+        assert "db_2_pg96_compute_db_metrics" in registered
+        assert "db_1_pg96_analyze_db_security" in registered
+        assert "db_2_pg96_analyze_db_security" in registered
+
+    def test_tool_disable_flag_exclusion(self, mock_state, mock_mcp):
+        """Property 3: Disabling a tool flag removes it from registry."""
+        from unittest.mock import patch
+
+        def _is_tool_enabled(policy, instance_id, tool_name):
+            if tool_name == "analyze_sett_sec":
+                return False
+            return True
+
+        with patch(
+            "src.tools.pg_tools.is_tool_enabled",
+            side_effect=_is_tool_enabled,
+        ):
+            registered = register_pg_tools(mock_mcp, mock_state)
+            assert "db_1_pg96_analyze_sett_sec" not in registered
+            assert "db_2_pg96_analyze_sett_sec" not in registered
+            assert "db_1_pg96_check_db_parameters" in registered
+
+
+
 class TestListObjects:
     """Tests for list_objects tool registration and naming."""
 
@@ -244,3 +305,127 @@ class TestListObjects:
     def test_list_views_registered(self, mock_state, mock_mcp):
         registered = register_pg_tools(mock_mcp, mock_state)
         assert "db_1_pg96_list_views" in registered
+
+
+class TestRestrictedToolClassifierCoverage:
+    """Ensures restricted tool names remain covered by the Okta policy classifier.
+
+    When new HypoPG or cross-session tools are added, this test class must
+    be updated to ensure they are properly classified as restricted.
+    """
+
+    _EXPECTED_RESTRICTED_HYPOPG = [
+        "db_1_pg96_hypopg_create_virtual_indexes",
+        "db_2_pg96_hypopg_create_virtual_indexes",
+        "db_1_pg96_hypopg_explain_with_virtual",
+        "db_2_pg96_hypopg_explain_with_virtual",
+        "db_1_pg96_hypopg_find_optimal_indexes",
+        "db_2_pg96_hypopg_find_optimal_indexes",
+    ]
+
+    _EXPECTED_RESTRICTED_CROSS_SESSION = [
+        "db_1_pg96_blocking_sessions",
+        "db_2_pg96_blocking_sessions",
+    ]
+
+    _EXPECTED_NON_RESTRICTED = [
+        "db_1_pg96_ping",
+        "db_2_pg96_ping",
+        "db_1_pg96_exec_query",
+        "db_2_pg96_exec_query",
+        "db_1_pg96_get_slow_statements",
+        "db_2_pg96_get_slow_statements",
+        "db_1_pg96_analyze_data_model",
+        "db_2_pg96_analyze_data_model",
+        "db_1_pg96_analyze_table",
+        "db_2_pg96_analyze_table",
+        "db_1_pg96_analyze_sett_sec",
+        "db_2_pg96_analyze_sett_sec",
+        "db_1_pg96_list_objects",
+        "db_2_pg96_list_objects",
+    ]
+
+    @pytest.fixture
+    def mock_state(self):
+        state = MagicMock()
+        state.connection_manager = AsyncMock()
+        state.connection_manager.list_enabled_instances = MagicMock(
+            return_value=["primary", "secondary"]
+        )
+        state.connection_manager.acquire = MagicMock()
+        state.session_manager = MagicMock()
+        state.rate_limiter = MagicMock()
+        state.rate_limiter.allow.return_value = True
+        state.audit_logger = MagicMock()
+        state.policy = MagicMock()
+        state.auth = MagicMock()
+        state.auth.azure_auth_enabled = False
+        state.auth.auth_mode = "disabled"
+        state.denied_requests = 0
+        state.write_guard = MagicMock()
+        return state
+
+    @pytest.fixture
+    def mock_mcp(self):
+        mcp = MagicMock()
+        mcp.tool = MagicMock(return_value=lambda f: f)
+        return mcp
+
+    def test_all_hypopg_tools_registered(self, mock_state, mock_mcp):
+        """All expected HypoPG restricted tools are registered."""
+        registered = register_pg_tools(mock_mcp, mock_state)
+        for name in self._EXPECTED_RESTRICTED_HYPOPG:
+            assert name in registered, f"{name} should be registered"
+
+    def test_all_cross_session_tools_registered(self, mock_state, mock_mcp):
+        """All expected cross-session restricted tools are registered."""
+        registered = register_pg_tools(mock_mcp, mock_state)
+        for name in self._EXPECTED_RESTRICTED_CROSS_SESSION:
+            assert name in registered, f"{name} should be registered"
+
+    def test_restricted_tools_classified_by_policy(self):
+        """All restricted tool names are caught by _is_restricted_read_tool."""
+        from src.tools.pg_tools import _is_restricted_read_tool
+
+        all_restricted = self._EXPECTED_RESTRICTED_HYPOPG + self._EXPECTED_RESTRICTED_CROSS_SESSION
+        for name in all_restricted:
+            assert _is_restricted_read_tool(name), f"{name} should be classified as restricted"
+
+    def test_non_restricted_tools_not_classified(self):
+        """Non-restricted tool names are not caught by _is_restricted_read_tool."""
+        from src.tools.pg_tools import _is_restricted_read_tool
+
+        for name in self._EXPECTED_NON_RESTRICTED:
+            assert not _is_restricted_read_tool(name), f"{name} should NOT be restricted"
+
+    def test_evaluate_denies_restricted_for_read_group(self, mock_state, mock_mcp):
+        """All restricted tools are denied for read-group callers."""
+        from src.tools.pg_tools import evaluate_okta_tool_access
+
+        all_restricted = self._EXPECTED_RESTRICTED_HYPOPG + self._EXPECTED_RESTRICTED_CROSS_SESSION
+        for name in all_restricted:
+            allowed, reason = evaluate_okta_tool_access(
+                tool_name=name,
+                privilege_level="read",
+                groups=["mcp-readers"],
+                write_groups=["mcp-writers"],
+                read_groups=["mcp-readers"],
+            )
+            assert allowed is False, f"{name} should be denied for read group"
+            assert reason is not None and "AUTHZ_DENIED" in reason
+
+    def test_evaluate_allows_restricted_for_write_group(self, mock_state, mock_mcp):
+        """All restricted tools are allowed for write-group callers."""
+        from src.tools.pg_tools import evaluate_okta_tool_access
+
+        all_restricted = self._EXPECTED_RESTRICTED_HYPOPG + self._EXPECTED_RESTRICTED_CROSS_SESSION
+        for name in all_restricted:
+            allowed, reason = evaluate_okta_tool_access(
+                tool_name=name,
+                privilege_level="read",
+                groups=["mcp-writers"],
+                write_groups=["mcp-writers"],
+                read_groups=["mcp-readers"],
+            )
+            assert allowed is True, f"{name} should be allowed for write group"
+            assert reason is None

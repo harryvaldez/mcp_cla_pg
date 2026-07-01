@@ -37,6 +37,10 @@ Check accessibility and identity of an EDBAS 9.6 database instance.
 
 `read-only`, `diagnostics`, `instance-1` (or `instance-2`)
 
+### Read-Group Access
+
+✅ Always allowed for read-group callers.
+
 ### Example Response
 
 ```json
@@ -56,6 +60,23 @@ Check accessibility and identity of an EDBAS 9.6 database instance.
 | `PING_ERROR: ...` | Database connectivity or query execution failure |
 | `RATE_LIMIT_EXCEEDED` | Per-actor or global rate limit exceeded |
 | `AUTH_FAILED` | Missing or invalid authentication |
+
+---
+
+## Read-Group Access Restrictions
+
+When Okta authentication is enabled (`auth_mode: okta` in `config/runtime-policy.yaml`), callers authenticated with read-level privileges are **denied access** to the following tool categories:
+
+| Restricted Tool Family | Suffix Pattern | Reason |
+|---|---|---|
+| HypoPG virtual indexes | `_pg96_hypopg_create_virtual_indexes` | Modifies session-level virtual index state |
+| HypoPG explain with virtual | `_pg96_hypopg_explain_with_virtual` | Requires HypoPG session state |
+| HypoPG optimal indexes | `_pg96_hypopg_find_optimal_indexes` | Creates/drops virtual indexes during testing |
+| Blocking sessions | `_pg96_blocking_sessions` | Inspects cross-session activity |
+
+Each restricted tool below includes a ⚠️ **Read-Group Access** annotation. Unrestricted tools include a ✅ marker.
+
+The restricted suffix lists are configurable via `okta_read_restricted_tool_suffixes` and `okta_cross_session_tool_suffixes` in the `auth` section of `config/runtime-policy.yaml`.
 
 ---
 
@@ -195,6 +216,10 @@ Complies with standard Performance Analysis Schema reporting lock event resoluti
 ### Tags
 
 `read-only`, `performance`, `instance-1` (or `instance-2`)
+
+### Read-Group Access
+
+⚠️ **Restricted** — inspects cross-session activity (other users' locks, queries, and sessions).
 
 ---
 
@@ -366,6 +391,10 @@ Parses a SELECT query and creates candidate virtual indexes via HypoPG. Extracts
 
 `hypopg`, `performance`, `instance-1` (or `instance-2`)
 
+### Read-Group Access
+
+⚠️ **Restricted** — creates/modifies session-level virtual index state.
+
 ---
 
 ## `db_<n>_pg96_hypopg_explain_with_virtual`
@@ -401,6 +430,10 @@ Runs EXPLAIN (FORMAT JSON) for a query using the current session's virtual index
 ### Tags
 
 `hypopg`, `performance`, `instance-1` (or `instance-2`)
+
+### Read-Group Access
+
+⚠️ **Restricted** — requires HypoPG session state, excluded for read-group consistency.
 
 ---
 
@@ -440,6 +473,10 @@ Finds the optimal HypoPG virtual index combination for a query. Captures baselin
 ### Tags
 
 `hypopg`, `performance`, `instance-1` (or `instance-2`)
+
+### Read-Group Access
+
+⚠️ **Restricted** — creates and drops virtual indexes during combination testing.
 
 ---
 
@@ -565,6 +602,55 @@ Assess index health: invalid, unused, duplicate indexes, and total bloat.
 **Output:** `invalid_indexes`, `unused_indexes`, `duplicate_indexes`, `total_bloat_bytes`, `recommended_actions`
 
 **Tags:** `read-only`, `maintenance` | **Timeout:** 30s
+
+---
+
+## Settings & Security Tools
+
+### `db_<n>_pg96_analyze_sett_sec`
+
+Orchestrates a comprehensive database settings and security analysis across 3 domains: parameter misconfiguration, performance metrics, and security vulnerabilities.
+
+**Registered as:** `db_1_pg96_analyze_sett_sec`, `db_2_pg96_analyze_sett_sec`
+
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `database_name` | string | No | `"edb"` | Target database |
+| `actor` | string | No | `"system"` | Caller identity |
+
+**Output:** `Category: "Maintenance"`, `Overall Assessment`, `Issues` array with 3 entries: "DB Parameters Misconfiguration", "Database Performance Metrics", "Security Vulnerabilities". Each entry contains `Issue`, `Impacted Metrics`, `Issue Priority`, `Recommendations/Fixes`.
+
+**Tags:** `read-only`, `maintenance`, `security` | **Timeout:** 60s
+
+### `db_<n>_pg96_check_db_parameters`
+
+Evaluate all `pg_settings` against EDBAS 9.6 best-practice rules across 7 categories (Memory, WAL/Checkpoint, Planner/Optimizer, Autovacuum, Logging, Connections, Security/Auth).
+
+**Parameters:** `database_name` (optional, default `"edb"`), `actor`
+
+**Output:** `parameter_analysis: {total, compliant, warnings_count, critical_count}`, `findings: [{parameter, current_value, recommended_value, category, severity, rationale}]`
+
+**Tags:** `read-only`, `maintenance`, `security` | **Timeout:** 45s
+
+### `db_<n>_pg96_compute_db_metrics`
+
+Compute key database performance metrics: cache hit ratio, transaction ratios, tuple metrics, connection utilization, TXID age, and database size.
+
+**Parameters:** `database_name` (optional, default `"edb"`), `actor`
+
+**Output:** 8 top-level metric keys: `cache_hit_ratio_pct`, `transaction_metrics`, `tuple_metrics`, `query_latency`, `connection_utilization`, `txid_metrics`, `database_size`, `dead_tuple_ratio_pct`
+
+**Tags:** `read-only`, `maintenance` | **Timeout:** 45s
+
+### `db_<n>_pg96_analyze_db_security`
+
+Perform security vulnerability assessment: SSL configuration, WAL archiver health, superuser sprawl, password encryption, audit logging gaps, and public schema privileges.
+
+**Parameters:** `database_name` (optional, default `"edb"`), `actor`
+
+**Output:** `{total_checks, passed, warnings, critical_findings, findings: [{check, status, severity, detail, recommendation}]}`
+
+**Tags:** `read-only`, `maintenance`, `security` | **Timeout:** 45s
 
 ---
 

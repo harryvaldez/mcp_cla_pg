@@ -56,7 +56,7 @@ Copy-Item .env.example .env
 python -m src.server
 ```
 
-6. Health check: `curl http://localhost:8086/health`
+6. Health check: `curl http://localhost:8080/health`
 
 ### Docker Quick Start
 
@@ -104,5 +104,6 @@ docker compose -f docker/docker-compose.yml up -d
 - [Tool catalog](docs/mcp-tool-catalog.md) — Detailed tool contracts
 - [Database setup guide](docs/database-setup-guide.md) — Privilege requirements and ROLE configuration
 - [Docker runtime guide](docs/run-mcp-server-with-docker.md) — Docker deployment instructions
+- [Okta authentication setup guide](docs/okta-authentication-setup.md) — End-to-end Okta OAuth + group setup for MCP access
 - [FastMCP 3 Documentation](https://gofastmcp.com/) — FastMCP framework documentation
 - [EDBAS Documentation](https://www.enterprisedb.com/docs/) — EnterpriseDB Advanced Server docs

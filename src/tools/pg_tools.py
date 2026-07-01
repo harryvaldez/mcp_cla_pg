@@ -9,10 +9,9 @@ from fastmcp import Context, FastMCP
 from fastmcp.dependencies import Depends
 from fastmcp.exceptions import ToolError
 from fastmcp.utilities.logging import get_logger
-from mcp.types import ToolAnnotations
 
 from src.middleware.rate_limiter import RateLimitExceededError
-from src.tools import hypopg_tools, table_analysis
+from src.tools import hypopg_tools, settings_security, table_analysis
 from src.tools.input_validation import (
     validate_database_name,
     validate_object_type,
@@ -41,6 +40,86 @@ _PING_SQL = (
 )
 
 
+def _is_restricted_read_tool(
+    tool_name: str,
+    restricted_suffixes: list[str] | None = None,
+) -> bool:
+    """Check if a tool name matches any restricted suffix.
+
+    Args:
+        tool_name: The full MCP tool name (e.g. ``db_1_pg96_hypopg_create_virtual_indexes``).
+        restricted_suffixes: List of suffix patterns to check. If ``None``,
+            uses the default hardcoded set for backward compatibility.
+
+    Returns:
+        ``True`` if the tool name ends with any restricted suffix.
+    """
+    if restricted_suffixes is None:
+        restricted_suffixes = [
+            "_pg96_hypopg_create_virtual_indexes",
+            "_pg96_hypopg_explain_with_virtual",
+            "_pg96_hypopg_find_optimal_indexes",
+            "_pg96_blocking_sessions",
+        ]
+    return any(tool_name.endswith(suffix) for suffix in restricted_suffixes)
+
+
+def evaluate_okta_tool_access(
+    *,
+    tool_name: str,
+    privilege_level: str,
+    groups: list[str],
+    write_groups: list[str],
+    read_groups: list[str],
+    restricted_suffixes: list[str] | None = None,
+) -> tuple[bool, str | None]:
+    """Return allow/deny decision for Okta group-based tool authorization.
+
+    Policy:
+    - ``okta_write_groups`` => access to all tools.
+    - ``okta_read_groups`` => access to all tools except restricted tools.
+    - Scope-derived fallback: write => all tools, read => same restricted set, none => deny.
+
+    Args:
+        tool_name: Full MCP tool name to check.
+        privilege_level: Derived privilege (``read``, ``write``, ``none``).
+        groups: Okta groups from the JWT ``groups`` claim.
+        write_groups: Configured write-group allowlist.
+        read_groups: Configured read-group allowlist.
+        restricted_suffixes: Tool-name suffixes that are restricted for **read**-level
+            callers. Defaults to HypoPG and cross-session suffixes.
+
+    Returns:
+        Tuple of ``(allowed: bool, reason: str | None)``.
+    """
+    in_write_group = any(g in write_groups for g in groups)
+    in_read_group = any(g in read_groups for g in groups)
+
+    if in_write_group:
+        return True, None
+
+    if in_read_group:
+        if _is_restricted_read_tool(tool_name, restricted_suffixes):
+            return (
+                False,
+                ("AUTHZ_DENIED: read-group caller cannot access HypoPG/cross-session tools"),
+            )
+        return True, None
+
+    if privilege_level == "write":
+        return True, None
+
+    if privilege_level == "read":
+        if _is_restricted_read_tool(tool_name, restricted_suffixes):
+            return (
+                False,
+                ("AUTHZ_DENIED: read-privilege caller cannot access HypoPG/cross-session tools"),
+            )
+        return True, None
+
+    return False, "AUTHZ_DENIED: no matching okta group/scope privileges"
+
+
 def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
     """Register dual-instance MCP tools for all enabled EDBAS instances.
 
@@ -56,7 +135,9 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
         auth_cfg = getattr(state, "auth", None)
         if auth_cfg is None:
             return False
-        return bool(auth_cfg.azure_auth_enabled or auth_cfg.auth_mode == "azure_token_verifier")
+        return bool(
+            auth_cfg.azure_auth_enabled or auth_cfg.auth_mode in ("azure_token_verifier", "okta")
+        )
 
     async def _resolve_actor_and_authorize(
         *,
@@ -65,9 +146,85 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
         required_privilege: str,
         ctx: Context | None,
     ) -> tuple[str, dict[str, Any]]:
-        # Currently auth is disabled; return pass-through
+        auth_cfg = getattr(state, "auth", None)
+        auth_mode = getattr(auth_cfg, "auth_mode", "disabled") if auth_cfg else "disabled"
+
+        # Okta OAuth: extract actor from JWT sub claim
+        if auth_mode == "okta" and ctx is not None:
+            try:
+                token = ctx.access_token  # type: ignore[attr-defined]
+                if token is not None:
+                    claims = token.claims or {}
+                    actor = claims.get("sub", actor)
+                    scopes: list[str] = []
+                    raw_scopes = claims.get("scp", "")
+                    if isinstance(raw_scopes, str):
+                        scopes = raw_scopes.split()
+                    elif isinstance(raw_scopes, list):
+                        scopes = raw_scopes
+
+                    # Groups take priority over scopes (Okta groups claim)
+                    groups: list[str] = []
+                    raw_groups = claims.get("groups", [])
+                    if isinstance(raw_groups, list):
+                        groups = [str(g) for g in raw_groups]
+
+                    write_groups = getattr(auth_cfg, "okta_write_groups", ["mcp-writers"]) or []
+                    read_groups = getattr(auth_cfg, "okta_read_groups", ["mcp-readers"]) or []
+                    write_scopes = getattr(auth_cfg, "okta_write_scopes", ["mcp:write"]) or []
+                    read_scopes = getattr(auth_cfg, "okta_read_scopes", ["mcp:read"]) or []
+
+                    privilege = "none"
+                    # 1) Check Okta groups first (stronger signal)
+                    if any(g in write_groups for g in groups):
+                        privilege = "write"
+                    elif any(g in read_groups for g in groups):
+                        privilege = "read"
+                    # 2) Fall back to scopes if no group match
+                    elif any(s in write_scopes for s in scopes):
+                        privilege = "write"
+                    elif any(s in read_scopes for s in scopes):
+                        privilege = "read"
+
+                    matched_groups = [g for g in groups if g in write_groups or g in read_groups]
+
+                    # Build restricted suffix list from auth config, falling back to defaults
+                    restricted_suffixes: list[str] | None = None
+                    if auth_cfg is not None:
+                        restricted_suffixes = list(
+                            getattr(auth_cfg, "okta_read_restricted_tool_suffixes", []) or []
+                        ) + list(getattr(auth_cfg, "okta_cross_session_tool_suffixes", []) or [])
+                        restricted_suffixes = restricted_suffixes or None
+
+                    is_allowed, deny_reason = evaluate_okta_tool_access(
+                        tool_name=tool,
+                        privilege_level=privilege,
+                        groups=groups,
+                        write_groups=write_groups,
+                        read_groups=read_groups,
+                        restricted_suffixes=restricted_suffixes,
+                    )
+                    if not is_allowed:
+                        raise PermissionError(deny_reason)
+
+                    return actor, {
+                        "auth_mode": "okta",
+                        "auth_subject": actor,
+                        "privilege_level": privilege,
+                        "scopes": scopes,
+                        "groups": groups,
+                        "authorization_decision": "allow",
+                        "group_match_result": {
+                            "group_authorization_enabled": True,
+                            "matched_groups": matched_groups,
+                        },
+                    }
+            except Exception:
+                pass  # fall through to disabled/error
+
+        # Azure Entra / disabled: pass-through
         return actor, {
-            "auth_mode": "disabled",
+            "auth_mode": auth_mode,
             "auth_subject": None,
             "privilege_level": "none",
             "group_match_result": {"group_authorization_enabled": False},
@@ -116,9 +273,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
 
         @mcp.tool(
             name=full_name,
-            annotations=ToolAnnotations(
-                readOnlyHint=True, idempotentHint=False, openWorldHint=False
-            ),
+            annotations={"readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
             tags={"read-only", "maintenance", f"instance-{instance_number}"},
             timeout=30.0,
         )
@@ -144,8 +299,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 actor, _auth_ctx = await _resolve_actor_and_authorize(
                     actor=actor, tool=_t, required_privilege="read", ctx=ctx
                 )
-                app_state.session_manager.touch(actor, request_id)
-                app_state.rate_limiter.allow(actor)
+                # (handled by middleware)
                 app_state.write_guard.enforce(_t, "SELECT 1")
                 async with app_state.connection_manager.acquire(_i) as conn:
                     result = await func(conn, schema_name_v, table_name_v)
@@ -154,8 +308,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     "Date Generated": datetime.now(UTC).strftime("%Y-%m-%d"),
                     "Source DB Server Name": _i,
                     "Issues Identified": (
-                        f"{issue_name} analysis for "
-                        f"{schema_name_v}.{table_name_v}"
+                        f"{issue_name} analysis for {schema_name_v}.{table_name_v}"
                     ),
                     "Impacted Metrics": metrics,
                     "Issue Priority": "Medium",
@@ -175,11 +328,18 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 raise ToolError(error_code)
             finally:
                 _log_audit_event(
-                    request_id=request_id, actor=actor, tool=_t, instance=_i,
-                    sql=toolname, decision=decision,
+                    request_id=request_id,
+                    actor=actor,
+                    tool=_t,
+                    instance=_i,
+                    sql=toolname,
+                    decision=decision,
                     latency_ms=int((time.time() - started) * 1000),
-                    rows=row_count, error_code=error_code, auth_ctx=_auth_ctx,
+                    rows=row_count,
+                    error_code=error_code,
+                    auth_ctx=_auth_ctx,
                 )
+
         registered.append(full_name)
 
     # -------------------------------------------------------------------
@@ -194,9 +354,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
 
         @mcp.tool(
             name=full_name,
-            annotations=ToolAnnotations(
-                readOnlyHint=True, idempotentHint=False, openWorldHint=False
-            ),
+            annotations={"readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
             tags={"read-only", "discovery", f"instance-{instance_number}"},
             timeout=30.0,
         )
@@ -220,8 +378,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 actor, _auth_ctx = await _resolve_actor_and_authorize(
                     actor=actor, tool=_t, required_privilege="read", ctx=ctx
                 )
-                app_state.session_manager.touch(actor, request_id)
-                app_state.rate_limiter.allow(actor)
+                # (handled by middleware)
                 app_state.write_guard.enforce(_t, "SELECT 1")
                 async with app_state.connection_manager.acquire(_i) as conn:
                     objects = await func(conn, schema_name_v)
@@ -248,11 +405,91 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 raise ToolError(error_code)
             finally:
                 _log_audit_event(
-                    request_id=request_id, actor=actor, tool=_t, instance=_i,
-                    sql="discovery_query", decision=decision,
+                    request_id=request_id,
+                    actor=actor,
+                    tool=_t,
+                    instance=_i,
+                    sql="discovery_query",
+                    decision=decision,
                     latency_ms=int((time.time() - started) * 1000),
-                    rows=row_count, error_code=error_code, auth_ctx=_auth_ctx,
+                    rows=row_count,
+                    error_code=error_code,
+                    auth_ctx=_auth_ctx,
                 )
+
+        registered.append(full_name)
+
+    # -------------------------------------------------------------------
+    # Helper: register a settings & security sub-tool
+    # -------------------------------------------------------------------
+    def _register_sett_sec_sub_tool(
+        toolname: str,
+        func: Any,
+        timeout: float = 45.0,
+    ) -> None:
+        """Register a settings/security sub-tool using database_name only."""
+        full_name = f"db_{instance_number}_pg96_{toolname}"
+
+        @mcp.tool(
+            name=full_name,
+            annotations={"readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
+            tags={
+                "read-only",
+                "maintenance",
+                "security",
+                f"instance-{instance_number}",
+            },
+            timeout=timeout,
+        )
+        async def _impl(
+            database_name: str = "edb",
+            actor: str = "system",
+            ctx: Context | None = None,
+            _t: str = full_name,
+            _i: str = instance_id,
+            _in: int = instance_number,
+            app_state: Any = Depends(lambda: state),
+        ) -> dict[str, Any]:
+            request_id = str(uuid.uuid4())
+            started = time.time()
+            decision, error_code, row_count = "allow", None, 0
+            _auth_ctx = None
+            database_name_v = validate_database_name(database_name)
+            try:
+                actor, _auth_ctx = await _resolve_actor_and_authorize(
+                    actor=actor, tool=_t, required_privilege="read", ctx=ctx
+                )
+                # (handled by middleware)
+                app_state.write_guard.enforce(_t, "SELECT 1")
+                async with app_state.connection_manager.acquire(_i) as conn:
+                    result = await func(conn, database_name_v)
+                return result
+            except PermissionError as exc:
+                decision, error_code = "deny", str(exc)
+                app_state.denied_requests += 1
+                raise
+            except RateLimitExceededError as exc:
+                decision, error_code = "deny", str(exc)
+                app_state.denied_requests += 1
+                raise
+            except Exception as exc:
+                decision, error_code = f"TOOL_ERROR: {exc}"
+                app_state.denied_requests += 1
+                raise ToolError(error_code)
+            finally:
+                _log_audit_event(
+                    request_id=request_id,
+                    actor=actor,
+                    tool=_t,
+                    instance=_i,
+                    sql=toolname,
+                    decision=decision,
+                    latency_ms=int((time.time() - started) * 1000),
+                    rows=row_count,
+                    error_code=error_code,
+                    auth_ctx=_auth_ctx,
+                )
+
         registered.append(full_name)
 
     # -----------------------------------------------------------------------
@@ -269,11 +506,12 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
 
         @mcp.tool(
             name=ping_tool_name,
-            annotations=ToolAnnotations(
-                readOnlyHint=True,
-                idempotentHint=True,
-                openWorldHint=False,
-            ),
+            annotations={
+                "readOnlyHint": True,
+                "idempotentHint": True,
+                "destructiveHint": False,
+                "openWorldHint": False,
+            },
             tags={"read-only", "diagnostics", f"instance-{instance_number}"},
             timeout=10.0,
         )
@@ -314,8 +552,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     required_privilege="read",
                     ctx=ctx,
                 )
-                app_state.session_manager.touch(actor, request_id)
-                app_state.rate_limiter.allow(actor)
+                # (handled by middleware)
 
                 # Execute identity query against the bound instance
                 payload = await app_state.connection_manager.fetch_single_row(
@@ -406,9 +643,11 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
 
             @mcp.tool(
                 name=slow_statements_tool_name,
-                annotations=ToolAnnotations(
-                    readOnlyHint=True, idempotentHint=False, openWorldHint=False
-                ),
+                annotations={
+                    "readOnlyHint": True,
+                    "destructiveHint": False,
+                    "openWorldHint": False,
+                },
                 tags={"read-only", "performance", f"instance-{instance_number}"},
                 timeout=60.0,
             )
@@ -446,8 +685,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     actor, _auth_ctx = await _resolve_actor_and_authorize(
                         actor=actor, tool=_tool, required_privilege="read", ctx=ctx
                     )
-                    app_state.session_manager.touch(actor, request_id)
-                    app_state.rate_limiter.allow(actor)
+                    # (handled by middleware)
 
                     sql = """
                         SELECT pd.datname, p.query, p.total_time, p.calls, p.rows,
@@ -610,9 +848,11 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
 
             @mcp.tool(
                 name=blocking_sessions_tool_name,
-                annotations=ToolAnnotations(
-                    readOnlyHint=True, idempotentHint=False, openWorldHint=False
-                ),
+                annotations={
+                    "readOnlyHint": True,
+                    "destructiveHint": False,
+                    "openWorldHint": False,
+                },
                 tags={"read-only", "performance", f"instance-{instance_number}"},
                 timeout=30.0,
             )
@@ -641,8 +881,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     actor, _auth_ctx = await _resolve_actor_and_authorize(
                         actor=actor, tool=_tool, required_privilege="read", ctx=ctx
                     )
-                    app_state.session_manager.touch(actor, request_id)
-                    app_state.rate_limiter.allow(actor)
+                    # (handled by middleware)
 
                     # Step 1: Active sessions (non-idle)
                     sql_activity = """
@@ -828,9 +1067,11 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
 
             @mcp.tool(
                 name=analyze_data_model_tool_name,
-                annotations=ToolAnnotations(
-                    readOnlyHint=True, idempotentHint=False, openWorldHint=False
-                ),
+                annotations={
+                    "readOnlyHint": True,
+                    "destructiveHint": False,
+                    "openWorldHint": False,
+                },
                 tags={"read-only", "performance", f"instance-{instance_number}"},
                 timeout=60.0,
             )
@@ -863,8 +1104,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     actor, _auth_ctx = await _resolve_actor_and_authorize(
                         actor=actor, tool=_tool, required_privilege="read", ctx=ctx
                     )
-                    app_state.session_manager.touch(actor, request_id)
-                    app_state.rate_limiter.allow(actor)
+                    # (handled by middleware)
 
                     aggregated = {
                         "schema_model": None,
@@ -1141,9 +1381,11 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
             # --- Sub-tool: extract_schema_model ---
             @mcp.tool(
                 name=f"db_{instance_number}_pg96_extract_schema_model",
-                annotations=ToolAnnotations(
-                    readOnlyHint=True, idempotentHint=False, openWorldHint=False
-                ),
+                annotations={
+                    "readOnlyHint": True,
+                    "destructiveHint": False,
+                    "openWorldHint": False,
+                },
                 tags={"read-only", "performance", f"instance-{instance_number}"},
                 timeout=30.0,
             )
@@ -1168,8 +1410,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     actor, _auth_ctx = await _resolve_actor_and_authorize(
                         actor=actor, tool=_tool, required_privilege="read", ctx=ctx
                     )
-                    app_state.session_manager.touch(actor, request_id)
-                    app_state.rate_limiter.allow(actor)
+                    # (handled by middleware)
                     sql = """
                         SELECT c.relname AS table_name, a.attname AS column_name,
                                pg_catalog.format_type(a.atttypid, a.atttypmod) AS data_type,
@@ -1231,9 +1472,11 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
             # --- Sub-tool: analyze_constraints_and_fks ---
             @mcp.tool(
                 name=f"db_{instance_number}_pg96_analyze_constraints_and_fks",
-                annotations=ToolAnnotations(
-                    readOnlyHint=True, idempotentHint=False, openWorldHint=False
-                ),
+                annotations={
+                    "readOnlyHint": True,
+                    "destructiveHint": False,
+                    "openWorldHint": False,
+                },
                 tags={"read-only", "performance", f"instance-{instance_number}"},
                 timeout=30.0,
             )
@@ -1258,8 +1501,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     actor, _auth_ctx = await _resolve_actor_and_authorize(
                         actor=actor, tool=_tool, required_privilege="read", ctx=ctx
                     )
-                    app_state.session_manager.touch(actor, request_id)
-                    app_state.rate_limiter.allow(actor)
+                    # (handled by middleware)
                     sql = """
                         SELECT
                             conname, contype,
@@ -1349,9 +1591,11 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
             # --- Sub-tool: analyze_normalization ---
             @mcp.tool(
                 name=f"db_{instance_number}_pg96_analyze_normalization",
-                annotations=ToolAnnotations(
-                    readOnlyHint=True, idempotentHint=False, openWorldHint=False
-                ),
+                annotations={
+                    "readOnlyHint": True,
+                    "destructiveHint": False,
+                    "openWorldHint": False,
+                },
                 tags={"read-only", "performance", f"instance-{instance_number}"},
                 timeout=30.0,
             )
@@ -1376,8 +1620,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     actor, _auth_ctx = await _resolve_actor_and_authorize(
                         actor=actor, tool=_tool, required_privilege="read", ctx=ctx
                     )
-                    app_state.session_manager.touch(actor, request_id)
-                    app_state.rate_limiter.allow(actor)
+                    # (handled by middleware)
                     sql = """
                         SELECT
                             a1.attrelid::regclass AS table1,
@@ -1446,9 +1689,11 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
             # --- Sub-tool: analyze_index_statistics ---
             @mcp.tool(
                 name=f"db_{instance_number}_pg96_analyze_index_statistics",
-                annotations=ToolAnnotations(
-                    readOnlyHint=True, idempotentHint=False, openWorldHint=False
-                ),
+                annotations={
+                    "readOnlyHint": True,
+                    "destructiveHint": False,
+                    "openWorldHint": False,
+                },
                 tags={"read-only", "performance", f"instance-{instance_number}"},
                 timeout=30.0,
             )
@@ -1473,8 +1718,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     actor, _auth_ctx = await _resolve_actor_and_authorize(
                         actor=actor, tool=_tool, required_privilege="read", ctx=ctx
                     )
-                    app_state.session_manager.touch(actor, request_id)
-                    app_state.rate_limiter.allow(actor)
+                    # (handled by middleware)
                     sql = """
                         SELECT relname, n_live_tup, n_dead_tup,
                                last_analyze, last_autoanalyze,
@@ -1545,9 +1789,11 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
             # --- Sub-tool: analyze_3nf_and_decomposition ---
             @mcp.tool(
                 name=f"db_{instance_number}_pg96_analyze_3nf_and_decomposition",
-                annotations=ToolAnnotations(
-                    readOnlyHint=True, idempotentHint=False, openWorldHint=False
-                ),
+                annotations={
+                    "readOnlyHint": True,
+                    "destructiveHint": False,
+                    "openWorldHint": False,
+                },
                 tags={"read-only", "performance", f"instance-{instance_number}"},
                 timeout=30.0,
             )
@@ -1572,8 +1818,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     actor, _auth_ctx = await _resolve_actor_and_authorize(
                         actor=actor, tool=_tool, required_privilege="read", ctx=ctx
                     )
-                    app_state.session_manager.touch(actor, request_id)
-                    app_state.rate_limiter.allow(actor)
+                    # (handled by middleware)
                     sql = """
                         SELECT c.relname AS table_name,
                                t.seq_scan, t.idx_scan,
@@ -1658,9 +1903,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
 
             @mcp.tool(
                 name=hypopg_create_tool_name,
-                annotations=ToolAnnotations(
-                    readOnlyHint=False, idempotentHint=False, openWorldHint=False
-                ),
+                annotations={"readOnlyHint": False},
                 tags={"hypopg", "performance", f"instance-{instance_number}"},
                 timeout=30.0,
             )
@@ -1693,8 +1936,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     actor, _auth_ctx = await _resolve_actor_and_authorize(
                         actor=actor, tool=_tool, required_privilege="read", ctx=ctx
                     )
-                    app_state.session_manager.touch(actor, request_id)
-                    app_state.rate_limiter.allow(actor)
+                    # (handled by middleware)
                     async with app_state.connection_manager.acquire(_instance) as conn:
                         query_analysis = await hypopg_tools.parse_tables_and_columns(
                             conn, query_text
@@ -1744,9 +1986,11 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
 
             @mcp.tool(
                 name=hypopg_explain_tool_name,
-                annotations=ToolAnnotations(
-                    readOnlyHint=True, idempotentHint=False, openWorldHint=False
-                ),
+                annotations={
+                    "readOnlyHint": True,
+                    "destructiveHint": False,
+                    "openWorldHint": False,
+                },
                 tags={"hypopg", "performance", f"instance-{instance_number}"},
                 timeout=30.0,
             )
@@ -1776,8 +2020,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     actor, _auth_ctx = await _resolve_actor_and_authorize(
                         actor=actor, tool=_tool, required_privilege="read", ctx=ctx
                     )
-                    app_state.session_manager.touch(actor, request_id)
-                    app_state.rate_limiter.allow(actor)
+                    # (handled by middleware)
                     async with app_state.connection_manager.acquire(_instance) as conn:
                         result = await hypopg_tools.hypopg_explain_with_virtual(conn, query_text)
                     row_count = 1
@@ -1818,9 +2061,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
 
             @mcp.tool(
                 name=hypopg_optimal_tool_name,
-                annotations=ToolAnnotations(
-                    readOnlyHint=False, idempotentHint=False, openWorldHint=False
-                ),
+                annotations={"readOnlyHint": False},
                 tags={"hypopg", "performance", f"instance-{instance_number}"},
                 timeout=60.0,
             )
@@ -1859,8 +2100,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     actor, _auth_ctx = await _resolve_actor_and_authorize(
                         actor=actor, tool=_tool, required_privilege="read", ctx=ctx
                     )
-                    app_state.session_manager.touch(actor, request_id)
-                    app_state.rate_limiter.allow(actor)
+                    # (handled by middleware)
                     async with app_state.connection_manager.acquire(_instance) as conn:
                         result = await hypopg_tools.hypopg_find_optimal_indexes(
                             conn, query_text, max_combinations=max(max_combinations, 5)
@@ -1900,11 +2140,14 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
         # ===================================================================
         exec_query_tool_name = f"db_{instance_number}_pg96_exec_query"
         if is_tool_enabled(state.policy, instance_id, "exec_query"):
+
             @mcp.tool(
                 name=exec_query_tool_name,
-                annotations=ToolAnnotations(
-                    readOnlyHint=True, idempotentHint=False, openWorldHint=False
-                ),
+                annotations={
+                    "readOnlyHint": True,
+                    "destructiveHint": False,
+                    "openWorldHint": False,
+                },
                 tags={"read-only", f"instance-{instance_number}"},
                 timeout=30.0,
             )
@@ -1931,8 +2174,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     actor, _auth_ctx = await _resolve_actor_and_authorize(
                         actor=actor, tool=_tool, required_privilege="read", ctx=ctx
                     )
-                    app_state.session_manager.touch(actor, request_id)
-                    app_state.rate_limiter.allow(actor)
+                    # (handled by middleware)
                     app_state.write_guard.enforce(_tool, sql_v)
                     rows = await app_state.connection_manager.execute_query(
                         _instance, database_name_v, sql_v, max_rows_v
@@ -1963,16 +2205,24 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     raise ToolError(error_code)
                 finally:
                     _log_audit_event(
-                        request_id=request_id, actor=actor, tool=_tool,
-                        instance=_instance, sql=sql_v, decision=decision,
+                        request_id=request_id,
+                        actor=actor,
+                        tool=_tool,
+                        instance=_instance,
+                        sql=sql_v,
+                        decision=decision,
                         latency_ms=int((time.time() - started) * 1000),
-                        rows=row_count, error_code=error_code, auth_ctx=_auth_ctx,
+                        rows=row_count,
+                        error_code=error_code,
+                        auth_ctx=_auth_ctx,
                     )
+
             registered.append(exec_query_tool_name)
         else:
             logger.info(
                 "Skipping disabled tool '%s' for instance '%s'",
-                exec_query_tool_name, instance_id,
+                exec_query_tool_name,
+                instance_id,
             )
 
         # ===================================================================
@@ -1980,11 +2230,14 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
         # ===================================================================
         analyze_table_tool_name = f"db_{instance_number}_pg96_analyze_table"
         if is_tool_enabled(state.policy, instance_id, "analyze_table"):
+
             @mcp.tool(
                 name=analyze_table_tool_name,
-                annotations=ToolAnnotations(
-                    readOnlyHint=True, idempotentHint=False, openWorldHint=False
-                ),
+                annotations={
+                    "readOnlyHint": True,
+                    "destructiveHint": False,
+                    "openWorldHint": False,
+                },
                 tags={"read-only", "maintenance", f"instance-{instance_number}"},
                 timeout=30.0,
             )
@@ -2015,33 +2268,28 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     actor, _auth_ctx = await _resolve_actor_and_authorize(
                         actor=actor, tool=_tool, required_privilege="read", ctx=ctx
                     )
-                    app_state.session_manager.touch(actor, request_id)
-                    app_state.rate_limiter.allow(actor)
+                    # (handled by middleware)
                     app_state.write_guard.enforce(_tool, "SELECT 1")
                     async with app_state.connection_manager.acquire(_instance) as conn:
                         if include_bloat:
-                            results["table_bloat"] = (
-                                await table_analysis.check_table_bloat(
-                                    conn, schema_name_v, table_name_v
-                                )
+                            results["table_bloat"] = await table_analysis.check_table_bloat(
+                                conn, schema_name_v, table_name_v
                             )
                         if include_wraparound:
-                            results["wraparound_risk"] = (
-                                await table_analysis.check_table_wraparound(
-                                    conn, schema_name_v, table_name_v
-                                )
+                            results[
+                                "wraparound_risk"
+                            ] = await table_analysis.check_table_wraparound(
+                                conn, schema_name_v, table_name_v
                             )
                         if include_statistics:
-                            results["statistics_health"] = (
-                                await table_analysis.check_table_statistics(
-                                    conn, schema_name_v, table_name_v
-                                )
+                            results[
+                                "statistics_health"
+                            ] = await table_analysis.check_table_statistics(
+                                conn, schema_name_v, table_name_v
                             )
                         if include_indexes:
-                            results["index_health"] = (
-                                await table_analysis.check_index_health(
-                                    conn, schema_name_v, table_name_v
-                                )
+                            results["index_health"] = await table_analysis.check_index_health(
+                                conn, schema_name_v, table_name_v
                             )
                     row_count = 1
                     return {
@@ -2066,37 +2314,50 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     raise ToolError(error_code)
                 finally:
                     _log_audit_event(
-                        request_id=request_id, actor=actor, tool=_tool,
-                        instance=_instance, sql="analyze_table",
+                        request_id=request_id,
+                        actor=actor,
+                        tool=_tool,
+                        instance=_instance,
+                        sql="analyze_table",
                         decision=decision,
                         latency_ms=int((time.time() - started) * 1000),
-                        rows=row_count, error_code=error_code, auth_ctx=_auth_ctx,
+                        rows=row_count,
+                        error_code=error_code,
+                        auth_ctx=_auth_ctx,
                     )
+
             registered.append(analyze_table_tool_name)
         else:
             logger.info(
                 "Skipping disabled tool '%s' for instance '%s'",
-                analyze_table_tool_name, instance_id,
+                analyze_table_tool_name,
+                instance_id,
             )
 
         # Maintenance sub-tools
         _register_sub_tool(
-            "check_table_bloat", table_analysis.check_table_bloat,
-            "Table Bloat", "Dead tuples, bloat ratio, vacuum threshold",
+            "check_table_bloat",
+            table_analysis.check_table_bloat,
+            "Table Bloat",
+            "Dead tuples, bloat ratio, vacuum threshold",
         )
         _register_sub_tool(
-            "check_table_wraparound", table_analysis.check_table_wraparound,
+            "check_table_wraparound",
+            table_analysis.check_table_wraparound,
             "Transaction Wraparound",
             "Transaction age, wraparound risk, autovacuum status",
         )
         _register_sub_tool(
-            "check_table_statistics", table_analysis.check_table_statistics,
+            "check_table_statistics",
+            table_analysis.check_table_statistics,
             "Table Statistics",
             "Analyze count, last analyze, n_mod_since_analyze",
         )
         _register_sub_tool(
-            "check_index_health", table_analysis.check_index_health,
-            "Index Health", "Index usage, scans, size, bloat",
+            "check_index_health",
+            table_analysis.check_index_health,
+            "Index Health",
+            "Index usage, scans, size, bloat",
         )
 
         # ===================================================================
@@ -2104,11 +2365,14 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
         # ===================================================================
         list_objects_tool_name = f"db_{instance_number}_pg96_list_objects"
         if is_tool_enabled(state.policy, instance_id, "list_objects"):
+
             @mcp.tool(
                 name=list_objects_tool_name,
-                annotations=ToolAnnotations(
-                    readOnlyHint=True, idempotentHint=False, openWorldHint=False
-                ),
+                annotations={
+                    "readOnlyHint": True,
+                    "destructiveHint": False,
+                    "openWorldHint": False,
+                },
                 tags={"read-only", "discovery", f"instance-{instance_number}"},
                 timeout=30.0,
             )
@@ -2136,27 +2400,20 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     actor, _auth_ctx = await _resolve_actor_and_authorize(
                         actor=actor, tool=_tool, required_privilege="read", ctx=ctx
                     )
-                    app_state.session_manager.touch(actor, request_id)
-                    app_state.rate_limiter.allow(actor)
+                    # (handled by middleware)
                     app_state.write_guard.enforce(_tool, "SELECT 1")
                     async with app_state.connection_manager.acquire(_instance) as conn:
                         if include_tables:
-                            results["tables"] = (
-                                await table_analysis.list_tables_by_schema(
-                                    conn, schema_name_v
-                                )
+                            results["tables"] = await table_analysis.list_tables_by_schema(
+                                conn, schema_name_v
                             )
                         if include_indexes:
-                            results["indexes"] = (
-                                await table_analysis.list_indexes_by_schema(
-                                    conn, schema_name_v
-                                )
+                            results["indexes"] = await table_analysis.list_indexes_by_schema(
+                                conn, schema_name_v
                             )
                         if include_views:
-                            results["views"] = (
-                                await table_analysis.list_views_by_schema(
-                                    conn, schema_name_v
-                                )
+                            results["views"] = await table_analysis.list_views_by_schema(
+                                conn, schema_name_v
                             )
                     row_count = 1
                     return {
@@ -2181,38 +2438,51 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     raise ToolError(error_code)
                 finally:
                     _log_audit_event(
-                        request_id=request_id, actor=actor, tool=_tool,
-                        instance=_instance, sql="list_objects",
+                        request_id=request_id,
+                        actor=actor,
+                        tool=_tool,
+                        instance=_instance,
+                        sql="list_objects",
                         decision=decision,
                         latency_ms=int((time.time() - started) * 1000),
-                        rows=row_count, error_code=error_code, auth_ctx=_auth_ctx,
+                        rows=row_count,
+                        error_code=error_code,
+                        auth_ctx=_auth_ctx,
                     )
+
             registered.append(list_objects_tool_name)
         else:
             logger.info(
                 "Skipping disabled tool '%s' for instance '%s'",
-                list_objects_tool_name, instance_id,
+                list_objects_tool_name,
+                instance_id,
             )
 
         # Discovery sub-tools (3 via helper + 1 inline for list_objects_by_type)
         _register_discovery_tool(
-            "list_tables", table_analysis.list_tables_by_schema,
+            "list_tables",
+            table_analysis.list_tables_by_schema,
         )
         _register_discovery_tool(
-            "list_indexes", table_analysis.list_indexes_by_schema,
+            "list_indexes",
+            table_analysis.list_indexes_by_schema,
         )
         _register_discovery_tool(
-            "list_views", table_analysis.list_views_by_schema,
+            "list_views",
+            table_analysis.list_views_by_schema,
         )
 
         # list_objects_by_type: dedicated inline registration (needs object_type)
         lobt_tool_name = f"db_{instance_number}_pg96_list_objects_by_type"
         if is_tool_enabled(state.policy, instance_id, "list_objects_by_type"):
+
             @mcp.tool(
                 name=lobt_tool_name,
-                annotations=ToolAnnotations(
-                    readOnlyHint=True, idempotentHint=False, openWorldHint=False
-                ),
+                annotations={
+                    "readOnlyHint": True,
+                    "destructiveHint": False,
+                    "openWorldHint": False,
+                },
                 tags={"read-only", "discovery", f"instance-{instance_number}"},
                 timeout=30.0,
             )
@@ -2238,8 +2508,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     actor, _auth_ctx = await _resolve_actor_and_authorize(
                         actor=actor, tool=_t, required_privilege="read", ctx=ctx
                     )
-                    app_state.session_manager.touch(actor, request_id)
-                    app_state.rate_limiter.allow(actor)
+                    # (handled by middleware)
                     app_state.write_guard.enforce(_t, "SELECT 1")
                     async with app_state.connection_manager.acquire(_i) as conn:
                         objects = await table_analysis.list_objects_by_type(
@@ -2269,16 +2538,244 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     raise ToolError(error_code)
                 finally:
                     _log_audit_event(
-                        request_id=request_id, actor=actor, tool=_t, instance=_i,
-                        sql="list_objects_by_type_query", decision=decision,
+                        request_id=request_id,
+                        actor=actor,
+                        tool=_t,
+                        instance=_i,
+                        sql="list_objects_by_type_query",
+                        decision=decision,
                         latency_ms=int((time.time() - started) * 1000),
-                        rows=row_count, error_code=error_code, auth_ctx=_auth_ctx,
+                        rows=row_count,
+                        error_code=error_code,
+                        auth_ctx=_auth_ctx,
                     )
+
             registered.append(lobt_tool_name)
         else:
             logger.info(
                 "Skipping disabled tool '%s' for instance '%s'",
-                lobt_tool_name, instance_id,
+                lobt_tool_name,
+                instance_id,
+            )
+
+        # ===================================================================
+        # ANALYZE_SETT_SEC: Settings & Security analysis orchestrator + 3 sub-tools
+        # ===================================================================
+        analyze_sett_sec_tool_name = f"db_{instance_number}_pg96_analyze_sett_sec"
+        if is_tool_enabled(state.policy, instance_id, "analyze_sett_sec"):
+
+            @mcp.tool(
+                name=analyze_sett_sec_tool_name,
+                annotations={
+                    "readOnlyHint": True,
+                    "destructiveHint": False,
+                    "openWorldHint": False,
+                },
+                tags={
+                    "read-only",
+                    "maintenance",
+                    "security",
+                    f"instance-{instance_number}",
+                },
+                timeout=60.0,
+            )
+            async def _analyze_sett_sec(
+                database_name: str = "edb",
+                actor: str = "system",
+                ctx: Context | None = None,
+                _tool: str = analyze_sett_sec_tool_name,
+                _instance: str = instance_id,
+                _instance_number: int = instance_number,
+                app_state: Any = Depends(lambda: state),
+            ) -> dict[str, Any]:
+                request_id = str(uuid.uuid4())
+                started = time.time()
+                decision, error_code, row_count = "allow", None, 0
+                _auth_ctx = None
+                database_name_v = validate_database_name(database_name)
+                try:
+                    actor, _auth_ctx = await _resolve_actor_and_authorize(
+                        actor=actor,
+                        tool=_tool,
+                        required_privilege="read",
+                        ctx=ctx,
+                    )
+                    # (handled by middleware)
+                    app_state.write_guard.enforce(_tool, "SELECT 1")
+                    async with app_state.connection_manager.acquire(_instance) as conn:
+                        params_result = await settings_security.check_db_parameters(
+                            conn, database_name_v
+                        )
+                        metrics_result = await settings_security.compute_db_metrics(
+                            conn, database_name_v
+                        )
+                        security_result = await settings_security.analyze_db_security(
+                            conn, database_name_v
+                        )
+                    row_count = 1
+
+                    # Derive severity per category
+                    def _worst_severity(findings_list, field="severity"):
+                        severities = [f.get(field, "LOW") for f in findings_list]
+                        for level in ("CRITICAL", "HIGH", "MEDIUM", "LOW"):
+                            if level in severities:
+                                return level
+                        return "LOW"
+
+                    params_severity = _worst_severity(params_result.get("findings", []))
+                    metrics_severity = "Medium"  # metrics are informational
+                    sec_severity = _worst_severity(security_result.get("findings", []))
+
+                    # Build recommendations per category
+                    params_recs = [
+                        (
+                            f"ALTER SYSTEM SET {f['parameter']} = "
+                            f"'{f['recommended_value']}'; "
+                            f"-- Currently {f['current_value']}: "
+                            f"{f['rationale']}"
+                        )
+                        for f in params_result.get("findings", [])
+                    ]
+                    sec_recs = [
+                        f.get("recommendation", "") for f in security_result.get("findings", [])
+                    ]
+
+                    # Overall assessment summary
+                    pa = params_result.get("parameter_analysis", {})
+                    total_crit = pa.get("critical_count", 0) + security_result.get(
+                        "critical_findings", 0
+                    )
+                    total_high = pa.get("warnings_count", 0)
+                    total_med = 0
+
+                    assessment_parts = [
+                        f"Database {database_name_v} has {total_crit} CRITICAL issue(s)"
+                    ]
+                    if total_high:
+                        assessment_parts.append(f"{total_high} HIGH issue(s)")
+                    if total_med:
+                        assessment_parts.append(f"{total_med} MEDIUM issue(s)")
+                    if total_med == 0 and total_crit == 0 and total_high == 0:
+                        assessment_parts.append(" — no issues found")
+
+                    # Pre-extract nested metrics for clean formatting
+                    tx_metrics = metrics_result.get("transaction_metrics", {})
+                    conn_util = metrics_result.get("connection_utilization", {})
+                    xid_metrics = metrics_result.get("txid_metrics", {})
+                    db_size = metrics_result.get("database_size", {})
+
+                    return {
+                        "Category": "Maintenance",
+                        "Date Generated": (datetime.now(UTC).strftime("%Y-%m-%d")),
+                        "Source DB Server Name": _instance,
+                        "Database": database_name_v,
+                        "Overall Assessment": (". ".join(assessment_parts) + "."),
+                        "Issues": [
+                            {
+                                "Issue": "DB Parameters Misconfiguration",
+                                "Impacted Metrics": (
+                                    "Query Performance, Memory Utilization, "
+                                    "Vacuum Efficiency, Write Amplification, "
+                                    "Log Visibility"
+                                ),
+                                "Issue Priority": params_severity,
+                                "Recommendations/Fixes": params_recs,
+                            },
+                            {
+                                "Issue": "Database Performance Metrics",
+                                "Impacted Metrics": (
+                                    "Buffer Cache Efficiency, "
+                                    "Transaction Integrity, Tuple Churn, "
+                                    "Connection Saturation, "
+                                    "Transaction ID Exhaustion"
+                                ),
+                                "Issue Priority": metrics_severity,
+                                "Recommendations/Fixes": [
+                                    (
+                                        "Cache Hit Ratio: "
+                                        f"{metrics_result.get('cache_hit_ratio_pct', 'N/A')}%"
+                                    ),
+                                    (
+                                        "Rollback Ratio: "
+                                        f"{tx_metrics.get('rollback_ratio_pct', 'N/A')}%"
+                                    ),
+                                    (
+                                        "Connection Utilization: "
+                                        f"{conn_util.get('utilization_pct', 'N/A')}%"
+                                    ),
+                                    (
+                                        "TXID Wraparound Risk: "
+                                        f"{xid_metrics.get('wraparound_risk_level', 'N/A')}"
+                                    ),
+                                    (
+                                        "Dead Tuple Ratio: "
+                                        f"{metrics_result.get('dead_tuple_ratio_pct', 'N/A')}%"
+                                    ),
+                                    (f"Database Size: {db_size.get('pretty', 'N/A')}"),
+                                ],
+                            },
+                            {
+                                "Issue": "Security Vulnerabilities",
+                                "Impacted Metrics": (
+                                    "Data Confidentiality, "
+                                    "Compliance Posture, "
+                                    "Audit Trail Completeness, "
+                                    "Disaster Recovery Readiness"
+                                ),
+                                "Issue Priority": sec_severity,
+                                "Recommendations/Fixes": sec_recs,
+                            },
+                        ],
+                    }
+                except PermissionError as exc:
+                    decision, error_code = "deny", str(exc)
+                    app_state.denied_requests += 1
+                    raise
+                except RateLimitExceededError as exc:
+                    decision, error_code = "deny", str(exc)
+                    app_state.denied_requests += 1
+                    raise
+                except Exception as exc:
+                    decision, error_code = f"TOOL_ERROR: {exc}"
+                    app_state.denied_requests += 1
+                    raise ToolError(error_code)
+                finally:
+                    _log_audit_event(
+                        request_id=request_id,
+                        actor=actor,
+                        tool=_tool,
+                        instance=_instance,
+                        sql="analyze_sett_sec",
+                        decision=decision,
+                        latency_ms=int((time.time() - started) * 1000),
+                        rows=row_count,
+                        error_code=error_code,
+                        auth_ctx=_auth_ctx,
+                    )
+
+            registered.append(analyze_sett_sec_tool_name)
+        else:
+            logger.info(
+                "Skipping disabled tool '%s' for instance '%s'",
+                analyze_sett_sec_tool_name,
+                instance_id,
+            )
+
+        # Settings & Security sub-tools (3)
+        if is_tool_enabled(state.policy, instance_id, "check_db_parameters"):
+            _register_sett_sec_sub_tool(
+                "check_db_parameters",
+                settings_security.check_db_parameters,
+            )
+        if is_tool_enabled(state.policy, instance_id, "compute_db_metrics"):
+            _register_sett_sec_sub_tool(
+                "compute_db_metrics",
+                settings_security.compute_db_metrics,
+            )
+        if is_tool_enabled(state.policy, instance_id, "analyze_db_security"):
+            _register_sett_sec_sub_tool(
+                "analyze_db_security",
+                settings_security.analyze_db_security,
             )
 
     return registered

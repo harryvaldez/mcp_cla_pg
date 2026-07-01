@@ -37,5 +37,31 @@ tool_enable_flags:
   list_indexes: true
   list_views: true
   list_objects_by_type: true
+  analyze_sett_sec: true
+  check_db_parameters: true
+  compute_db_metrics: true
+  analyze_db_security: true
 instance_tool_enable_flags: {}
 allowed_tools: {}
+# Authentication configuration (auth section)
+auth:
+  auth_mode: disabled
+  # Okta OAuth (optional — active when auth_mode=okta)
+  okta_read_scopes:
+    - mcp:read
+  okta_write_scopes:
+    - mcp:write
+  # Okta group-based access (groups claim in token takes priority over scopes)
+  okta_read_groups:
+    - mcp-readers
+  okta_write_groups:
+    - mcp-writers
+  # Configurable restricted tool suffix lists for read-group/read-privilege callers.
+  # HypoPG tools create/modify session-level virtual indexes and are excluded for read callers.
+  okta_read_restricted_tool_suffixes:
+    - _pg96_hypopg_create_virtual_indexes
+    - _pg96_hypopg_explain_with_virtual
+    - _pg96_hypopg_find_optimal_indexes
+  # Cross-session inspection tools expose other users' sessions and are excluded for read callers.
+  okta_cross_session_tool_suffixes:
+    - _pg96_blocking_sessions

@@ -4,6 +4,9 @@ import threading
 import time
 from typing import Any
 
+from fastmcp.server.middleware import Middleware, MiddlewareContext
+from fastmcp.tools.base import ToolResult
+
 
 class RateLimitExceededError(Exception):
     """Raised when a request exceeds the configured rate limit."""
@@ -76,6 +79,16 @@ class RateLimiter:
                 "global_rpm": self._global_rpm,
                 "global_burst": self._global_burst,
             }
+
+    # ── FastMCP Middleware integration ────────────────────────────────────
+
+    def as_middleware(self) -> RateLimitingMiddleware:
+        """Wrap this rate limiter as a FastMCP Middleware for automatic enforcement.
+
+        Replaces manual ``state.rate_limiter.allow(actor)`` calls in every tool.
+        Attach via ``mcp.add_middleware(limiter.as_middleware())``.
+        """
+        return RateLimitingMiddleware(self)
 
 
 class _TokenBucket:
@@ -233,6 +246,37 @@ class RedisRateLimiter:
             "global_burst": self._global_burst,
             "backend": "redis",
         }
+
+    # ── FastMCP Middleware integration ────────────────────────────────────
+
+    def as_middleware(self) -> RateLimitingMiddleware:
+        """Wrap this Redis rate limiter as a FastMCP Middleware."""
+        return RateLimitingMiddleware(self)
+
+
+class RateLimitingMiddleware(Middleware):
+    """FastMCP middleware that enforces per-actor and global rate limits.
+
+    Attach via ``mcp.add_middleware(limiter.as_middleware())``.
+    Replaces manual ``state.rate_limiter.allow(actor)`` calls in every tool.
+    """
+
+    def __init__(self, limiter: RateLimiter | RedisRateLimiter) -> None:
+        self._limiter = limiter
+
+    async def on_call_tool(
+        self,
+        context: MiddlewareContext,
+        call_next,
+    ) -> ToolResult:
+        fmcp_ctx = context.fastmcp_context
+        if fmcp_ctx is not None:
+            actor = fmcp_ctx.client_id or "anonymous"
+        else:
+            actor = "anonymous"
+        # Raises RateLimitExceededError if over limit; let it propagate
+        self._limiter.allow(actor)
+        return await call_next(context)
 
 
 def build_rate_limiter(

@@ -55,6 +55,29 @@ class AuthConfig(BaseModel):
     azure_group_claim_name: str = "groups"
     azure_read_groups: list[str] = Field(default_factory=list)
     azure_write_groups: list[str] = Field(default_factory=list)
+    # Okta OAuth 2.0 / OIDC (optional, enabled when auth_mode == "okta")
+    okta_domain: str | None = None
+    okta_client_id: str | None = None
+    okta_auth_server_id: str = "default"
+    okta_required_scopes: list[str] = Field(default_factory=lambda: ["mcp:read"])
+    okta_read_scopes: list[str] = Field(default_factory=lambda: ["mcp:read"])
+    okta_write_scopes: list[str] = Field(default_factory=lambda: ["mcp:write"])
+    okta_read_groups: list[str] = Field(default_factory=lambda: ["mcp-readers"])
+    okta_write_groups: list[str] = Field(default_factory=lambda: ["mcp-writers"])
+    # Configurable restricted tool suffix lists (defaults match current hardcoded sets)
+    okta_read_restricted_tool_suffixes: list[str] = Field(
+        default_factory=lambda: [
+            "_pg96_hypopg_create_virtual_indexes",
+            "_pg96_hypopg_explain_with_virtual",
+            "_pg96_hypopg_find_optimal_indexes",
+        ]
+    )
+    okta_cross_session_tool_suffixes: list[str] = Field(
+        default_factory=lambda: [
+            "_pg96_blocking_sessions",
+        ]
+    )
+    # Connection pool
     pool_max_connections: int = 10
     pool_max_keepalive_connections: int = 10
     pool_timeout_seconds: int = 10

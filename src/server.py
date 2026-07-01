@@ -4,25 +4,27 @@ Dual-instance MCP server exposing database tools over HTTP.
 Entry point: python -m src.server
 """
 
-from __future__ import annotations
-
 import os
 import time
-from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any
 
 from fastmcp import FastMCP
+from fastmcp.server.auth.providers.jwt import JWTVerifier
+from fastmcp.server.lifespan import lifespan
+from fastmcp.utilities.logging import get_logger
 
 from src.config_loader import AppConfig, load_config
 from src.db.connection_manager import ConnectionManager
 from src.diagnostics.routes import register_diagnostics_routes
 from src.middleware.audit_logger import AuditLogger
-from src.middleware.rate_limiter import RateLimiter, build_rate_limiter
+from src.middleware.rate_limiter import RateLimiter, RedisRateLimiter, build_rate_limiter
 from src.middleware.write_guard import WriteGuard
 from src.models import RuntimePolicy
 from src.security.session_manager import SessionManager
 from src.tools.pg_tools import register_pg_tools
+
+logger = get_logger(__name__)
 
 
 def secret_resolver(secret_ref: str) -> dict[str, str]:
@@ -48,7 +50,7 @@ class AppState:
     auth: Any
     connection_manager: ConnectionManager
     write_guard: WriteGuard
-    rate_limiter: RateLimiter
+    rate_limiter: RateLimiter | RedisRateLimiter
     audit_logger: AuditLogger
     session_manager: SessionManager
     registered_tools: list[str] = field(default_factory=list)
@@ -56,6 +58,7 @@ class AppState:
     last_secret_refresh_utc: str = ""
     mask_error_details: bool = True
     stateless_http: bool = True
+    okta_enabled: bool = False
 
 
 def build_app() -> Any:
@@ -109,7 +112,7 @@ def build_app() -> Any:
     )
 
     # Define server lifespan for connection pool lifecycle
-    @asynccontextmanager
+    @lifespan
     async def app_lifespan(server: FastMCP):
         """Initialize pools on startup, close on shutdown."""
         await state.connection_manager.initialize_pools()
@@ -118,16 +121,39 @@ def build_app() -> Any:
         finally:
             await state.connection_manager.close_all_pools()
 
-    # Initialize FastMCP 3 server with lifespan
+    # --- Okta OAuth (optional) ---
+    auth_provider = None
+    if cfg.auth.auth_mode == "okta":
+        okta_domain = os.getenv("OKTA_DOMAIN", cfg.auth.okta_domain or "")
+        okta_client_id = os.getenv("OKTA_CLIENT_ID", cfg.auth.okta_client_id or "")
+        okta_server = os.getenv("OKTA_AUTH_SERVER_ID", cfg.auth.okta_auth_server_id)
+        if not okta_domain or not okta_client_id:
+            raise RuntimeError(
+                "auth_mode=okta requires OKTA_DOMAIN and OKTA_CLIENT_ID"
+            )
+        auth_provider = JWTVerifier(
+            jwks_uri=f"https://{okta_domain}/oauth2/{okta_server}/v1/keys",
+            issuer=f"https://{okta_domain}/oauth2/{okta_server}",
+            audience=okta_client_id,
+            required_scopes=None,
+        )
+        state.okta_enabled = True
+        logger.info("Okta OAuth enabled (issuer=%s)", auth_provider.issuer)
+    else:
+        state.okta_enabled = False
+
+    # Initialize FastMCP 3 server with lifespan (+ optional auth)
     mcp = FastMCP(
         "pg96-edb-dual-instance",
         version="1.0.0",
         mask_error_details=mask_errors,
         lifespan=app_lifespan,
+        auth=auth_provider,
     )
 
-    # Attach session-tracking middleware (auto-touches on every tool call)
+    # Attach middleware stack (order: error handling → rate limiting → session tracking)
     mcp.add_middleware(state.session_manager.as_middleware())
+    mcp.add_middleware(state.rate_limiter.as_middleware())
 
     # Register dual-instance tools
     registered_tools = register_pg_tools(mcp, state)
