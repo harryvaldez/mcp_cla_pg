@@ -207,6 +207,10 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     if not is_allowed:
                         raise PermissionError(deny_reason)
 
+                    request_id = ctx.request_id
+                    state.session_manager.touch(actor, request_id)
+                    state.rate_limiter.allow(actor)
+
                     return actor, {
                         "auth_mode": "okta",
                         "auth_subject": actor,
@@ -223,9 +227,13 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 pass  # fall through to disabled/error
 
         # Azure Entra / disabled: pass-through
+        request_id = ctx.request_id if ctx is not None else str(uuid.uuid4())
+        state.session_manager.touch(actor, request_id)
+        state.rate_limiter.allow(actor)
+
         return actor, {
             "auth_mode": auth_mode,
-            "auth_subject": None,
+            "auth_subject": actor,
             "privilege_level": "none",
             "group_match_result": {"group_authorization_enabled": False},
         }

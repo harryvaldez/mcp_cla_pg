@@ -151,10 +151,6 @@ def build_app() -> Any:
         auth=auth_provider,
     )
 
-    # Attach middleware stack (order: error handling → rate limiting → session tracking)
-    mcp.add_middleware(state.session_manager.as_middleware())
-    mcp.add_middleware(state.rate_limiter.as_middleware())
-
     # Register dual-instance tools
     registered_tools = register_pg_tools(mcp, state)
     state.registered_tools = registered_tools
@@ -180,4 +176,4 @@ if __name__ == "__main__":
 
     import uvicorn
 
-    uvicorn.run("src.server:app", host=host, port=port, log_level=log_level)
+    uvicorn.run(app, host=host, port=port, log_level=log_level)
