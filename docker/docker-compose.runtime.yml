@@ -1,10 +1,16 @@
+networks:
+  mcp-net:
+    external: true
+
 services:
   mcp-edb96:
+    networks:
+      - mcp-net
     image: harryvaldez/mcp-edb96-server:latest
     container_name: mcp-edb96
     restart: unless-stopped
     ports:
-      - "8087:8080"
+      - "8086:8080"
     read_only: true
     cap_drop:
       - ALL
@@ -27,8 +33,8 @@ services:
       FASTMCP_LOG_LEVEL: INFO
       FASTMCP_STATELESS_HTTP: "true"
       FASTMCP_MASK_ERROR_DETAILS: "true"
-      FASTMCP_RATE_LIMIT_BACKEND: ${FASTMCP_RATE_LIMIT_BACKEND:-local}
-      FASTMCP_REDIS_URL: ${FASTMCP_REDIS_URL:-}
+      FASTMCP_RATE_LIMIT_BACKEND: ${FASTMCP_RATE_LIMIT_BACKEND:-redis}
+      FASTMCP_REDIS_URL: redis://fastmcp-redis:6379
       FASTMCP_REDIS_NAMESPACE: ${FASTMCP_REDIS_NAMESPACE:-mcp:ratelimit}
       FASTMCP_TOOL_ENABLE_FLAGS_JSON: ${FASTMCP_TOOL_ENABLE_FLAGS_JSON:-}
       FASTMCP_INSTANCE_TOOL_ENABLE_FLAGS_JSON: ${FASTMCP_INSTANCE_TOOL_ENABLE_FLAGS_JSON:-}
@@ -39,17 +45,5 @@ services:
       retries: 3
       start_period: 20s
 
-  redis:
-    image: redis:7-alpine
-    container_name: mcp-edb96-redis
-    profiles: ["local-redis"]
-    restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
-    expose:
-      - "6379"
-    volumes:
-      - redis-data:/data
-
 volumes:
   mcp-audit-log:
-  redis-data:

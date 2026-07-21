@@ -15,7 +15,7 @@ class TestEdbInstanceConfig:
         )
         assert cfg.id == "primary"
         assert cfg.port == 5444
-        assert cfg.database == "edb"
+        assert cfg.database == "lenexa"
         assert cfg.sslmode == "require"
 
     def test_valid_secondary_config(self):
@@ -50,7 +50,7 @@ class TestEdbInstanceConfig:
             auth_secret_ref="secret/pg/primary",
         )
         assert cfg.port == 5444
-        assert cfg.database == "edb"
+        assert cfg.database == "lenexa"
         assert cfg.sslmode == "require"
         assert cfg.connect_timeout_sec == 5
         assert cfg.pool_min == 2

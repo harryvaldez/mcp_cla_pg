@@ -2,7 +2,7 @@
 goal: Enforce Okta Group-Based Tool Authorization for MCP Tools
 version: 1.0
 date_created: 2026-06-30
-last_updated: 2026-06-30
+last_updated: 2026-07-08
 owner: harryvaldez
 status: Implemented
 tags: [feature, security, auth, okta, authorization, rbac]

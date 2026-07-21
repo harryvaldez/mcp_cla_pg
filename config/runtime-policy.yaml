@@ -36,11 +36,13 @@ tool_enable_flags:
   list_tables: true
   list_indexes: true
   list_views: true
+  missing_fk: true
   list_objects_by_type: true
   analyze_sett_sec: true
   check_db_parameters: true
   compute_db_metrics: true
   analyze_db_security: true
+  check_server: true
 instance_tool_enable_flags: {}
 allowed_tools: {}
 # Authentication configuration (auth section)

@@ -275,20 +275,15 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
         func: Any,
         issue_name: str,
         metrics: str,
+        description: str = "",
     ) -> None:
         """Register a maintenance sub-tool with the standard lifecycle."""
         full_name = f"db_{instance_number}_pg96_{toolname}"
 
-        @mcp.tool(
-            name=full_name,
-            annotations={"readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
-            tags={"read-only", "maintenance", f"instance-{instance_number}"},
-            timeout=30.0,
-        )
         async def _impl(
             schema_name: str,
             table_name: str,
-            database_name: str = "edb",
+            database_name: str = "lenexa",
             actor: str = "system",
             ctx: Context | None = None,
             _t: str = full_name,
@@ -348,6 +343,14 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     auth_ctx=_auth_ctx,
                 )
 
+        _impl.__doc__ = description
+        _impl = mcp.tool(
+            name=full_name,
+            annotations={"readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
+            tags={"read-only", "maintenance", f"instance-{instance_number}"},
+            timeout=30.0,
+        )(_impl)
+
         registered.append(full_name)
 
     # -------------------------------------------------------------------
@@ -356,19 +359,14 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
     def _register_discovery_tool(
         toolname: str,
         func: Any,
+        description: str = "",
     ) -> None:
         """Register a discovery sub-tool with the standard lifecycle."""
         full_name = f"db_{instance_number}_pg96_{toolname}"
 
-        @mcp.tool(
-            name=full_name,
-            annotations={"readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
-            tags={"read-only", "discovery", f"instance-{instance_number}"},
-            timeout=30.0,
-        )
         async def _impl(
             schema_name: str = "public",
-            database_name: str = "edb",
+            database_name: str = "lenexa",
             actor: str = "system",
             ctx: Context | None = None,
             _t: str = full_name,
@@ -425,6 +423,14 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     auth_ctx=_auth_ctx,
                 )
 
+        _impl.__doc__ = description
+        _impl = mcp.tool(
+            name=full_name,
+            annotations={"readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
+            tags={"read-only", "discovery", f"instance-{instance_number}"},
+            timeout=30.0,
+        )(_impl)
+
         registered.append(full_name)
 
     # -------------------------------------------------------------------
@@ -434,23 +440,13 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
         toolname: str,
         func: Any,
         timeout: float = 45.0,
+        description: str = "",
     ) -> None:
         """Register a settings/security sub-tool using database_name only."""
         full_name = f"db_{instance_number}_pg96_{toolname}"
 
-        @mcp.tool(
-            name=full_name,
-            annotations={"readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
-            tags={
-                "read-only",
-                "maintenance",
-                "security",
-                f"instance-{instance_number}",
-            },
-            timeout=timeout,
-        )
         async def _impl(
-            database_name: str = "edb",
+            database_name: str = "lenexa",
             actor: str = "system",
             ctx: Context | None = None,
             _t: str = full_name,
@@ -497,6 +493,19 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     error_code=error_code,
                     auth_ctx=_auth_ctx,
                 )
+
+        _impl.__doc__ = description
+        _impl = mcp.tool(
+            name=full_name,
+            annotations={"readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
+            tags={
+                "read-only",
+                "maintenance",
+                "security",
+                f"instance-{instance_number}",
+            },
+            timeout=timeout,
+        )(_impl)
 
         registered.append(full_name)
 
@@ -564,7 +573,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
 
                 # Execute identity query against the bound instance
                 payload = await app_state.connection_manager.fetch_single_row(
-                    _instance, "edb", _PING_SQL
+                    _instance, "lenexa", _PING_SQL
                 )
                 row_count = 1 if payload else 0
 
@@ -877,6 +886,9 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
 
                 Evaluates locking, deadlocks, blocking trees, connection pooling,
                 sequence scan abuse, and wait events.
+
+                Args:
+                    database_name: Target database to scan for blocking sessions.
                 """
                 request_id = str(uuid.uuid4())
                 started = time.time()
@@ -1099,6 +1111,10 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 analyze_normalization, analyze_index_statistics, analyze_3nf_and_decomposition)
                 internally and aggregates findings into a unified report. Also includes
                 HypoPG index recommendations for tables with sequential scan abuse.
+
+                Args:
+                    database_name: Target database context.
+                    schema_name: Target schema to analyze within the database.
                 """
                 request_id = str(uuid.uuid4())
                 started = time.time()
@@ -1407,7 +1423,16 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 _instance_number: int = instance_number,
                 app_state: Any = Depends(lambda: state),
             ) -> dict[str, Any]:
-                """Generates the raw physical data model of a schema (tables, columns, types)."""
+                """Generates the raw physical data model of a schema.
+
+                Extracts all tables, columns, data types, NOT NULL constraints, and primary
+                key flags for every table in the schema. Returns the model as an array of
+                (table_name, column_name, data_type, not_null, is_pk) tuples.
+
+                Args:
+                    database_name: Target database context.
+                    schema_name: Target schema to extract the model from.
+                """
                 request_id = str(uuid.uuid4())
                 started = time.time()
                 decision, error_code, row_count = "allow", None, 0
@@ -1440,14 +1465,31 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                         _instance, database_name, sql, schema_name
                     )
                     row_count = len(rows)
+                    # Count unique tables and columns for summary
+                    table_names = sorted({r.get("table_name") for r in rows})
+                    column_count = len(rows)
+                    type_dist: dict[str, int] = {}
+                    pk_count = sum(1 for r in rows if r.get("is_pk"))
+                    nullable_count = sum(1 for r in rows if not r.get("not_null"))
+                    for r in rows:
+                        dt = r.get("data_type", "unknown")
+                        type_dist[dt] = type_dist.get(dt, 0) + 1
+                    top_types = sorted(type_dist.items(), key=lambda x: -x[1])[:5]
+                    top_types_str = ", ".join(f"{v}x {k}" for k, v in top_types)
                     return {
-                        "Category": "Performance",
+                        "Category": "Discovery",
                         "Date Generated": datetime.now(UTC).strftime("%Y-%m-%d"),
                         "Source DB Server Name": _instance,
-                        "Issues Identified": "N/A - Model Extraction",
-                        "Impacted Metrics": "None",
-                        "Issue Priority": "Low",
-                        "Recommendations/Fixes": rows,
+                        "Schema": schema_name,
+                        "Database": database_name,
+                        "Summary": (
+                            f"{len(table_names)} table(s), {column_count} column(s) total. "
+                            f"{pk_count} primary key column(s), "
+                            f"{nullable_count} nullable column(s). "
+                            f"Most common data type(s): {top_types_str}."
+                        ),
+                        "Tables": table_names,
+                        "Columns": rows,
                     }
                 except PermissionError as exc:
                     decision, error_code = "deny", str(exc)
@@ -1498,7 +1540,16 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 _instance_number: int = instance_number,
                 app_state: Any = Depends(lambda: state),
             ) -> dict[str, Any]:
-                """Scans relationships to find missing foreign keys and missing required constraints."""  # noqa: E501
+                """Scan relationships to find missing foreign keys and missing required constraints.
+
+                Enumerates all pg_constraint entries (primary keys, foreign keys, unique,
+                check, trigger constraints) for the schema. Flags tables missing primary
+                keys and returns constraint counts by type.
+
+                Args:
+                    database_name: Target database context.
+                    schema_name: Target schema to analyze.
+                """
                 request_id = str(uuid.uuid4())
                 started = time.time()
                 decision, error_code, row_count = "allow", None, 0
@@ -1596,6 +1647,176 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
 
             registered.append(f"db_{instance_number}_pg96_analyze_constraints_and_fks")
 
+        # --- missing_fk: Detect columns lacking foreign key constraints ---
+        missing_fk_tool_name = f"db_{instance_number}_pg96_missing_fk"
+        if is_tool_enabled(state.policy, instance_id, "missing_fk"):
+
+            @mcp.tool(
+                name=missing_fk_tool_name,
+                annotations={
+                    "readOnlyHint": True,
+                    "destructiveHint": False,
+                    "openWorldHint": False,
+                },
+                tags={"read-only", "performance", f"instance-{instance_number}"},
+                timeout=30.0,
+            )
+            async def _missing_fk(
+                database_name: str,
+                schema_name: str,
+                actor: str = "system",
+                ctx: Context | None = None,
+                _tool: str = missing_fk_tool_name,
+                _instance: str = instance_id,
+                _instance_number: int = instance_number,
+                app_state: Any = Depends(lambda: state),
+            ) -> dict[str, Any]:
+                """Detect columns likely missing foreign key constraints.
+
+                Scans all columns ending with `_id` in the schema and checks whether
+                they are backed by a foreign key in `pg_constraint`. Infers the
+                referenced table name from the column name (e.g., `user_id` -> `users`)
+                and checks whether the inferred table exists. Returns a candidate list
+                with suggested DDL for each missing FK.
+
+                Args:
+                    database_name: Target database context.
+                    schema_name: Target schema to scan for missing FKs.
+                """
+                request_id = str(uuid.uuid4())
+                started = time.time()
+                decision, error_code, row_count = "allow", None, 0
+                _auth_ctx = None
+                database_name = validate_database_name(database_name)
+                schema_name = validate_schema_name(schema_name)
+                try:
+                    actor, _auth_ctx = await _resolve_actor_and_authorize(
+                        actor=actor,
+                        tool=_tool,
+                        required_privilege="read",
+                        ctx=ctx,
+                    )
+                    # Find all *_id columns not covered by an existing FK
+                    sql = """
+                        SELECT
+                            c.table_name,
+                            c.column_name,
+                            c.data_type
+                        FROM information_schema.columns c
+                        JOIN pg_class t ON t.relname = c.table_name
+                        JOIN pg_namespace n ON n.oid = t.relnamespace
+                            AND n.nspname = $1
+                        WHERE c.column_name LIKE '%_id'
+                          AND c.table_schema = $1
+                          AND t.relkind = 'r'
+                          AND NOT EXISTS (
+                              SELECT 1 FROM pg_constraint fk
+                              WHERE fk.contype = 'f'
+                                AND fk.conrelid = t.oid
+                                AND fk.conkey[1] = (
+                                    SELECT attnum FROM pg_attribute
+                                    WHERE attrelid = t.oid
+                                      AND attname = c.column_name
+                                )
+                          )
+                        ORDER BY c.table_name, c.column_name
+                    """
+                    app_state.write_guard.enforce(_tool, sql)
+                    rows = await app_state.connection_manager.execute_query(
+                        _instance, database_name, sql, schema_name
+                    )
+                    row_count = len(rows)
+
+                    # Collect all real table names for existence check
+                    table_list_sql = """
+                        SELECT relname FROM pg_class c
+                        JOIN pg_namespace n ON n.oid = c.relnamespace
+                        WHERE n.nspname = $1 AND c.relkind = 'r'
+                    """
+                    all_tables = await app_state.connection_manager.execute_query(
+                        _instance, database_name, table_list_sql, schema_name
+                    )
+                    existing_tables = {t["relname"] for t in all_tables}
+
+                    candidates = []
+                    for row in rows:
+                        col_name = row["column_name"]
+                        # Infer referenced table: strip _id and try common plurals
+                        base = col_name[:-3]  # remove _id
+                        inferred = f"{base}s"
+                        table_exists = inferred in existing_tables
+                        candidates.append({
+                            "table_name": row["table_name"],
+                            "column_name": col_name,
+                            "data_type": row["data_type"],
+                            "inferred_referenced_table": inferred,
+                            "referenced_table_exists": table_exists,
+                            "suggestion": (
+                                f"ALTER TABLE {schema_name}.{row['table_name']} "
+                                f"ADD CONSTRAINT fk_{row['table_name']}_{col_name} "
+                                f"FOREIGN KEY ({col_name}) REFERENCES "
+                                f"{schema_name}.{inferred}(id);"
+                            ),
+                        })
+
+                    findings = {
+                        "schema": schema_name,
+                        "total_candidates": len(candidates),
+                        "with_existing_target": sum(
+                            1 for c in candidates if c["referenced_table_exists"]
+                        ),
+                        "missing_fk_candidates": candidates,
+                        "note": (
+                            "Candidates are columns ending in _id without a declared "
+                            "foreign key. Inferred target tables are based on column "
+                            "naming convention. Review before applying DDL."
+                        ),
+                    }
+                    issue_count = len(candidates)
+                    return {
+                        "Category": "Performance",
+                        "Date Generated": datetime.now(UTC).strftime("%Y-%m-%d"),
+                        "Source DB Server Name": _instance,
+                        "Issues Identified": (
+                            f"{issue_count} columns with _id suffix lack foreign key "
+                            f"constraints in schema '{schema_name}'."
+                        ),
+                        "Impacted Metrics": "Data Integrity, Referential Integrity",
+                        "Issue Priority": (
+                            "High" if issue_count > 5
+                            else "Medium" if issue_count > 0
+                            else "Low"
+                        ),
+                        "Recommendations/Fixes": findings,
+                    }
+                except PermissionError as exc:
+                    decision, error_code = "deny", str(exc)
+                    app_state.denied_requests += 1
+                    raise
+                except RateLimitExceededError as exc:
+                    decision, error_code = "deny", str(exc)
+                    app_state.denied_requests += 1
+                    raise
+                except Exception as exc:
+                    decision, error_code = f"TOOL_ERROR: {exc}"
+                    app_state.denied_requests += 1
+                    raise ToolError(error_code)
+                finally:
+                    _log_audit_event(
+                        request_id=request_id,
+                        actor=actor,
+                        tool=_tool,
+                        instance=_instance,
+                        sql="missing_fk_query",
+                        decision=decision,
+                        latency_ms=int((time.time() - started) * 1000),
+                        rows=row_count,
+                        error_code=error_code,
+                        auth_ctx=_auth_ctx,
+                    )
+
+            registered.append(missing_fk_tool_name)
+
             # --- Sub-tool: analyze_normalization ---
             @mcp.tool(
                 name=f"db_{instance_number}_pg96_analyze_normalization",
@@ -1617,7 +1838,16 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 _instance_number: int = instance_number,
                 app_state: Any = Depends(lambda: state),
             ) -> dict[str, Any]:
-                """Identifies column data type mismatches across tables and structural anomalies."""
+                """Identify column data type mismatches across tables and structural anomalies.
+
+                Compares identically-named columns across different tables and flags those
+                with mismatched data types. Such mismatches can cause implicit type coercion,
+                join performance degradation, and data integrity issues.
+
+                Args:
+                    database_name: Target database context.
+                    schema_name: Target schema to analyze.
+                """
                 request_id = str(uuid.uuid4())
                 started = time.time()
                 decision, error_code, row_count = "allow", None, 0
@@ -1661,7 +1891,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                         "Category": "Performance",
                         "Date Generated": datetime.now(UTC).strftime("%Y-%m-%d"),
                         "Source DB Server Name": _instance,
-                        "Issues Identified": f"{len(rows)} column type mismatches found across tables",  # noqa: E501
+                        "Issues Identified": f"Found {len(rows)} column(s) with data type mismatches across different tables in schema '{schema_name}'. Mismatched types on identically-named columns can cause implicit type coercion, degraded join performance, and data integrity risks.",  # noqa: E501
                         "Impacted Metrics": "Data Integrity, Join Performance",
                         "Issue Priority": "Medium" if len(rows) > 0 else "Low",
                         "Recommendations/Fixes": rows,
@@ -1715,7 +1945,16 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 _instance_number: int = instance_number,
                 app_state: Any = Depends(lambda: state),
             ) -> dict[str, Any]:
-                """Evaluates pg_stats to flag missing, stale, or severely outdated statistics."""
+                """Evaluate table statistics to flag missing, stale, or outdated ANALYZE data.
+
+                Checks pg_stat_user_tables for the schema and identifies tables where
+                ANALYZE has never run or is severely outdated. Stale statistics cause the
+                query planner to generate suboptimal execution plans.
+
+                Args:
+                    database_name: Target database context.
+                    schema_name: Target schema to check statistics for.
+                """
                 request_id = str(uuid.uuid4())
                 started = time.time()
                 decision, error_code, row_count = "allow", None, 0
@@ -1815,7 +2054,16 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 _instance_number: int = instance_number,
                 app_state: Any = Depends(lambda: state),
             ) -> dict[str, Any]:
-                """Analyzes data row repetition to detect M:N relationships requiring decomposition to 3NF."""  # noqa: E501
+                """Detect M:N relationships and tables requiring decomposition to 3NF.
+
+                Analyzes sequential scan vs index scan ratios to identify tables with
+                inefficient scanning patterns that may indicate normalization issues,
+                redundant data, or missing indexes.
+
+                Args:
+                    database_name: Target database context.
+                    schema_name: Target schema to analyze.
+                """
                 request_id = str(uuid.uuid4())
                 started = time.time()
                 decision, error_code, row_count = "allow", None, 0
@@ -2012,7 +2260,11 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 _instance_number: int = instance_number,
                 app_state: Any = Depends(lambda: state),
             ) -> dict[str, Any]:
-                """Runs EXPLAIN (FORMAT JSON) using the current session's virtual indexes.
+                """Run EXPLAIN (FORMAT JSON) using the current session's virtual indexes.
+
+                Executes EXPLAIN against the query, incorporating any virtual indexes
+                created via hypopg_create_index() in the same session. Returns the
+                full JSON plan and total estimated cost.
 
                 Args:
                     database_name: Database to connect to.
@@ -2161,7 +2413,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
             )
             async def _exec_query(
                 sql_statement: str,
-                database_name: str = "edb",
+                database_name: str = "lenexa",
                 max_rows: int = 100,
                 actor: str = "system",
                 ctx: Context | None = None,
@@ -2170,22 +2422,36 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 _instance_number: int = instance_number,
                 app_state: Any = Depends(lambda: state),
             ) -> dict[str, Any]:
+                """Execute a user-supplied SELECT query against an EDBAS 9.6 instance.
+
+                Only SELECT statements are permitted. Results are capped at max_rows
+                (maximum 1000). Returns rows, row_count, truncated flag, and the
+                query/database context.
+
+                Args:
+                    sql_statement: SELECT SQL statement to execute (required).
+                    database_name: Target database on the instance (default "lenexa").
+                    max_rows: Maximum rows to return, 1-1000 (default 100).
+                """
                 request_id = str(uuid.uuid4())
                 started = time.time()
                 decision, error_code, row_count = "allow", None, 0
                 _auth_ctx = None
                 sql_v = validate_sql_statement(sql_statement)
                 database_name_v = validate_database_name(database_name)
+                max_rows_v = validate_positive_int(max_rows, "max_rows", 1, 1000)
                 clamped = max_rows > 1000
-                max_rows_v = max(1, min(max_rows, 1000))
+                if clamped:
+                    max_rows_v = 1000
                 try:
                     actor, _auth_ctx = await _resolve_actor_and_authorize(
                         actor=actor, tool=_tool, required_privilege="read", ctx=ctx
                     )
-                    # (handled by middleware)
+                    app_state.rate_limiter.allow(actor)
+                    app_state.session_manager.touch(actor, request_id)
                     app_state.write_guard.enforce(_tool, sql_v)
                     rows = await app_state.connection_manager.execute_query(
-                        _instance, database_name_v, sql_v, max_rows_v
+                        _instance, database_name_v, sql_v, max_rows=max_rows_v
                     )
                     row_count = len(rows)
                     result: dict[str, Any] = {
@@ -2252,7 +2518,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
             async def _analyze_table(
                 schema_name: str,
                 table_name: str,
-                database_name: str = "edb",
+                database_name: str = "lenexa",
                 include_bloat: bool = True,
                 include_wraparound: bool = True,
                 include_statistics: bool = True,
@@ -2264,6 +2530,21 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 _instance_number: int = instance_number,
                 app_state: Any = Depends(lambda: state),
             ) -> dict[str, Any]:
+                """Run comprehensive maintenance analysis on a single table.
+
+                Orchestrates up to 4 sub-analyses: table bloat (dead tuple ratio),
+                transaction wraparound risk, statistics staleness, and index health.
+                Each sub-analysis can be toggled via boolean flags.
+
+                Args:
+                    schema_name: Target schema containing the table.
+                    table_name: Table to analyze.
+                    database_name: Target database (default "lenexa").
+                    include_bloat: Run bloat analysis (default True).
+                    include_wraparound: Run wraparound risk check (default True).
+                    include_statistics: Run statistics staleness check (default True).
+                    include_indexes: Run index health analysis (default True).
+                """
                 request_id = str(uuid.uuid4())
                 started = time.time()
                 decision, error_code, row_count = "allow", None, 0
@@ -2348,24 +2629,73 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
             table_analysis.check_table_bloat,
             "Table Bloat",
             "Dead tuples, bloat ratio, vacuum threshold",
+            description=(
+                "Analyze dead tuple ratio and vacuum staleness for a specific table.\n"
+                "\n"
+                "Returns dead tuple percentage, HOT update efficiency, last vacuum/autovacuum "
+                "timestamps, and bloat severity level (HIGH/MEDIUM/LOW). High dead tuple "
+                "percentage suggests a VACUUM FULL is needed.\n"
+                "\n"
+                "Args:\n"
+                '    schema_name: Target schema containing the table.\n'
+                '    table_name: Table to analyze for bloat.\n'
+                '    database_name: Target database (default "lenexa").'
+            ),
         )
         _register_sub_tool(
             "check_table_wraparound",
             table_analysis.check_table_wraparound,
             "Transaction Wraparound",
             "Transaction age, wraparound risk, autovacuum status",
+            description=(
+                "Check transaction ID wraparound risk for a specific table.\n"
+                "\n"
+                "Returns XID age, risk level (CRITICAL/HIGH/MEDIUM/LOW), and recommended "
+                "action. Tables approaching 2 billion transactions since last freeze risk "
+                "database shutdown.\n"
+                "\n"
+                "Args:\n"
+                '    schema_name: Target schema containing the table.\n'
+                '    table_name: Table to check for wraparound risk.\n'
+                '    database_name: Target database (default "lenexa").'
+            ),
         )
         _register_sub_tool(
             "check_table_statistics",
             table_analysis.check_table_statistics,
             "Table Statistics",
             "Analyze count, last analyze, n_mod_since_analyze",
+            description=(
+                "Check staleness of table statistics for the query planner.\n"
+                "\n"
+                "Flags tables where ANALYZE hasn't run in more than 7 days or never ran "
+                "despite having live tuples. Returns last analyze timestamps, modification "
+                "counts, and a specific ANALYZE recommendation.\n"
+                "\n"
+                "Args:\n"
+                '    schema_name: Target schema containing the table.\n'
+                '    table_name: Table to check statistics for.\n'
+                '    database_name: Target database (default "lenexa").'
+            ),
         )
         _register_sub_tool(
             "check_index_health",
             table_analysis.check_index_health,
             "Index Health",
             "Index usage, scans, size, bloat",
+            description=(
+                "Assess index health for a specific table: invalid, unused, and duplicate "
+                "indexes.\n"
+                "\n"
+                "Returns lists of problem indexes with sizes in bytes, total index size, "
+                "and recommended DROP INDEX actions. Wasted index space is flagged for "
+                "cleanup.\n"
+                "\n"
+                "Args:\n"
+                '    schema_name: Target schema containing the table.\n'
+                '    table_name: Table whose indexes to analyze.\n'
+                '    database_name: Target database (default "lenexa").'
+            ),
         )
 
         # ===================================================================
@@ -2389,7 +2719,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 include_tables: bool = True,
                 include_indexes: bool = True,
                 include_views: bool = True,
-                database_name: str = "edb",
+                database_name: str = "lenexa",
                 actor: str = "system",
                 ctx: Context | None = None,
                 _tool: str = list_objects_tool_name,
@@ -2397,6 +2727,19 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 _instance_number: int = instance_number,
                 app_state: Any = Depends(lambda: state),
             ) -> dict[str, Any]:
+                """List database objects in a schema: tables, indexes, and views.
+
+                Returns categorized lists of tables (with row counts/sizes), indexes
+                (with type/scan stats), and views (with definitions). Each category can
+                be toggled via boolean flags.
+
+                Args:
+                    schema_name: Target schema to enumerate (default "public").
+                    include_tables: Include table listing (default True).
+                    include_indexes: Include index listing (default True).
+                    include_views: Include view listing (default True).
+                    database_name: Target database (default "lenexa").
+                """
                 request_id = str(uuid.uuid4())
                 started = time.time()
                 decision, error_code, row_count = "allow", None, 0
@@ -2470,14 +2813,44 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
         _register_discovery_tool(
             "list_tables",
             table_analysis.list_tables_by_schema,
+            description=(
+                "List all tables in a schema with row counts, sizes, and descriptions.\n"
+                "\n"
+                "Returns an array of objects with name, owner, size_bytes, row_count, and "
+                "description for every table in the schema.\n"
+                "\n"
+                "Args:\n"
+                '    schema_name: Target schema to enumerate (default "public").\n'
+                '    database_name: Target database (default "lenexa").'
+            ),
         )
         _register_discovery_tool(
             "list_indexes",
             table_analysis.list_indexes_by_schema,
+            description=(
+                "List all indexes in a schema with type, size, and scan statistics.\n"
+                "\n"
+                "Returns an array of objects with name, table_name, index_type (btree/hash/"
+                "gist/gin), size_bytes, idx_scan count, and idx_tup_read count.\n"
+                "\n"
+                "Args:\n"
+                '    schema_name: Target schema to enumerate (default "public").\n'
+                '    database_name: Target database (default "lenexa").'
+            ),
         )
         _register_discovery_tool(
             "list_views",
             table_analysis.list_views_by_schema,
+            description=(
+                "List all views in a schema with definition and owner.\n"
+                "\n"
+                "Returns an array of objects with name, owner, definition (truncated to 500 "
+                "characters), and description for every view in the schema.\n"
+                "\n"
+                "Args:\n"
+                '    schema_name: Target schema to enumerate (default "public").\n'
+                '    database_name: Target database (default "lenexa").'
+            ),
         )
 
         # list_objects_by_type: dedicated inline registration (needs object_type)
@@ -2497,7 +2870,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
             async def _list_objects_by_type(
                 object_type: str,
                 schema_name: str = "public",
-                database_name: str = "edb",
+                database_name: str = "lenexa",
                 actor: str = "system",
                 ctx: Context | None = None,
                 _t: str = lobt_tool_name,
@@ -2505,6 +2878,19 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 _in: int = instance_number,
                 app_state: Any = Depends(lambda: state),
             ) -> dict[str, Any]:
+                """List database objects of a specific pg_class.relkind type.
+
+                Generic object lister supporting any relkind value: 'r' (tables),
+                'i' (indexes), 'v' (views), 'S' (sequences), 'm' (materialized views),
+                'c' (composite types), 't' (TOAST tables), 'f' (foreign tables),
+                'p' (partitioned tables).
+
+                Args:
+                    object_type: pg_class.relkind value (e.g., "S" for sequences,
+                        "m" for materialized views).
+                    schema_name: Target schema to enumerate (default "public").
+                    database_name: Target database (default "lenexa").
+                """
                 request_id = str(uuid.uuid4())
                 started = time.time()
                 decision, error_code, row_count = "allow", None, 0
@@ -2588,7 +2974,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 timeout=60.0,
             )
             async def _analyze_sett_sec(
-                database_name: str = "edb",
+                database_name: str = "lenexa",
                 actor: str = "system",
                 ctx: Context | None = None,
                 _tool: str = analyze_sett_sec_tool_name,
@@ -2596,6 +2982,18 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 _instance_number: int = instance_number,
                 app_state: Any = Depends(lambda: state),
             ) -> dict[str, Any]:
+                """Orchestrate comprehensive settings and security analysis of a database instance.
+
+                Delegates to 3 sub-analyses: DB parameter compliance against EDBAS 9.6
+                best practices (60+ parameters across 7 categories), key performance
+                metrics (cache hit ratio, TXID age, dead tuples, connection utilization),
+                and security vulnerability assessment (SSL, WAL archiver, superuser sprawl,
+                audit logging). Aggregates findings into a unified report with severity
+                ratings and remediation recommendations.
+
+                Args:
+                    database_name: Target database to analyze (default "lenexa").
+                """
                 request_id = str(uuid.uuid4())
                 started = time.time()
                 decision, error_code, row_count = "allow", None, 0
@@ -2611,8 +3009,12 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     # (handled by middleware)
                     app_state.write_guard.enforce(_tool, "SELECT 1")
                     async with app_state.connection_manager.acquire(_instance) as conn:
+                        # Gather server resource context first
+                        server_context = await settings_security.check_server(
+                            conn, "/data"
+                        )
                         params_result = await settings_security.check_db_parameters(
-                            conn, database_name_v
+                            conn, database_name_v, check_server_data=server_context
                         )
                         metrics_result = await settings_security.compute_db_metrics(
                             conn, database_name_v
@@ -2639,7 +3041,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                         (
                             f"ALTER SYSTEM SET {f['parameter']} = "
                             f"'{f['recommended_value']}'; "
-                            f"-- Currently {f['current_value']}: "
+                            f"-- Currently {f.get('current_value_display', f['current_value'])}: "
                             f"{f['rationale']}"
                         )
                         for f in params_result.get("findings", [])
@@ -2672,12 +3074,33 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     xid_metrics = metrics_result.get("txid_metrics", {})
                     db_size = metrics_result.get("database_size", {})
 
+                    # Format server context for display
+                    cpu_info = server_context.get("cpu", {})
+                    mem_info = server_context.get("memory", {})
+                    disk_info = server_context.get("disk", {})
+
                     return {
                         "Category": "Maintenance",
                         "Date Generated": (datetime.now(UTC).strftime("%Y-%m-%d")),
                         "Source DB Server Name": _instance,
                         "Database": database_name_v,
                         "Overall Assessment": (". ".join(assessment_parts) + "."),
+                        "Server Context": {
+                            "CPU": (
+                                f"{cpu_info.get('cpu_count', 'N/A')} cores"
+                                if cpu_info.get("cpu_count") else "N/A"
+                            ),
+                            "Memory": (
+                                f"{mem_info.get('total_mb', 'N/A')} MB total"
+                                if mem_info.get("total_mb") else mem_info.get("note", "N/A")
+                            ),
+                            "Disk": (
+                                f"{disk_info.get('used_pct', 'N/A')}% used on "
+                                f"{disk_info.get('filesystem', '/data')}"
+                                if disk_info.get("used_pct") is not None
+                                else disk_info.get("note", "N/A")
+                            ),
+                        },
                         "Issues": [
                             {
                                 "Issue": "DB Parameters Misconfiguration",
@@ -2774,16 +3197,149 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
             _register_sett_sec_sub_tool(
                 "check_db_parameters",
                 settings_security.check_db_parameters,
+                description=(
+                    "Evaluate all pg_settings against EDBAS 9.6 best-practice rules.\n"
+                    "\n"
+                    "Checks 60+ parameters across 7 categories (Memory, WAL/Checkpoint, Planner/"
+                    "Optimizer, Autovacuum, Logging, Connections, Security/Auth). Returns only "
+                    "deviating parameters with severity, current value, recommended value, and "
+                    "rationale.\n"
+                    "\n"
+                    "Args:\n"
+                    '    database_name: Target database (default "lenexa").'
+                ),
             )
         if is_tool_enabled(state.policy, instance_id, "compute_db_metrics"):
             _register_sett_sec_sub_tool(
                 "compute_db_metrics",
                 settings_security.compute_db_metrics,
+                description=(
+                    "Compute key database performance metrics.\n"
+                    "\n"
+                    "Returns cache hit ratio, transaction commit/rollback metrics, tuple churn "
+                    "stats, connection utilization percentage, TXID wraparound age and risk "
+                    "level, dead tuple ratio, and database size.\n"
+                    "\n"
+                    "Args:\n"
+                    '    database_name: Target database to measure (default "lenexa").'
+                ),
             )
         if is_tool_enabled(state.policy, instance_id, "analyze_db_security"):
             _register_sett_sec_sub_tool(
                 "analyze_db_security",
                 settings_security.analyze_db_security,
+                description=(
+                    "Perform a security vulnerability assessment of the database instance.\n"
+                    "\n"
+                    "Checks SSL configuration, active unencrypted connections, WAL archiver "
+                    "health, superuser sprawl (count and names), password encryption policy, "
+                    "audit logging gaps (log_connections, log_disconnections, log_statement), "
+                    "and public schema privileges.\n"
+                    "\n"
+                    "Args:\n"
+                    '    database_name: Target database (default "lenexa").'
+                ),
+            )
+
+        # -----------------------------------------------------------------------
+        # Register db_{instance_number}_pg96_check_server
+        # -----------------------------------------------------------------------
+        def _register_server_tool(
+            toolname: str,
+            func: Any,
+            timeout: float = 30.0,
+            description: str = "",
+        ) -> None:
+            """Register a server resource retrieval tool with filesystem_path param."""
+            full_name = f"db_{instance_number}_pg96_{toolname}"
+
+            async def _impl(
+                filesystem_path: str = "/data",
+                actor: str = "system",
+                database_name: str = "lenexa",
+                ctx: Context | None = None,
+                _t: str = full_name,
+                _i: str = instance_id,
+                _in: int = instance_number,
+                app_state: Any = Depends(lambda: state),
+            ) -> dict[str, Any]:
+                request_id = str(uuid.uuid4())
+                started = time.time()
+                decision, error_code, row_count = "allow", None, 0
+                _auth_ctx = None
+                try:
+                    actor, _auth_ctx = await _resolve_actor_and_authorize(
+                        actor=actor,
+                        tool=_t,
+                        required_privilege="read",
+                        ctx=ctx,
+                    )
+                    app_state.write_guard.enforce(_t, "SELECT 1")
+                    async with app_state.connection_manager.acquire(_i) as conn:
+                        result = await func(conn, filesystem_path)
+                    row_count = 1
+                    return result
+                except PermissionError as exc:
+                    decision, error_code = "deny", str(exc)
+                    app_state.denied_requests += 1
+                    raise
+                except RateLimitExceededError as exc:
+                    decision, error_code = "deny", str(exc)
+                    app_state.denied_requests += 1
+                    raise
+                except Exception as exc:
+                    decision, error_code = f"TOOL_ERROR: {exc}"
+                    app_state.denied_requests += 1
+                    raise ToolError(error_code)
+                finally:
+                    _log_audit_event(
+                        request_id=request_id,
+                        actor=actor,
+                        tool=_t,
+                        instance=_i,
+                        sql="check_server",
+                        decision=decision,
+                        latency_ms=int((time.time() - started) * 1000),
+                        rows=row_count,
+                        error_code=error_code,
+                        auth_ctx=_auth_ctx,
+                    )
+
+            _impl.__doc__ = description
+            _impl = mcp.tool(
+                name=full_name,
+                annotations={
+                    "readOnlyHint": True,
+                    "destructiveHint": False,
+                    "openWorldHint": False,
+                },
+                tags={
+                    "read-only",
+                    "diagnostics",
+                    f"instance-{instance_number}",
+                },
+                timeout=timeout,
+            )(_impl)
+
+            registered.append(full_name)
+
+        if is_tool_enabled(state.policy, instance_id, "check_server"):
+            _register_server_tool(
+                "check_server",
+                settings_security.check_server,
+                description=(
+                    "Retrieve CPU, memory, and disk utilization for the database host.\n"
+                    "\n"
+                    "Queries the EDBAS host via SQL functions to gather OS-level resource "
+                    "metrics: CPU count, memory usage (total/used/free), and disk utilization "
+                    "for a specified filesystem path. Handles permission errors gracefully with "
+                    "explanatory notes.\n"
+                    "\n"
+                    "Args:\n"
+                    '    filesystem_path: Filesystem path for disk usage check '
+                    '(default "/data").\n'
+                    '    database_name: Target database (default "lenexa").'
+                ),
             )
 
     return registered

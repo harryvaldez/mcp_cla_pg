@@ -53,7 +53,7 @@ class TestGetSlowStatements:
     def test_registered_count_matches(self, mock_state, mock_mcp):
         """Verify total registered count matches expected value."""
         registered = register_pg_tools(mock_mcp, mock_state)
-        assert len(registered) == 54
+        assert len(registered) == 58
 
     def test_hypopg_sub_tools_registered(self, mock_state, mock_mcp):
         """Verify HypoPG sub-tools are in the registered list."""

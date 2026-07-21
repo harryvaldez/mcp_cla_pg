@@ -366,12 +366,161 @@ def _parse_ms(value: str) -> float:
 
 
 # ---------------------------------------------------------------------------
+# Value resolution helper — applies pg_settings unit multiplier BEFORE parsing
+# ---------------------------------------------------------------------------
+
+
+def _resolve_setting(setting: str, unit: str | None) -> str:
+    """Compute the actual parameter value by applying the unit multiplier.
+
+    ``pg_settings`` stores values in blocks of the unit specified by the
+    ``unit`` column.  For example, ``shared_buffers`` with
+    ``setting="1048576"`` and ``unit="8kB"`` means 1,048,576 blocks of 8 kB
+    each = 8 GB.  This function multiplies the raw setting by the prefix
+    from the unit column and returns a suffixed string that the existing
+    ``_parse_mb`` / ``_parse_seconds`` / ``_parse_ms`` helpers can handle.
+
+    Args:
+        setting: Raw ``pg_settings.setting`` value (e.g. ``"1048576"``).
+        unit:    ``pg_settings.unit`` value (e.g. ``"8kB"``, ``"kB"``, ``"s"``).
+
+    Returns:
+        A string like ``"8388608kB"`` (multiplied, with base-unit suffix)
+        for the parsers to digest, or the original setting if unit is
+        ``None`` or cannot be decomposed.
+    """
+    import re as _re
+
+    if not setting or not unit:
+        return str(setting) if setting else ""
+
+    setting_str = str(setting).strip()
+    unit_str = str(unit).strip().lower()
+
+    # Match patterns: "8kB", "8 KB", "MB", "s", "ms", "min", etc.
+    m = _re.match(r"^(\d+)?\s*(b|kb|mb|gb|tb|ms|s|min|h|d)$", unit_str)
+    if not m:
+        return setting_str
+
+    multiplier = int(m.group(1)) if m.group(1) else 1
+    base_unit = m.group(2)
+
+    try:
+        raw_value = float(setting_str)
+    except (ValueError, TypeError):
+        return setting_str
+
+    actual = raw_value * multiplier
+    # Return as an integer string if it's clean, otherwise 1 decimal
+    if actual == int(actual):
+        return f"{int(actual)}{base_unit}"
+    return f"{actual:.1f}{base_unit}"
+
+
+# ---------------------------------------------------------------------------
+# Value display formatter (inverse of _parse_* helpers)
+# ---------------------------------------------------------------------------
+
+
+def _format_pg_value(setting: str, unit: str | None) -> str:
+    """Convert a raw pg_settings value to a human-readable display string.
+
+    Handles byte units (B, kB, MB, GB, TB) with optional multiplier prefixes
+    (e.g. ``8kB`` means each unit is 8 kilobytes), and time units (ms, s, min).
+
+    Args:
+        setting: The raw setting value from pg_settings (e.g. ``"16384"``).
+        unit: The unit column from pg_settings (e.g. ``"8kB"``, ``"MB"``, ``"s"``).
+
+    Returns:
+        Human-readable display string (e.g. ``"128 MB"``, ``"4.00 GB"``, ``"5 min"``).
+        Falls back to the raw setting string for non-numeric/non-temporal values.
+    """
+    if not setting or not unit:
+        return str(setting) if setting else ""
+
+    setting = str(setting).strip()
+    unit = str(unit).strip().lower()
+
+    # --- Parse the unit string to extract multiplier and base unit ---
+    import re as _re
+
+    # Match patterns like "8kB", "8 KB", "MB", "s", "ms"
+    m = _re.match(r"^(\d+)?\s*(b|kb|mb|gb|tb|ms|s|min|h|d)$", unit)
+    if not m:
+        return str(setting)
+
+    multiplier = int(m.group(1)) if m.group(1) else 1
+    base_unit = m.group(2)
+
+    # Try to parse the setting value as a number
+    try:
+        raw_value = float(setting)
+    except (ValueError, TypeError):
+        return str(setting)
+
+    # Compute the actual value in the base unit
+    actual_value = raw_value * multiplier
+
+    # --- Convert to most appropriate display unit ---
+    if base_unit in ("b", "kb", "mb", "gb", "tb"):
+        # Convert everything to bytes first
+        if base_unit == "tb":
+            bytes_val = actual_value * 1024 * 1024 * 1024 * 1024
+        elif base_unit == "gb":
+            bytes_val = actual_value * 1024 * 1024 * 1024
+        elif base_unit == "mb":
+            bytes_val = actual_value * 1024 * 1024
+        elif base_unit == "kb":
+            bytes_val = actual_value * 1024
+        else:
+            bytes_val = actual_value
+
+        # Display in most appropriate unit
+        if bytes_val >= 1024 * 1024 * 1024:
+            return f"{bytes_val / (1024 * 1024 * 1024):.2f} GB"
+        elif bytes_val >= 1024 * 1024:
+            return f"{bytes_val / (1024 * 1024):.2f} MB"
+        elif bytes_val >= 1024:
+            return f"{bytes_val / 1024:.2f} kB"
+        else:
+            return f"{bytes_val:.0f} B"
+
+    elif base_unit in ("ms", "s", "min", "h", "d"):
+        # Convert everything to seconds first
+        if base_unit == "d":
+            seconds_val = actual_value * 86400
+        elif base_unit == "h":
+            seconds_val = actual_value * 3600
+        elif base_unit == "min":
+            seconds_val = actual_value * 60
+        elif base_unit == "s":
+            seconds_val = actual_value
+        else:  # ms
+            seconds_val = actual_value / 1000.0
+
+        # Display in most appropriate unit
+        if seconds_val >= 86400:
+            return f"{seconds_val / 86400:.1f} d"
+        elif seconds_val >= 3600:
+            return f"{seconds_val / 3600:.1f} h"
+        elif seconds_val >= 60:
+            return f"{seconds_val / 60:.0f} min"
+        elif seconds_val >= 1:
+            return f"{seconds_val:.0f} s"
+        else:
+            return f"{seconds_val * 1000:.0f} ms"
+
+    return str(setting)
+
+
+# ---------------------------------------------------------------------------
 # check_db_parameters
 # ---------------------------------------------------------------------------
 
 
 async def check_db_parameters(
-    conn: Any, database_name: str
+    conn: Any, database_name: str, check_server_data: dict[str, Any] | None = None
 ) -> dict[str, Any]:
     """Evaluate all pg_settings against EDBAS 9.6 best-practice rules.
 
@@ -405,8 +554,10 @@ async def check_db_parameters(
         param_name = rule["parameter"]
         row = settings_lookup.get(param_name)
         current_value = str(row["setting"]) if row and row["setting"] is not None else ""
+        unit = str(row["unit"]) if row and row["unit"] is not None else None
+        resolved_value = _resolve_setting(current_value, unit)
         try:
-            passed = rule["check"](current_value)
+            passed = rule["check"](resolved_value)
         except Exception:
             passed = True  # can't parse — skip
 
@@ -414,6 +565,7 @@ async def check_db_parameters(
             finding: dict[str, Any] = {
                 "parameter": param_name,
                 "current_value": _serialize_value(current_value),
+                "current_value_display": _format_pg_value(current_value, unit),
                 "recommended_value": rule["recommended_value"],
                 "category": rule["category"],
                 "severity": rule["severity"],
@@ -427,7 +579,7 @@ async def check_db_parameters(
 
     compliant = total_checked - len(findings)
 
-    return {
+    result: dict[str, Any] = {
         "parameter_analysis": {
             "total": total_checked,
             "compliant": compliant,
@@ -436,6 +588,11 @@ async def check_db_parameters(
         },
         "findings": findings,
     }
+
+    if check_server_data:
+        result["server_context"] = check_server_data
+
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -936,3 +1093,229 @@ def _scrub_sensitive_values(finding: dict[str, Any]) -> None:
                         finding[field] = finding[field].replace(
                             line, "[sensitive value redacted]"
                         )
+
+
+# ---------------------------------------------------------------------------
+# check_server — OS-level resource retrieval
+# ---------------------------------------------------------------------------
+
+
+async def _get_cpu_info(conn: Any) -> dict[str, Any]:
+    """Retrieve CPU count/configuration from the EDBAS host via SQL.
+
+    Uses ``max_worker_processes`` as a CPU count proxy and attempts
+    to read ``/proc/cpuinfo`` for more detailed info via ``pg_read_file``.
+
+    Args:
+        conn: An already-acquired asyncpg connection.
+
+    Returns:
+        dict with cpu_count, and optionally cpu_model if accessible.
+    """
+    result: dict[str, Any] = {"cpu_count": None, "note": None}
+
+    # Primary: read max_worker_processes as CPU core count proxy
+    try:
+        row = await conn.fetchrow(
+            "SELECT setting::int AS cpu_count FROM pg_settings "
+            "WHERE name = 'max_worker_processes'"
+        )
+        if row and row["cpu_count"] is not None:
+            result["cpu_count"] = int(row["cpu_count"])
+    except Exception as exc:
+        result["note"] = f"Could not read max_worker_processes: {exc}"
+
+    # Secondary: attempt to read /proc/cpuinfo for model info (requires superuser)
+    try:
+        cpuinfo = await conn.fetchval("SELECT pg_read_file('/proc/cpuinfo', 0, 4096)")
+        if cpuinfo:
+            model_lines = [
+                line.split(":", 1)[1].strip()
+                for line in str(cpuinfo).split("\n")
+                if line.startswith("model name")
+            ]
+            if model_lines:
+                result["cpu_model"] = model_lines[0]
+    except Exception:
+        pass  # non-superuser — this is expected
+
+    return result
+
+
+async def _get_memory_info(conn: Any) -> dict[str, Any]:
+    """Retrieve memory information from the EDBAS host via SQL.
+
+    Attempts to read ``/proc/meminfo`` via ``pg_read_file``. Falls back
+    to reporting ``shared_buffers`` and ``effective_cache_size`` from
+    ``pg_settings`` as memory indicators.
+
+    Args:
+        conn: An already-acquired asyncpg connection.
+
+    Returns:
+        dict with total_mb, used_mb, free_mb (or None if inaccessible),
+        and a note about the data source.
+    """
+    result: dict[str, Any] = {
+        "total_mb": None,
+        "used_mb": None,
+        "free_mb": None,
+        "note": None,
+    }
+
+    # Attempt to read /proc/meminfo directly (requires superuser)
+    try:
+        meminfo = await conn.fetchval("SELECT pg_read_file('/proc/meminfo', 0, 4096)")
+        if meminfo:
+            mem_lines = str(meminfo).strip().split("\n")
+            mem_data: dict[str, int] = {}
+            for line in mem_lines:
+                parts = line.split(":")
+                if len(parts) == 2:
+                    key = parts[0].strip()
+                    val_str = parts[1].strip().lower().replace(" kb", "").replace(" ", "")
+                    try:
+                        mem_data[key] = int(float(val_str) / 1024)  # convert kB to MB
+                    except (ValueError, TypeError):
+                        pass
+
+            result["total_mb"] = mem_data.get("MemTotal")
+            result["free_mb"] = mem_data.get("MemFree")
+            if mem_data.get("MemTotal") and mem_data.get("MemFree") is not None:
+                result["used_mb"] = mem_data["MemTotal"] - mem_data["MemFree"]
+            result["note"] = "from /proc/meminfo"
+            return result
+    except Exception:
+        pass  # non-superuser — fall back to pg_settings indicators
+
+    # Fallback: report pg_settings memory parameters as indicators
+    try:
+        rows = await conn.fetch(
+            "SELECT name, setting, unit FROM pg_settings "
+            "WHERE name IN ('shared_buffers', 'effective_cache_size')"
+        )
+        indicators = {}
+        for row in rows:
+            name = str(row["name"])
+            setting = str(row["setting"]) if row["setting"] is not None else "0"
+            unit = str(row["unit"]) if row["unit"] is not None else None
+            indicators[name] = _format_pg_value(setting, unit)
+
+        result["note"] = (
+            "/proc/meminfo not accessible (requires superuser); "
+            "showing pg_settings memory parameters as indicators"
+        )
+        result["pg_memory_indicators"] = indicators
+    except Exception as exc:
+        result["note"] = f"Memory info unavailable: {exc}"
+
+    return result
+
+
+async def _get_disk_info(conn: Any, filesystem_path: str = "/data") -> dict[str, Any]:
+    """Retrieve disk utilization for a filesystem path via SQL.
+
+    Attempts to read ``/proc/mounts`` for mount info and ``/proc/self/mountinfo``
+    for filesystem details via ``pg_read_file``. Falls back to reporting
+    the configured path with a note if inaccessible.
+
+    Args:
+        conn: An already-acquired asyncpg connection.
+        filesystem_path: The filesystem path to check (default ``/data``).
+
+    Returns:
+        dict with filesystem, total_gb, used_gb, available_gb, used_pct,
+        or None values and a note if data is unavailable.
+    """
+    result: dict[str, Any] = {
+        "filesystem": filesystem_path,
+        "total_gb": None,
+        "used_gb": None,
+        "available_gb": None,
+        "used_pct": None,
+        "note": None,
+    }
+
+    # Attempt to read /proc/mounts to find the device for the given path
+    try:
+        mounts = await conn.fetchval("SELECT pg_read_file('/proc/mounts', 0, 16384)")
+        if mounts:
+            target_device = None
+            for line in str(mounts).strip().split("\n"):
+                parts = line.split()
+                if len(parts) >= 2 and parts[1] == filesystem_path:
+                    target_device = parts[0]
+                    break
+
+            if target_device:
+                result["device"] = target_device
+
+            result["note"] = "from /proc/mounts"
+    except Exception:
+        pass  # non-superuser
+
+    # Attempt stat info on the path itself
+    try:
+        stat_result = await conn.fetchrow(
+            "SELECT pg_stat_file($1) AS finfo",
+            filesystem_path,
+        )
+        if stat_result and stat_result["finfo"] is not None:
+            finfo = stat_result["finfo"]
+            result["size_bytes"] = finfo.get("size") if isinstance(finfo, dict) else None
+    except Exception:
+        pass  # may not be a file
+
+    # Attempt df-like info from /proc/self/mountinfo
+    try:
+        mountinfo = await conn.fetchval(
+            "SELECT pg_read_file('/proc/self/mountinfo', 0, 16384)"
+        )
+        if mountinfo and not result.get("device"):
+            for line in str(mountinfo).strip().split("\n"):
+                if filesystem_path in line:
+                    parts = line.split()
+                    if len(parts) >= 4:
+                        result["device"] = parts[2]
+                    break
+    except Exception:
+        pass
+
+    if result["total_gb"] is None and result.get("note") is None:
+        result["note"] = (
+            f"Disk utilization for '{filesystem_path}' requires superuser "
+            f"access to read /proc filesystem via pg_read_file"
+        )
+
+    return result
+
+
+async def check_server(
+    conn: Any, filesystem_path: str = "/data"
+) -> dict[str, Any]:
+    """Retrieve CPU, memory, and disk utilization for a filesystem path.
+
+    Queries the EDBAS host via SQL functions (``pg_read_file``, ``pg_settings``)
+    to gather OS-level resource metrics. All sub-functions handle permission
+    errors gracefully, returning ``None`` values with explanatory notes.
+
+    Designed to be importable and callable from other tools (e.g.,
+    ``check_db_parameters``, ``analyze_sett_sec``) for cross-correlation.
+
+    Args:
+        conn: An already-acquired asyncpg connection.
+        filesystem_path: The filesystem path to check (default ``/data``).
+
+    Returns:
+        dict with keys: ``cpu``, ``memory``, ``disk``, ``filesystem_checked``.
+    """
+    cpu = await _get_cpu_info(conn)
+    memory = await _get_memory_info(conn)
+    disk = await _get_disk_info(conn, filesystem_path)
+
+    return {
+        "cpu": cpu,
+        "memory": memory,
+        "disk": disk,
+        "filesystem_checked": filesystem_path,
+    }

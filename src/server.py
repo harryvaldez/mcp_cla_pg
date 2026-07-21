@@ -13,6 +13,8 @@ from fastmcp import FastMCP
 from fastmcp.server.auth.providers.jwt import JWTVerifier
 from fastmcp.server.lifespan import lifespan
 from fastmcp.utilities.logging import get_logger
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
 
 from src.config_loader import AppConfig, load_config
 from src.db.connection_manager import ConnectionManager
@@ -25,6 +27,28 @@ from src.security.session_manager import SessionManager
 from src.tools.pg_tools import register_pg_tools
 
 logger = get_logger(__name__)
+
+
+class StripStaleSessionMiddleware(BaseHTTPMiddleware):
+    """Strip stale ``Mcp-Session-Id`` headers from MCP requests.
+
+    After a container rebuild, in-memory sessions are lost.  Clients that
+    reuse old session IDs get HTTP 421 (Misdirected Request).  This
+    middleware strips the header so FastMCP creates a fresh session,
+    making ``stateless_http=True`` behave truly stateless.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        if request.url.path.startswith("/mcp"):
+            # Strip stale session header from the ASGI scope to force
+            # FastMCP to create a fresh session (avoids 421 after rebuilds).
+            headers = request.scope.get("headers", [])
+            request.scope["headers"] = [
+                (k, v) for k, v in headers
+                if k.lower() != b"mcp-session-id"
+            ]
+        response = await call_next(request)
+        return response
 
 
 def secret_resolver(secret_ref: str) -> dict[str, str]:
@@ -160,6 +184,9 @@ def build_app() -> Any:
 
     # Build ASGI app — lifespan is managed by FastMCP
     app = mcp.http_app(path="/mcp", stateless_http=stateless)
+
+    # Strip stale session headers to prevent 421 after container rebuilds
+    app.add_middleware(StripStaleSessionMiddleware)
 
     # Store state reference for debugging
     app.state.runtime = state

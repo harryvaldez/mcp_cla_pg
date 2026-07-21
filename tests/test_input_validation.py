@@ -15,7 +15,7 @@ from src.tools.input_validation import (
 
 class TestInputValidation:
     def test_valid_database_name(self):
-        assert validate_database_name("edb") == "edb"
+        assert validate_database_name("lenexa") == "lenexa"
         assert validate_database_name("  mydb  ") == "mydb"
 
     def test_empty_database_name(self):

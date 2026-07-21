@@ -9,7 +9,7 @@ class EdbInstanceConfig(BaseModel):
     id: str = Field(..., pattern="^(primary|secondary)$")
     host: str
     port: int = 5444
-    database: str = "edb"
+    database: str = "lenexa"
     auth_secret_ref: str
     sslmode: str = Field(
         default="require",

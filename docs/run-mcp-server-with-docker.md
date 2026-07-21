@@ -6,11 +6,42 @@
 - Docker Compose plugin
 - `.env` file configured with EDBAS credentials
 - Network access to both EDBAS 9.6 instances
+- **Redis 7+** (optional — required only for distributed rate limiting)
+
+## Architecture Overview
+
+The MCP server container connects to an external Redis container (`fastmcp-redis`) over the `mcp-net` Docker bridge network. The compose file does **not** define a Redis service — it assumes an existing Redis instance on the same network.
+
+```
+┌──────────────────┐     mcp-net bridge network     ┌──────────────────┐
+│  fastmcp-edb96   │ ─────────────────────────────── │  fastmcp-redis   │
+│  (MCP server)    │    redis://fastmcp-redis:6379   │  (Redis 7)       │
+│  port 8086:8080  │                                  │  port 6379       │
+└──────────────────┘                                  └──────────────────┘
+```
+
+## Network Setup
+
+Create the shared Docker network and start Redis **before** the MCP server:
+
+```powershell
+# Create the shared network (idempotent)
+docker network create mcp-net 2>$null
+
+# Start Redis (if not already running)
+docker run -d `
+  --name fastmcp-redis `
+  --network mcp-net `
+  --restart unless-stopped `
+  redis:7-alpine redis-server --appendonly yes
+```
+
+> **Existing Redis**: If you already have a Redis container (`fastmcp-redis`) on `mcp-net`, skip this step. Verify with `docker ps --filter "name=fastmcp-redis"`.
 
 ## Building the Image
 
 ```powershell
-docker build -t fastmcp-edb96 -f docker/Dockerfile .
+docker build -t fastmcp-edb96:local -f docker/Dockerfile .
 ```
 
 ## Configuration
@@ -18,11 +49,23 @@ docker build -t fastmcp-edb96 -f docker/Dockerfile .
 ### `.env` File
 
 ```env
+# EDBAS credentials
 SECRET_PG_PRIMARY_USERNAME=mcp_readonly
 SECRET_PG_PRIMARY_PASSWORD=your_password_here
 SECRET_PG_SECONDARY_USERNAME=mcp_readonly
 SECRET_PG_SECONDARY_PASSWORD=your_other_password_here
+
+# Rate limiting — Redis backend (distributed)
+FASTMCP_RATE_LIMIT_BACKEND=redis
+FASTMCP_REDIS_URL=redis://fastmcp-redis:6379
+FASTMCP_REDIS_NAMESPACE=mcp:ratelimit
+
+# Runtime
+FASTMCP_STATELESS_HTTP=true
+FASTMCP_MASK_ERROR_DETAILS=true
 ```
+
+> **No Redis?** Set `FASTMCP_RATE_LIMIT_BACKEND=local` and leave `FASTMCP_REDIS_URL` empty to use the in-process token bucket.
 
 ### `config/instances.yaml`
 
@@ -54,13 +97,26 @@ docker compose -f docker/docker-compose.yml up -d
 docker compose -f docker/docker-compose.runtime.yml up -d
 ```
 
+### Without Redis (local rate limiting)
+
+```powershell
+FASTMCP_RATE_LIMIT_BACKEND=local docker compose -f docker/docker-compose.yml up -d
+```
+
 ## Verifying
 
 ```powershell
+# Health check
 curl http://localhost:8086/health
+
+# Readiness probe
+curl http://localhost:8086/readiness
+
+# Prometheus metrics
+curl http://localhost:8086/metrics
 ```
 
-Expected response:
+Expected health response:
 
 ```json
 {
@@ -79,7 +135,28 @@ Expected response:
 docker compose -f docker/docker-compose.yml down
 ```
 
+> This does **not** stop the external `fastmcp-redis` container. Stop it separately if needed:
+> ```powershell
+> docker stop fastmcp-redis && docker rm fastmcp-redis
+> ```
+
 ## Troubleshooting
+
+### Redis Connection Refused
+
+If the MCP server cannot reach Redis:
+
+1. Verify Redis is running: `docker ps --filter "name=fastmcp-redis"`
+2. Verify they share the same network: `docker inspect fastmcp-redis --format '{{json .NetworkSettings.Networks}}'`
+3. Check `FASTMCP_REDIS_URL` in `.env` — the hostname must match the Redis container name (`fastmcp-redis`)
+4. Test connectivity from inside the MCP container:
+   ```powershell
+   docker exec fastmcp-edb96 python -c "import redis; r=redis.from_url('redis://fastmcp-redis:6379'); r.ping(); print('OK')"
+   ```
+5. As a workaround, switch to local rate limiting:
+   ```powershell
+   FASTMCP_RATE_LIMIT_BACKEND=local docker compose -f docker/docker-compose.yml up -d
+   ```
 
 ### SSL Errors
 
@@ -88,7 +165,7 @@ If SSL certificate validation fails:
 2. Use `require` for self-signed certificates
 3. Use `verify-full` only with trusted CA-signed certificates
 
-### Connection Refused
+### Connection Refused (EDBAS)
 
 1. Verify EDBAS instances are running and accessible
 2. Check firewall rules allow traffic on port 5444

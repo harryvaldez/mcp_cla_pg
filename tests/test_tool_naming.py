@@ -43,3 +43,21 @@ class TestToolNaming:
         assert primaries[0].instance_number == 1
         assert len(secondaries) == 1
         assert secondaries[0].instance_number == 2
+
+    def test_check_server_tool_name(self):
+        """check_server tool follows dual-instance naming convention."""
+        spec1 = ToolSpec(instance="primary", instance_number=1, toolname="check_server")
+        spec2 = ToolSpec(instance="secondary", instance_number=2, toolname="check_server")
+        assert spec1.full_name == "db_1_pg96_check_server"
+        assert spec2.full_name == "db_2_pg96_check_server"
+        assert self.TOOL_NAME_RE.match(spec1.full_name)
+        assert self.TOOL_NAME_RE.match(spec2.full_name)
+
+    def test_missing_fk_tool_name(self):
+        """missing_fk tool follows dual-instance naming convention."""
+        spec1 = ToolSpec(instance="primary", instance_number=1, toolname="missing_fk")
+        spec2 = ToolSpec(instance="secondary", instance_number=2, toolname="missing_fk")
+        assert spec1.full_name == "db_1_pg96_missing_fk"
+        assert spec2.full_name == "db_2_pg96_missing_fk"
+        assert self.TOOL_NAME_RE.match(spec1.full_name)
+        assert self.TOOL_NAME_RE.match(spec2.full_name)

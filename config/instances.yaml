@@ -19,7 +19,7 @@ instances:
     edb_oracle_compat_mode: false
 
   - id: secondary
-    host: 10.203.2.5
+    host: 10.103.2.5
     port: 5444
     database: lenexa
     auth_secret_ref: secret/pg/secondary

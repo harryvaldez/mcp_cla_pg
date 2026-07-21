@@ -91,8 +91,8 @@ Execute a user-supplied SELECT query against an EDBAS 9.6 instance and return th
 | Name | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `sql_statement` | string | **Yes** | — | SELECT SQL statement to execute |
-| `database_name` | string | No | `"edb"` | Target database on the instance |
-| `max_rows` | int | No | `5000` | Maximum rows to return (1–5000, capped by server policy) |
+| `database_name` | string | No | `"lenexa"` | Target database on the instance |
+| `max_rows` | int | No | `100` | Maximum rows to return (1–1000, clamped if exceeded) |
 | `actor` | string | No | `"system"` | Caller identity for audit logging |
 
 ### Output Schema
@@ -101,9 +101,9 @@ Execute a user-supplied SELECT query against an EDBAS 9.6 instance and return th
 |---|---|---|
 | `rows` | list[dict] | Array of result rows as column→value mappings |
 | `row_count` | int | Number of rows returned |
-| `truncated` | bool | `true` if result exceeded `max_rows` |
-| `instance` | string | Instance ID that served the query |
-| `execution_ms` | int | Query execution latency in milliseconds |
+| `truncated` | bool | `true` if result reached or exceeded `max_rows` |
+| `query` | string | The SELECT statement that was executed |
+| `database` | string | Target database that served the query |
 
 ### FastMCP 3 Annotations
 
@@ -128,8 +128,8 @@ Execute a user-supplied SELECT query against an EDBAS 9.6 instance and return th
   ],
   "row_count": 2,
   "truncated": false,
-  "instance": "primary",
-  "execution_ms": 15
+  "query": "SELECT id, name FROM users LIMIT 10",
+  "database": "lenexa"
 }
 ```
 
@@ -140,7 +140,7 @@ Execute a user-supplied SELECT query against an EDBAS 9.6 instance and return th
 | `INVALID_INPUT: sql_statement is required` | Empty or missing `sql_statement` |
 | `INVALID_INPUT: only SELECT queries are allowed` | Non-SELECT verb detected |
 | `INVALID_INPUT: sql_statement contains invalid characters` | `;` or `--` found |
-| `INVALID_INPUT: max_rows must be between 1 and 5000` | `max_rows` out of range |
+| `INVALID_INPUT: max_rows must be between 1 and 1000` | `max_rows` out of range |
 | `RATE_LIMIT_EXCEEDED` | Per-actor or global rate limit exceeded |
 | `TOOL_ERROR: ...` | Database or query execution failure |
 
@@ -274,6 +274,12 @@ Generates the raw physical data model of a schema (tables, columns, types).
 | `database_name` | string | Yes | - | Target database context |
 | `schema_name` | string | Yes | - | Target schema space |
 
+### Output Schema
+
+Returns the raw physical data model with `Tables` (list of table names) and `Columns` (array of {table_name, column_name, data_type, not_null, is_pk} for every column in the schema). A `Summary` field provides counts: table count, column count, primary key columns, nullable columns, and the most common data types.
+
+This is a **discovery** tool — it retrieves schema structure, not diagnostics. There are no "issues" or "fixes"; use `analyze_data_model` for that.
+
 ### Tags
 
 `read-only`, `performance`, `instance-1` (or `instance-2`)
@@ -292,6 +298,44 @@ Scans relationships to find missing foreign keys and missing required constraint
 |---|---|---|---|---|
 | `database_name` | string | Yes | - | Target database context |
 | `schema_name` | string | Yes | - | Target schema space |
+
+### Tags
+
+`read-only`, `performance`, `instance-1` (or `instance-2`)
+
+---
+
+## `db_<n>_pg96_missing_fk`
+
+Detect columns ending in `_id` that lack a declared foreign key constraint. Infers the referenced table name from column naming convention (e.g., `user_id` -> `users`) and provides suggested DDL.
+
+**Registered as:** `db_1_pg96_missing_fk`, `db_2_pg96_missing_fk`
+
+### Parameters
+
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `database_name` | string | **Yes** | — | Target database context |
+| `schema_name` | string | **Yes** | — | Target schema to scan for missing FKs |
+| `actor` | string | No | `"system"` | Caller identity |
+
+### Output Schema
+
+| Field | Type | Description |
+|---|---|---|
+| `Category` | string | `"Performance"` |
+| `Issues Identified` | string | Count of columns lacking FK constraints |
+| `Recommendations/Fixes` | object | `{schema, total_candidates, with_existing_target, missing_fk_candidates, note}` |
+| `missing_fk_candidates` | array | `[{table_name, column_name, data_type, inferred_referenced_table, referenced_table_exists, suggestion}]` |
+
+### FastMCP 3 Annotations
+
+| Annotation | Value |
+|---|---|
+| `readOnlyHint` | `true` |
+| `idempotentHint` | `false` |
+| `openWorldHint` | `false` |
+| `timeout` | `30.0` seconds |
 
 ### Tags
 
@@ -540,7 +584,10 @@ The `hypopg_find_optimal_indexes` tool and `get_slow_statements` use the followi
 | `list_tables` | `true` | Read-only table listing | 30s |
 | `list_indexes` | `true` | Read-only index listing | 30s |
 | `list_views` | `true` | Read-only view listing | 30s |
+| `missing_fk` | `true` | Read-only missing FK detection | 30s |
 | `list_objects_by_type` | `true` | Read-only generic object listing | 30s |
+| `check_server` | `true` | Read-only OS resource retrieval | 30s |
+| `check_db_parameters` | `true` | Read-only parameter analysis | 45s |
 
 ---
 
@@ -556,7 +603,7 @@ Orchestrates comprehensive single-table maintenance analysis across 4 domains: b
 |------|------|----------|---------|-------------|
 | `schema_name` | string | **Yes** | — | Schema containing the table |
 | `table_name` | string | **Yes** | — | Table to analyze |
-| `database_name` | string | No | `"edb"` | Target database |
+| `database_name` | string | No | `"lenexa"` | Target database |
 | `actor` | string | No | `"system"` | Caller identity |
 
 **Output:** `Category: "Maintenance"` with `Issues` array of independent entries per analysis domain (Bloat, Wraparound, Statistics, Index Health), each with own `Impacted Metrics`, `Issue Priority`, `Recommendations/Fixes`.
@@ -615,7 +662,7 @@ Orchestrates a comprehensive database settings and security analysis across 3 do
 
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
-| `database_name` | string | No | `"edb"` | Target database |
+| `database_name` | string | No | `"lenexa"` | Target database |
 | `actor` | string | No | `"system"` | Caller identity |
 
 **Output:** `Category: "Maintenance"`, `Overall Assessment`, `Issues` array with 3 entries: "DB Parameters Misconfiguration", "Database Performance Metrics", "Security Vulnerabilities". Each entry contains `Issue`, `Impacted Metrics`, `Issue Priority`, `Recommendations/Fixes`.
@@ -626,7 +673,7 @@ Orchestrates a comprehensive database settings and security analysis across 3 do
 
 Evaluate all `pg_settings` against EDBAS 9.6 best-practice rules across 7 categories (Memory, WAL/Checkpoint, Planner/Optimizer, Autovacuum, Logging, Connections, Security/Auth).
 
-**Parameters:** `database_name` (optional, default `"edb"`), `actor`
+**Parameters:** `database_name` (optional, default `"lenexa"`), `actor`
 
 **Output:** `parameter_analysis: {total, compliant, warnings_count, critical_count}`, `findings: [{parameter, current_value, recommended_value, category, severity, rationale}]`
 
@@ -636,7 +683,7 @@ Evaluate all `pg_settings` against EDBAS 9.6 best-practice rules across 7 catego
 
 Compute key database performance metrics: cache hit ratio, transaction ratios, tuple metrics, connection utilization, TXID age, and database size.
 
-**Parameters:** `database_name` (optional, default `"edb"`), `actor`
+**Parameters:** `database_name` (optional, default `"lenexa"`), `actor`
 
 **Output:** 8 top-level metric keys: `cache_hit_ratio_pct`, `transaction_metrics`, `tuple_metrics`, `query_latency`, `connection_utilization`, `txid_metrics`, `database_size`, `dead_tuple_ratio_pct`
 
@@ -646,11 +693,71 @@ Compute key database performance metrics: cache hit ratio, transaction ratios, t
 
 Perform security vulnerability assessment: SSL configuration, WAL archiver health, superuser sprawl, password encryption, audit logging gaps, and public schema privileges.
 
-**Parameters:** `database_name` (optional, default `"edb"`), `actor`
+**Parameters:** `database_name` (optional, default `"lenexa"`), `actor`
 
 **Output:** `{total_checks, passed, warnings, critical_findings, findings: [{check, status, severity, detail, recommendation}]}`
 
 **Tags:** `read-only`, `maintenance`, `security` | **Timeout:** 45s
+
+### `db_<n>_pg96_check_db_parameters` — Updated Output
+
+The `check_db_parameters` output now includes a `current_value_display` field in each finding entry, providing human-readable converted values alongside the raw `current_value`.
+
+**Example finding with display:**
+```json
+{
+  "parameter": "shared_buffers",
+  "current_value": "16384",
+  "current_value_display": "128.00 MB",
+  "recommended_value": ">= 128MB (25% of RAM minimum)",
+  "category": "Memory",
+  "severity": "HIGH",
+  "rationale": "shared_buffers below 128MB severely limits cache efficiency"
+}
+```
+
+The `analyze_sett_sec` orchestrator additionally includes a `Server Context` section with CPU, memory, and disk data from the host.
+
+### `db_<n>_pg96_check_server`
+
+Retrieve CPU, memory, and disk utilization for a filesystem path from the EDBAS host via SQL functions. All sub-functions handle permission errors gracefully.
+
+**Registered as:** `db_1_pg96_check_server`, `db_2_pg96_check_server`
+
+**Parameters:**
+
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `filesystem_path` | string | No | `"/data"` | Filesystem path to check for disk utilization |
+| `database_name` | string | No | `"lenexa"` | Target database for connection context |
+| `actor` | string | No | `"system"` | Caller identity |
+
+**Output Schema:**
+
+| Field | Type | Description |
+|---|---|---|
+| `cpu` | object | `{cpu_count, cpu_model (optional), note}` |
+| `memory` | object | `{total_mb, used_mb, free_mb, note, pg_memory_indicators (fallback)}` |
+| `disk` | object | `{filesystem, total_gb, used_gb, available_gb, used_pct, device, note}` |
+| `filesystem_checked` | string | The filesystem path queried |
+
+**Data Sources:**
+- **CPU**: `max_worker_processes` from `pg_settings`; optional `/proc/cpuinfo` via `pg_read_file()`
+- **Memory**: `/proc/meminfo` via `pg_read_file()`; falls back to `shared_buffers` + `effective_cache_size` indicators
+- **Disk**: `/proc/mounts` and `/proc/self/mountinfo` via `pg_read_file()`; `pg_stat_file()` for path stats
+
+**Error Handling:** When `pg_read_file()` is restricted (non-superuser), returns `null` values with a descriptive `note` field instead of raising.
+
+**Tags:** `read-only`, `diagnostics` | **Timeout:** 30s
+
+**FastMCP 3 Annotations:**
+
+| Annotation | Value |
+|---|---|
+| `readOnlyHint` | `true` |
+| `idempotentHint` | `false` |
+| `openWorldHint` | `false` |
+| `timeout` | `30.0` seconds |
 
 ---
 
@@ -658,18 +765,20 @@ Perform security vulnerability assessment: SSL configuration, WAL archiver healt
 
 ### `db_<n>_pg96_list_objects`
 
-List database objects of a specific type within a schema.
+List tables, indexes, and views in a schema. Each category can be toggled via boolean flags.
 
 **Registered as:** `db_1_pg96_list_objects`, `db_2_pg96_list_objects`
 
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
-| `schema_name` | string | **Yes** | — | Schema to query |
-| `object_type` | string | **Yes** | — | Type: `table`, `index`, `view`, `sequence`, `materialized_view`, `composite_type`, `foreign_table` |
-| `database_name` | string | No | `"edb"` | Target database |
+| `schema_name` | string | No | `"public"` | Target schema to enumerate |
+| `include_tables` | bool | No | `true` | Include table listing |
+| `include_indexes` | bool | No | `true` | Include index listing |
+| `include_views` | bool | No | `true` | Include view listing |
+| `database_name` | string | No | `"lenexa"` | Target database |
 | `actor` | string | No | `"system"` | Caller identity |
 
-**Output:** `Category: "Discovery"`, `Schema`, `Object Type`, `Object Count`, `Objects` array
+**Output:** `Category: "Discovery"`, `Schema`, `Database`, `Objects` containing `tables`, `indexes`, `views` arrays
 
 **Tags:** `read-only`, `discovery` | **Timeout:** 30s
 

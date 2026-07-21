@@ -19,7 +19,7 @@ def _instance() -> EdbInstanceConfig:
         id="primary",
         host="localhost",
         port=5444,
-        database="edb",
+        database="lenexa",
         auth_secret_ref="secret/pg/primary",
         sslmode="require",
         pool_min=1,
