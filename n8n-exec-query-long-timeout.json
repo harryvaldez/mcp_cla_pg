@@ -46,7 +46,7 @@
     },
     {
       "id": "http-call-mcp",
-      "name": "HTTP POST to MCP (300s timeout)",
+      "name": "HTTP POST to MCP (600s timeout)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [700, 400],
@@ -71,7 +71,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({\n  jsonrpc: \"2.0\",\n  method: \"tools/call\",\n  params: {\n    name: \"db_2_pg96_exec_query\",\n    arguments: {\n      sql_statement: $json.sql_statement,\n      max_rows: $json.max_rows,\n      database_name: $json.database_name\n    }\n  },\n  id: 1\n}) }}",
         "options": {
-          "timeout": 300000,
+          "timeout": 600000,
           "response": {
             "response": {
               "responseFormat": "string"
@@ -148,7 +148,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({\n  jsonrpc: \"2.0\",\n  method: \"tools/call\",\n  params: {\n    name: \"db_2_pg96_exec_query\",\n    arguments: {\n      sql_statement: $('Set Query Params').item.json.sql_statement,\n      max_rows: $('Set Query Params').item.json.max_rows,\n      database_name: $('Set Query Params').item.json.database_name,\n      cursor: $json.nextCursor\n    }\n  },\n  id: 1\n}) }}",
         "options": {
-          "timeout": 300000,
+          "timeout": 600000,
           "response": {
             "response": {
               "responseFormat": "string"
@@ -212,14 +212,14 @@
       "main": [
         [
           {
-            "node": "HTTP POST to MCP (300s timeout)",
+            "node": "HTTP POST to MCP (600s timeout)",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "HTTP POST to MCP (300s timeout)": {
+    "HTTP POST to MCP (600s timeout)": {
       "main": [
         [
           {

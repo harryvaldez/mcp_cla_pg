@@ -134,7 +134,7 @@ Execute a user-supplied SELECT query against an EDBAS 9.6 instance and return th
 | `readOnlyHint` | `true` |
 | `destructiveHint` | `false` |
 | `openWorldHint` | `false` |
-| `timeout` | `300.0` seconds |
+| `timeout` | `600.0` seconds |
 
 ### Tags
 
@@ -647,7 +647,7 @@ The `hypopg_find_optimal_indexes` tool and `get_slow_statements` use the followi
 | `hypopg_create_virtual_indexes` | `false` | `false` | Modifies session memory state via hypopg_create_index | 30s |
 | `hypopg_explain_with_virtual` | `true` | `false` | Read-only EXPLAIN (uses existing session state) | 30s |
 | `hypopg_find_optimal_indexes` | `false` | `false` | Creates/drops virtual indexes during testing | 60s |
-| `exec_query` | `true` | `false` | Read-only SELECT execution with cursor pagination | 300s |
+| `exec_query` | `true` | `false` | Read-only SELECT execution with cursor pagination | 600s |
 | `analyze_table` | `true` | `false` | Read-only maintenance analysis | 30s |
 | `check_table_bloat` | `true` | `false` | Read-only bloat analysis | 30s |
 | `check_table_wraparound` | `true` | `false` | Read-only wraparound check | 30s |

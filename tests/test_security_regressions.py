@@ -55,8 +55,8 @@ class TestToolTimeoutRationalization:
         mcp, timeouts = _capture_tool_timeouts()
         register_pg_tools(mcp, _mock_state())
 
-        # No tool may hold a connection longer than 300 seconds.
-        assert all(t is not None and t <= 300.0 for t in timeouts.values())
+        # No tool may hold a connection longer than 600 seconds.
+        assert all(t is not None and t <= 600.0 for t in timeouts.values())
 
         # Identity check is fast.
         assert timeouts["db_1_pg96_ping"] == 10.0
@@ -69,8 +69,8 @@ class TestToolTimeoutRationalization:
         assert timeouts["db_1_pg96_analyze_data_model"] == 60.0
         assert timeouts["db_1_pg96_hypopg_find_optimal_indexes"] == 60.0
 
-        # User-supplied SELECT queries may run long; exec_query retains the 300s ceiling.
-        assert timeouts["db_1_pg96_exec_query"] == 300.0
+        # User-supplied SELECT queries may run long; exec_query retains the 600s ceiling.
+        assert timeouts["db_1_pg96_exec_query"] == 600.0
 
         # Simple read-only tools are capped at 30s.
         assert timeouts["db_1_pg96_blocking_sessions"] == 30.0
