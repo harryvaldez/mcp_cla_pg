@@ -1,0 +1,331 @@
+{
+  "name": "DB2 Exec Query - Long Timeout (All Rows)",
+  "nodes": [
+    {
+      "id": "manual-trigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [220, 400],
+      "parameters": {}
+    },
+    {
+      "id": "set-params",
+      "name": "Set Query Params",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [460, 400],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "name": "sql_statement",
+              "type": "string",
+              "value": "={{ $json.sql_statement || \"SELECT TO_CHAR(TO_DATE(j.submitted_on,'DD-MM-YYYY HH24:MI:SS')-INTERVAL'4'HOUR,'YYYY-MM-DD') AS job_date,ucm.client_id,cm.client_name,cm.erp_account_id AS Salesforce_id,j.user_id,j.widget_id,CASE WHEN j.widget_id=1001 THEN 'Map Theme' WHEN j.widget_id<0 THEN 'Custom Report' ELSE COALESCE(swm.widget_name,(SELECT MAX(r.title) FROM smsadmin.report_template r WHERE r.report_id=j.widget_id)) END AS widget_name,TO_CHAR(TO_DATE(j.end_time,'DD-MM-YYYY HH24:MI:SS')-INTERVAL'4'HOUR,'YYYY-MM-DD') AS completed,j.status,ss.status_desc,COUNT(*) AS job_count,cm.web_flag AS ws_user,ucm.is_test_user AS test_user FROM smsadmin.sms_job_details j LEFT JOIN smsadmin.sms_user_info sui ON j.user_id=sui.user_id JOIN smsadmin.user_client_mapping ucm ON j.user_id=ucm.user_id JOIN smsadmin.client_master cm ON ucm.client_id=cm.client_id LEFT JOIN smsadmin.sms_widget_menu swm ON j.widget_id=swm.widget_id JOIN smsadmin.sms_status ss ON j.status=ss.status WHERE TO_DATE(j.submitted_on,'DD-MM-YYYY HH24:MI:SS')-INTERVAL'4'HOUR>=CURRENT_DATE-INTERVAL'7 days' AND TO_DATE(j.submitted_on,'DD-MM-YYYY HH24:MI:SS')-INTERVAL'4'HOUR<CURRENT_DATE GROUP BY TO_CHAR(TO_DATE(j.submitted_on,'DD-MM-YYYY HH24:MI:SS')-INTERVAL'4'HOUR,'YYYY-MM-DD'),ucm.client_id,cm.client_name,cm.erp_account_id,j.user_id,j.widget_id,swm.widget_name,TO_CHAR(TO_DATE(j.end_time,'DD-MM-YYYY HH24:MI:SS')-INTERVAL'4'HOUR,'YYYY-MM-DD'),j.status,ss.status_desc,cm.web_flag,ucm.is_test_user ORDER BY job_date\" }}"
+            },
+            {
+              "name": "max_rows",
+              "type": "number",
+              "value": "={{ $json.max_rows || 5000 }}"
+            },
+            {
+              "name": "database_name",
+              "type": "string",
+              "value": "={{ $json.database_name || \"lenexa\" }}"
+            },
+            {
+              "name": "max_pages",
+              "type": "number",
+              "value": "={{ $json.max_pages || 1000 }}"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "http-call-mcp",
+      "name": "HTTP POST to MCP (300s timeout)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [700, 400],
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:8086/mcp",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json, text/event-stream"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  jsonrpc: \"2.0\",\n  method: \"tools/call\",\n  params: {\n    name: \"db_2_pg96_exec_query\",\n    arguments: {\n      sql_statement: $json.sql_statement,\n      max_rows: $json.max_rows,\n      database_name: $json.database_name\n    }\n  },\n  id: 1\n}) }}",
+        "options": {
+          "timeout": 300000,
+          "response": {
+            "response": {
+              "responseFormat": "string"
+            }
+          },
+          "redirect": {
+            "redirect": {}
+          }
+        }
+      }
+    },
+    {
+      "id": "parse-mcp-response",
+      "name": "Parse MCP Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [940, 400],
+      "parameters": {
+        "jsCode": "// The HTTP node returns raw text (SSE format). Extract JSON-RPC payload.\nvar rawText = $input.first().json;\nif (typeof rawText === 'object') { rawText = JSON.stringify(rawText); }\nvar jsonStr = rawText;\nvar dataMatch = rawText.match(/^data:\\s*(.+)$/m);\nif (dataMatch) { jsonStr = dataMatch[1]; } else { var m = rawText.match(/\\{[\\s\\S]*\\}/); if (m) jsonStr = m[0]; }\n\nvar httpResponse;\ntry { httpResponse = JSON.parse(jsonStr); } catch(e) { throw new Error('Failed to parse SSE response: ' + rawText.substring(0, 300)); }\n\nif (httpResponse.error) { throw new Error('MCP Error: ' + (httpResponse.error.message || JSON.stringify(httpResponse.error))); }\n\nvar result = httpResponse.result;\nif (!result || !result.content || !result.content[0]) { throw new Error('Bad MCP response: ' + JSON.stringify(httpResponse).substring(0, 300)); }\n\nvar textContent = result.content[0].text;\nvar toolResult;\ntry { toolResult = JSON.parse(textContent); } catch(e) { return { raw_response: textContent, error: 'Could not parse tool result' }; }\n\nvar rows = toolResult.rows || [];\n\nreturn {\n  rows: rows,\n  row_count: toolResult.row_count || 0,\n  page: toolResult.page || 1,\n  nextCursor: toolResult.nextCursor || null,\n  truncated: toolResult.truncated || false,\n  query: toolResult.query || '',\n  database: toolResult.database || '',\n  accumulated_rows: rows,\n  pages_fetched: 1\n};"
+      }
+    },
+    {
+      "id": "check-need-pagination",
+      "name": "Check Need More Pages",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1180, 400],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.nextCursor }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "isNotEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "loop-fetch-next",
+      "name": "Fetch Next Page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1420, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:8086/mcp",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json, text/event-stream"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  jsonrpc: \"2.0\",\n  method: \"tools/call\",\n  params: {\n    name: \"db_2_pg96_exec_query\",\n    arguments: {\n      sql_statement: $('Set Query Params').item.json.sql_statement,\n      max_rows: $('Set Query Params').item.json.max_rows,\n      database_name: $('Set Query Params').item.json.database_name,\n      cursor: $json.nextCursor\n    }\n  },\n  id: 1\n}) }}",
+        "options": {
+          "timeout": 300000,
+          "response": {
+            "response": {
+              "responseFormat": "string"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "parse-next-page",
+      "name": "Parse Next Page Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1660, 300],
+      "parameters": {
+        "jsCode": "// Only the current page is parsed here; accumulation happens in \"Merge Page Into Accumulator\".\nvar rawText = $input.first().json;\nif (typeof rawText === 'object') { rawText = JSON.stringify(rawText); }\nvar jsonStr = rawText;\nvar dataMatch = rawText.match(/^data:\\s*(.+)$/m);\nif (dataMatch) { jsonStr = dataMatch[1]; } else { var m = rawText.match(/\\{[\\s\\S]*\\}/); if (m) jsonStr = m[0]; }\n\nvar httpResponse = JSON.parse(jsonStr);\nif (httpResponse.error) { throw new Error('MCP Error on page: ' + httpResponse.error.message); }\n\nvar result = httpResponse.result;\nvar textContent = result.content[0].text;\nvar toolResult = JSON.parse(textContent);\n\nreturn {\n  rows: toolResult.rows || [],\n  row_count: toolResult.row_count || 0,\n  page: toolResult.page || 1,\n  nextCursor: toolResult.nextCursor || null,\n  truncated: toolResult.truncated || false,\n  database: toolResult.database || '',\n  query: toolResult.query || ''\n};"
+      }
+    },
+    {
+      "id": "merge-page-into-accumulator",
+      "name": "Merge Page Into Accumulator",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1900, 300],
+      "parameters": {
+        "jsCode": "// Carries the running accumulator forward instead of relying on $input.all() at loop end.\nvar prior = $('Check Need More Pages').item.json;\nvar current = $input.first().json;\n\nvar priorRows = prior.accumulated_rows || [];\nvar mergedRows = priorRows.concat(current.rows || []);\nvar pagesFetched = (prior.pages_fetched || 1) + 1;\n\nvar maxPages = $('Set Query Params').item.json.max_pages || 1000;\nif (pagesFetched > maxPages) {\n  throw new Error('Pagination guard exceeded: fetched ' + pagesFetched + ' pages, max_pages=' + maxPages);\n}\n\nreturn {\n  accumulated_rows: mergedRows,\n  row_count: mergedRows.length,\n  pages_fetched: pagesFetched,\n  nextCursor: current.nextCursor || null,\n  truncated: current.truncated || false,\n  database: prior.database || '',\n  query: prior.query || ''\n};"
+      }
+    },
+    {
+      "id": "merge-all-rows",
+      "name": "Finalize Aggregated Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1180, 600],
+      "parameters": {
+        "jsCode": "// The incoming item already holds the fully aggregated result; no $input.all() needed.\nvar item = $input.first().json;\nvar rows = item.accumulated_rows || [];\n\nreturn {\n  rows: rows,\n  row_count: rows.length,\n  pages_fetched: item.pages_fetched || 1,\n  database: item.database || '',\n  query: item.query || ''\n};"
+      }
+    },
+    {
+      "id": "final-output",
+      "name": "Final Output (All Rows)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1420, 600],
+      "parameters": {}
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Set Query Params",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Query Params": {
+      "main": [
+        [
+          {
+            "node": "HTTP POST to MCP (300s timeout)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP POST to MCP (300s timeout)": {
+      "main": [
+        [
+          {
+            "node": "Parse MCP Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse MCP Response": {
+      "main": [
+        [
+          {
+            "node": "Check Need More Pages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Need More Pages": {
+      "main": [
+        [
+          {
+            "node": "Fetch Next Page",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Finalize Aggregated Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Next Page": {
+      "main": [
+        [
+          {
+            "node": "Parse Next Page Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Next Page Response": {
+      "main": [
+        [
+          {
+            "node": "Merge Page Into Accumulator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Page Into Accumulator": {
+      "main": [
+        [
+          {
+            "node": "Check Need More Pages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Finalize Aggregated Output": {
+      "main": [
+        [
+          {
+            "node": "Final Output (All Rows)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "",
+    "saveManualExecutions": true,
+    "timezone": "America/New_York"
+  },
+  "active": false,
+  "tags": [
+    {
+      "name": "MCP"
+    },
+    {
+      "name": "EDBAS"
+    },
+    {
+      "name": "db_2"
+    },
+    {
+      "name": "long-timeout"
+    }
+  ],
+  "versionId": "2"
+}
