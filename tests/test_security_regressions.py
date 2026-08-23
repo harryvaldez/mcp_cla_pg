@@ -69,8 +69,10 @@ class TestToolTimeoutRationalization:
         assert timeouts["db_1_pg96_analyze_data_model"] == 60.0
         assert timeouts["db_1_pg96_hypopg_find_optimal_indexes"] == 60.0
 
+        # User-supplied SELECT queries may run long; exec_query retains the 120s ceiling.
+        assert timeouts["db_1_pg96_exec_query"] == 120.0
+
         # Simple read-only tools are capped at 30s.
-        assert timeouts["db_1_pg96_exec_query"] == 30.0
         assert timeouts["db_1_pg96_blocking_sessions"] == 30.0
         assert timeouts["db_1_pg96_session_counts"] == 30.0
 

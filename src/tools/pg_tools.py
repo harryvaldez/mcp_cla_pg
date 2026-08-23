@@ -2610,7 +2610,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     "openWorldHint": False,
                 },
                 tags={"read-only", f"instance-{instance_number}"},
-                timeout=30.0,
+                timeout=120.0,
             )
             async def _exec_query(
                 sql_statement: str,
