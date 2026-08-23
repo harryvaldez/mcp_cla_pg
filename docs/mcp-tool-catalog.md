@@ -108,8 +108,8 @@ Execute a user-supplied SELECT query against an EDBAS 9.6 instance and return th
 | `rows` | list[dict] | Array of result rows as column→value mappings |
 | `row_count` | int | Total number of rows returned after internal pagination completes |
 | `page` | int | Number of internal pages fetched (1-based count) |
-| `nextCursor` | string or null | Always `null` in final response because data is fully aggregated |
-| `truncated` | bool | Always `false` for successful responses |
+| `nextCursor` | string or null | Opaque cursor to resume when `truncated` is `true`; otherwise `null` |
+| `truncated` | bool | `true` when aggregation hit the 10,000-row cap; `false` otherwise |
 | `query` | string | The SELECT statement that was executed |
 | `database` | string | Target database that served the query |
 
@@ -185,6 +185,7 @@ Execute a user-supplied SELECT query against an EDBAS 9.6 instance and return th
 - **SQL wrapping**: For internal pages after the first (offset > 0), the user's SQL is wrapped as `SELECT * FROM ({sql}) AS _mcp_page OFFSET {offset}`. This paginates arbitrary SELECT queries without parsing.
 - **Cursor encoding**: Internal cursors use FastMCP's `CursorState` (base64-encoded JSON with offset).
 - **Completion behavior**: The tool continues internal retrieval while page size is full and stops when a partial page is reached.
+- **Row cap**: Aggregation is bounded at 10,000 rows total. If the cap is reached, the response sets `truncated: true` and returns a `nextCursor` to resume from the next offset.
 - **ORDER BY**: For deterministic pagination, always include an `ORDER BY` clause. Without it, PostgreSQL may return rows in different orders across pages.
 
 ### Error Codes
@@ -196,6 +197,7 @@ Execute a user-supplied SELECT query against an EDBAS 9.6 instance and return th
 | `INVALID_INPUT: sql_statement contains invalid characters` | `;` or `--` found |
 | `INVALID_INPUT: max_rows must be between 1 and 5000` | `max_rows` out of range |
 | `INVALID_INPUT: cursor is malformed or expired` | Invalid cursor string |
+| `INVALID_INPUT: cursor offset out of bounds` | Cursor offset is negative, non-integer, or exceeds 1,000,000 |
 | `RATE_LIMIT_EXCEEDED` | Per-actor or global rate limit exceeded |
 | `TOOL_ERROR: ...` | Database or query execution failure |
 
@@ -234,7 +236,7 @@ Retrieves long-running SQL statements from `pg_stat_statements`, reporting execu
 | `readOnlyHint` | `true` |
 | `idempotentHint` | `false` |
 | `openWorldHint` | `false` |
-| `timeout` | `60.0` seconds |
+| `timeout` | `120.0` seconds |
 
 ### Tags
 
@@ -638,7 +640,7 @@ The `hypopg_find_optimal_indexes` tool and `get_slow_statements` use the followi
 
 | Tool | readOnlyHint | destructiveHint | Reason | Timeout |
 |------|---|---|---|---|
-| `get_slow_statements` | `true` | `false` | Read-only; uses HypoPG internally but does not expose session state to caller | 60s |
+| `get_slow_statements` | `true` | `false` | Read-only; uses HypoPG internally but does not expose session state to caller | 120s |
 | `blocking_sessions` | `true` | `false` | Read-only session/lock queries | 30s |
 | `analyze_data_model` | `true` | `false` | Read-only schema/statistics queries | 60s |
 | Data model sub-tools | `true` | `false` | Read-only analysis | 30s |
@@ -661,7 +663,7 @@ The `hypopg_find_optimal_indexes` tool and `get_slow_statements` use the followi
 | `check_db_parameters` | `true` | `false` | Read-only parameter analysis | 45s |
 | `compute_db_metrics` | `true` | `false` | Read-only performance metrics | 45s |
 | `analyze_db_security` | `true` | `false` | Read-only security audit | 45s |
-| `analyze_sett_sec` | `true` | `false` | Read-only settings/security orchestrator | 60s |
+| `analyze_sett_sec` | `true` | `false` | Read-only settings/security orchestrator | 120s |
 | `ping` | `true` | `false` | Read-only identity check | 10s |
 
 ---
@@ -749,7 +751,7 @@ Orchestrates a comprehensive database settings and security analysis across 3 do
 | `readOnlyHint` | `true` |
 | `destructiveHint` | `false` |
 | `openWorldHint` | `false` |
-| `timeout` | `60.0` seconds |
+| `timeout` | `120.0` seconds |
 
 ### Tags
 

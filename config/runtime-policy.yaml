@@ -68,3 +68,4 @@ auth:
   # Cross-session inspection tools expose other users' sessions and are excluded for read callers.
   okta_cross_session_tool_suffixes:
     - _pg96_blocking_sessions
+    - _pg96_session_counts

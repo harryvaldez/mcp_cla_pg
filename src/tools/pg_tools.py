@@ -40,6 +40,12 @@ _PING_SQL = (
     "now() AT TIME ZONE 'UTC' AS current_utc_time"
 )
 
+# exec_query pagination guardrails: hard caps on total rows and cursor offset.
+# Prevents unbounded auto-pagination and malicious cursor offsets from
+# exhausting memory or the asyncpg connection pool (see SECURITY.md).
+MAX_TOTAL_ROWS = 10_000
+MAX_CURSOR_OFFSET = 1_000_000
+
 
 def _is_restricted_read_tool(
     tool_name: str,
@@ -350,7 +356,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
             name=full_name,
             annotations={"readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
             tags={"read-only", "maintenance", f"instance-{instance_number}"},
-            timeout=120.0,
+            timeout=30.0,
         )(_impl)
 
         registered.append(full_name)
@@ -430,7 +436,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
             name=full_name,
             annotations={"readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
             tags={"read-only", "discovery", f"instance-{instance_number}"},
-            timeout=120.0,
+            timeout=30.0,
         )(_impl)
 
         registered.append(full_name)
@@ -532,7 +538,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 "openWorldHint": False,
             },
             tags={"read-only", "diagnostics", f"instance-{instance_number}"},
-            timeout=120.0,
+            timeout=10.0,
         )
         async def _ping(
             actor: str = "system",
@@ -873,7 +879,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     "openWorldHint": False,
                 },
                 tags={"read-only", "performance", f"instance-{instance_number}"},
-                timeout=120.0,
+                timeout=30.0,
             )
             async def _blocking_sessions(
                 database_name: str,
@@ -1338,7 +1344,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     "openWorldHint": False,
                 },
                 tags={"read-only", "performance", f"instance-{instance_number}"},
-                timeout=120.0,
+                timeout=60.0,
             )
             async def _analyze_data_model(
                 database_name: str,
@@ -1656,7 +1662,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     "openWorldHint": False,
                 },
                 tags={"read-only", "performance", f"instance-{instance_number}"},
-                timeout=120.0,
+                timeout=30.0,
             )
             async def _extract_schema_model(
                 database_name: str,
@@ -1756,7 +1762,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     "openWorldHint": False,
                 },
                 tags={"read-only", "performance", f"instance-{instance_number}"},
-                timeout=120.0,
+                timeout=30.0,
             )
             async def _analyze_constraints_and_fks(
                 database_name: str,
@@ -1885,7 +1891,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                         "openWorldHint": False,
                     },
                     tags={"read-only", "performance", f"instance-{instance_number}"},
-                    timeout=120.0,
+                    timeout=30.0,
                 )
                 async def _missing_fk(
                     database_name: str,
@@ -2021,7 +2027,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     "openWorldHint": False,
                 },
                 tags={"read-only", "performance", f"instance-{instance_number}"},
-                timeout=120.0,
+                timeout=30.0,
             )
             async def _analyze_normalization(
                 database_name: str,
@@ -2128,7 +2134,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     "openWorldHint": False,
                 },
                 tags={"read-only", "performance", f"instance-{instance_number}"},
-                timeout=120.0,
+                timeout=30.0,
             )
             async def _analyze_index_statistics(
                 database_name: str,
@@ -2237,7 +2243,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     "openWorldHint": False,
                 },
                 tags={"read-only", "performance", f"instance-{instance_number}"},
-                timeout=120.0,
+                timeout=30.0,
             )
             async def _analyze_3nf_and_decomposition(
                 database_name: str,
@@ -2356,7 +2362,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 name=hypopg_create_tool_name,
                 annotations={"readOnlyHint": False},
                 tags={"hypopg", "performance", f"instance-{instance_number}"},
-                timeout=120.0,
+                timeout=30.0,
             )
             async def _hypopg_create_virtual_indexes(
                 database_name: str,
@@ -2443,7 +2449,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     "openWorldHint": False,
                 },
                 tags={"hypopg", "performance", f"instance-{instance_number}"},
-                timeout=120.0,
+                timeout=30.0,
             )
             async def _hypopg_explain_with_virtual(
                 database_name: str,
@@ -2518,7 +2524,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 name=hypopg_optimal_tool_name,
                 annotations={"readOnlyHint": False},
                 tags={"hypopg", "performance", f"instance-{instance_number}"},
-                timeout=120.0,
+                timeout=60.0,
             )
             async def _hypopg_find_optimal_indexes(
                 database_name: str,
@@ -2604,7 +2610,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     "openWorldHint": False,
                 },
                 tags={"read-only", f"instance-{instance_number}"},
-                timeout=120.0,
+                timeout=30.0,
             )
             async def _exec_query(
                 sql_statement: str,
@@ -2648,6 +2654,13 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     except Exception:
                         raise ToolError("INVALID_INPUT: cursor is malformed or expired")
 
+                if (
+                    not isinstance(current_offset, int)
+                    or current_offset < 0
+                    or current_offset > MAX_CURSOR_OFFSET
+                ):
+                    raise ToolError("INVALID_INPUT: cursor offset out of bounds")
+
                 try:
                     actor, _auth_ctx = await _resolve_actor_and_authorize(
                         actor=actor, tool=_tool, required_privilege="read", ctx=ctx
@@ -2660,6 +2673,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     page_count = 0
                     max_auto_pages = 1000
                     seen_offsets: set[int] = set()
+                    truncated = False
 
                     while True:
                         if current_offset in seen_offsets:
@@ -2683,14 +2697,20 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                             break
 
                         current_offset += max_rows_v
+                        if len(all_rows) >= MAX_TOTAL_ROWS:
+                            truncated = True
+                            break
 
                     row_count = len(all_rows)
+                    next_cursor = (
+                        CursorState(offset=current_offset).encode() if truncated else None
+                    )
                     result: dict[str, Any] = {
                         "rows": all_rows,
                         "row_count": row_count,
                         "page": page_count,
-                        "nextCursor": None,
-                        "truncated": False,
+                        "nextCursor": next_cursor,
+                        "truncated": truncated,
                         "query": sql_v,
                         "database": database_name_v,
                     }
@@ -2703,7 +2723,9 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     decision, error_code = "deny", str(exc)
                     app_state.denied_requests += 1
                     raise
-                except ToolError:
+                except ToolError as exc:
+                    decision, error_code = "deny", str(exc)
+                    app_state.denied_requests += 1
                     raise
                 except Exception as exc:
                     decision, error_code = "deny", f"TOOL_ERROR: {exc}"
@@ -2745,7 +2767,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     "openWorldHint": False,
                 },
                 tags={"read-only", "maintenance", f"instance-{instance_number}"},
-                timeout=120.0,
+                timeout=30.0,
             )
             async def _analyze_table(
                 schema_name: str,
@@ -2941,7 +2963,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     "openWorldHint": False,
                 },
                 tags={"read-only", "discovery", f"instance-{instance_number}"},
-                timeout=120.0,
+                timeout=30.0,
             )
             async def _list_objects(
                 schema_name: str = "public",
@@ -3094,7 +3116,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     "openWorldHint": False,
                 },
                 tags={"read-only", "discovery", f"instance-{instance_number}"},
-                timeout=120.0,
+                timeout=30.0,
             )
             async def _list_objects_by_type(
                 object_type: str,
