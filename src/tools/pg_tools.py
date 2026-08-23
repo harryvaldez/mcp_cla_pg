@@ -9,6 +9,7 @@ from fastmcp import Context, FastMCP
 from fastmcp.dependencies import Depends
 from fastmcp.exceptions import ToolError
 from fastmcp.utilities.logging import get_logger
+from fastmcp.utilities.pagination import CursorState
 
 from src.middleware.rate_limiter import RateLimitExceededError
 from src.tools import hypopg_tools, settings_security, table_analysis
@@ -60,6 +61,7 @@ def _is_restricted_read_tool(
             "_pg96_hypopg_explain_with_virtual",
             "_pg96_hypopg_find_optimal_indexes",
             "_pg96_blocking_sessions",
+            "_pg96_session_counts",
         ]
     return any(tool_name.endswith(suffix) for suffix in restricted_suffixes)
 
@@ -348,7 +350,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
             name=full_name,
             annotations={"readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
             tags={"read-only", "maintenance", f"instance-{instance_number}"},
-            timeout=30.0,
+            timeout=120.0,
         )(_impl)
 
         registered.append(full_name)
@@ -428,7 +430,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
             name=full_name,
             annotations={"readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
             tags={"read-only", "discovery", f"instance-{instance_number}"},
-            timeout=30.0,
+            timeout=120.0,
         )(_impl)
 
         registered.append(full_name)
@@ -530,7 +532,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 "openWorldHint": False,
             },
             tags={"read-only", "diagnostics", f"instance-{instance_number}"},
-            timeout=10.0,
+            timeout=120.0,
         )
         async def _ping(
             actor: str = "system",
@@ -573,7 +575,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
 
                 # Execute identity query against the bound instance
                 payload = await app_state.connection_manager.fetch_single_row(
-                    _instance, "lenexa", _PING_SQL
+                    _instance, "edb", _PING_SQL
                 )
                 row_count = 1 if payload else 0
 
@@ -666,7 +668,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     "openWorldHint": False,
                 },
                 tags={"read-only", "performance", f"instance-{instance_number}"},
-                timeout=60.0,
+                timeout=120.0,
             )
             async def _get_slow_statements(
                 database_name: str,
@@ -871,7 +873,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     "openWorldHint": False,
                 },
                 tags={"read-only", "performance", f"instance-{instance_number}"},
-                timeout=30.0,
+                timeout=120.0,
             )
             async def _blocking_sessions(
                 database_name: str,
@@ -1079,6 +1081,249 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
             registered.append(blocking_sessions_tool_name)
 
         # -----------------------------------------------------------------------
+        # Register db_{instance_number}_pg96_session_counts
+        # -----------------------------------------------------------------------
+        session_counts_tool_name = f"db_{instance_number}_pg96_session_counts"
+
+        if is_tool_enabled(state.policy, instance_id, "session_counts"):
+
+            @mcp.tool(
+                name=session_counts_tool_name,
+                annotations={
+                    "readOnlyHint": True,
+                    "destructiveHint": False,
+                    "openWorldHint": False,
+                },
+                tags={"read-only", "performance", f"instance-{instance_number}"},
+                timeout=30.0,
+            )
+            async def _session_counts(
+                database_name: str,
+                actor: str = "system",
+                ctx: Context | None = None,
+                _tool: str = session_counts_tool_name,
+                _instance: str = instance_id,
+                _instance_number: int = instance_number,
+                app_state: Any = Depends(lambda: state),
+            ) -> dict[str, Any]:
+                """Summarizes server connection usage and idle/active session states.
+
+                Query results from ``pg_stat_activity`` reveal whether the database is near
+                its configured connection ceiling and whether idle or idle-in-transaction
+                sessions are accumulating.
+
+                Args:
+                    database_name: Target database to inspect for session utilization.
+                """
+                request_id = str(uuid.uuid4())
+                started = time.time()
+                decision, error_code, row_count = "allow", None, 0
+                _auth_ctx = None
+
+                database_name = validate_database_name(database_name)
+
+                try:
+                    actor, _auth_ctx = await _resolve_actor_and_authorize(
+                        actor=actor, tool=_tool, required_privilege="read", ctx=ctx
+                    )
+
+                    sql = """
+                        WITH session_state AS (
+                            SELECT
+                                COUNT(*) AS total_sessions,
+                                COUNT(*) FILTER (WHERE state <> 'idle')
+                                    AS active_sessions,
+                                COUNT(*) FILTER (WHERE state = 'idle')
+                                    AS idle_sessions,
+                                COUNT(*) FILTER (
+                                    WHERE state = 'idle in transaction'
+                                ) AS idle_in_transaction_sessions,
+                                COUNT(*) FILTER (
+                                    WHERE state = 'idle in transaction (aborted)'
+                                ) AS idle_in_transaction_aborted_sessions
+                            FROM pg_stat_activity
+                            WHERE datname = $1
+                        ), max_connections AS (
+                            SELECT current_setting('max_connections', true)::int
+                                AS max_connections
+                        )
+                        SELECT ss.*, mc.max_connections,
+                               (
+                                   ss.active_sessions::numeric
+                                   / NULLIF(mc.max_connections, 0)
+                               ) * 100 AS active_pct_of_max,
+                               (mc.max_connections - ss.total_sessions)
+                                   AS connection_headroom
+                        FROM session_state ss
+                        CROSS JOIN max_connections mc
+                    """
+                    app_state.write_guard.enforce(_tool, sql)
+                    rows = await app_state.connection_manager.execute_query(
+                        _instance, database_name, sql, database_name
+                    )
+                    row = rows[0] if rows else {}
+
+                    max_connections = int(row.get("max_connections") or 0)
+                    total_sessions = int(row.get("total_sessions") or 0)
+                    active_sessions = int(row.get("active_sessions") or 0)
+                    idle_sessions = int(row.get("idle_sessions") or 0)
+                    idle_in_transaction_sessions = int(
+                        row.get("idle_in_transaction_sessions") or 0
+                    )
+                    idle_in_transaction_aborted_sessions = int(
+                        row.get("idle_in_transaction_aborted_sessions") or 0
+                    )
+                    utilization_pct = (
+                        (active_sessions / max_connections) * 100 if max_connections else 0.0
+                    )
+                    connection_headroom = max_connections - total_sessions
+
+                    recommendations: list[dict[str, Any]] = []
+                    if max_connections and (
+                        total_sessions >= max_connections - 10 or utilization_pct >= 75
+                    ):
+                        recommendations.append(
+                            {
+                                "type": "capacity_warning",
+                                "severity": (
+                                    "High"
+                                    if utilization_pct >= 85
+                                    else "Medium"
+                                ),
+                                "recommendation": (
+                                    "Connection usage is approaching the "
+                                    f"{max_connections}-connection ceiling. "
+                                    "Current active usage is "
+                                    f"{active_sessions} sessions, with "
+                                    f"{connection_headroom} seats remaining. "
+                                    "Review pool sizing or throttle application "
+                                    "concurrency."
+                                ),
+                            }
+                        )
+
+                    if (
+                        idle_in_transaction_sessions > 0
+                        or idle_in_transaction_aborted_sessions > 0
+                    ):
+                        recommendations.append(
+                            {
+                                "type": "idle_in_transaction",
+                                "severity": (
+                                    "High"
+                                    if idle_in_transaction_sessions > 0
+                                    else "Medium"
+                                ),
+                                "recommendation": (
+                                    "Idle-in-transaction sessions are holding "
+                                    "connections and locks. Inspect the "
+                                    "application transaction lifecycle and close "
+                                    "or time out stale transactions."
+                                ),
+                            }
+                        )
+
+                    if idle_sessions > 0:
+                        recommendations.append(
+                            {
+                                "type": "idle_session",
+                                "severity": (
+                                    "Low" if idle_sessions <= 10 else "Medium"
+                                ),
+                                "recommendation": (
+                                    f"{idle_sessions} sessions are currently idle. "
+                                    "If this is unexpected, review connection "
+                                    "pooling and application cleanup to reduce "
+                                    "unnecessary connection retention."
+                                ),
+                            }
+                        )
+
+                    if not recommendations:
+                        recommendations.append(
+                            {
+                                "type": "healthy",
+                                "severity": "Low",
+                                "recommendation": (
+                                    "Connection usage is within expected limits. "
+                                    "Keep monitoring for rising idle and "
+                                    "idle-in-transaction session counts."
+                                ),
+                            }
+                        )
+
+                    if utilization_pct >= 85 or total_sessions >= max_connections:
+                        issue_priority = "High"
+                    elif utilization_pct >= 60 or idle_in_transaction_sessions > 0:
+                        issue_priority = "Medium"
+                    else:
+                        issue_priority = "Low"
+
+                    result = {
+                        "Category": "Performance",
+                        "Date Generated": datetime.now(UTC).strftime("%Y-%m-%d"),
+                        "Source DB Server Name": _instance,
+                        "Issues Identified": (
+                            "Database has "
+                            f"{total_sessions} total sessions with "
+                            f"{active_sessions} active, {idle_sessions} idle, "
+                            f"and {idle_in_transaction_sessions} "
+                            "idle-in-transaction sessions. Configured "
+                            f"max_connections is {max_connections}."
+                        ),
+                        "Impacted Metrics": (
+                            "Connection capacity, session concurrency, "
+                            "transaction lifetime, and idle connection "
+                            "accumulation"
+                        ),
+                        "Issue Priority": issue_priority,
+                        "Recommendations/Fixes": recommendations,
+                        "Session Counts": {
+                            "total_sessions": total_sessions,
+                            "active_sessions": active_sessions,
+                            "idle_sessions": idle_sessions,
+                            "idle_in_transaction_sessions": (
+                                idle_in_transaction_sessions
+                            ),
+                            "idle_in_transaction_aborted_sessions": (
+                                idle_in_transaction_aborted_sessions
+                            ),
+                            "max_connections": max_connections,
+                            "active_pct_of_max": round(utilization_pct, 2),
+                            "connection_headroom": connection_headroom,
+                        },
+                    }
+                    row_count = total_sessions
+                    return result
+                except PermissionError as exc:
+                    decision, error_code = "deny", str(exc)
+                    app_state.denied_requests += 1
+                    raise
+                except RateLimitExceededError as exc:
+                    decision, error_code = "deny", str(exc)
+                    app_state.denied_requests += 1
+                    raise
+                except Exception as exc:
+                    decision, error_code = f"TOOL_ERROR: {exc}"
+                    app_state.denied_requests += 1
+                    raise ToolError(error_code)
+                finally:
+                    _log_audit_event(
+                        request_id=request_id,
+                        actor=actor,
+                        tool=_tool,
+                        instance=_instance,
+                        sql="session_counts_query",
+                        decision=decision,
+                        latency_ms=int((time.time() - started) * 1000),
+                        rows=row_count,
+                        error_code=error_code,
+                        auth_ctx=_auth_ctx,
+                    )
+
+            registered.append(session_counts_tool_name)
+
+        # -----------------------------------------------------------------------
         # Register db_{instance_number}_pg96_analyze_data_model
         # -----------------------------------------------------------------------
         analyze_data_model_tool_name = f"db_{instance_number}_pg96_analyze_data_model"
@@ -1093,7 +1338,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     "openWorldHint": False,
                 },
                 tags={"read-only", "performance", f"instance-{instance_number}"},
-                timeout=60.0,
+                timeout=120.0,
             )
             async def _analyze_data_model(
                 database_name: str,
@@ -1411,7 +1656,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     "openWorldHint": False,
                 },
                 tags={"read-only", "performance", f"instance-{instance_number}"},
-                timeout=30.0,
+                timeout=120.0,
             )
             async def _extract_schema_model(
                 database_name: str,
@@ -1465,31 +1710,14 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                         _instance, database_name, sql, schema_name
                     )
                     row_count = len(rows)
-                    # Count unique tables and columns for summary
-                    table_names = sorted({r.get("table_name") for r in rows})
-                    column_count = len(rows)
-                    type_dist: dict[str, int] = {}
-                    pk_count = sum(1 for r in rows if r.get("is_pk"))
-                    nullable_count = sum(1 for r in rows if not r.get("not_null"))
-                    for r in rows:
-                        dt = r.get("data_type", "unknown")
-                        type_dist[dt] = type_dist.get(dt, 0) + 1
-                    top_types = sorted(type_dist.items(), key=lambda x: -x[1])[:5]
-                    top_types_str = ", ".join(f"{v}x {k}" for k, v in top_types)
                     return {
-                        "Category": "Discovery",
+                        "Category": "Performance",
                         "Date Generated": datetime.now(UTC).strftime("%Y-%m-%d"),
                         "Source DB Server Name": _instance,
-                        "Schema": schema_name,
-                        "Database": database_name,
-                        "Summary": (
-                            f"{len(table_names)} table(s), {column_count} column(s) total. "
-                            f"{pk_count} primary key column(s), "
-                            f"{nullable_count} nullable column(s). "
-                            f"Most common data type(s): {top_types_str}."
-                        ),
-                        "Tables": table_names,
-                        "Columns": rows,
+                        "Issues Identified": "N/A - Model Extraction",
+                        "Impacted Metrics": "None",
+                        "Issue Priority": "Low",
+                        "Recommendations/Fixes": rows,
                     }
                 except PermissionError as exc:
                     decision, error_code = "deny", str(exc)
@@ -1528,7 +1756,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     "openWorldHint": False,
                 },
                 tags={"read-only", "performance", f"instance-{instance_number}"},
-                timeout=30.0,
+                timeout=120.0,
             )
             async def _analyze_constraints_and_fks(
                 database_name: str,
@@ -1647,175 +1875,142 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
 
             registered.append(f"db_{instance_number}_pg96_analyze_constraints_and_fks")
 
-        # --- missing_fk: Detect columns lacking foreign key constraints ---
-        missing_fk_tool_name = f"db_{instance_number}_pg96_missing_fk"
-        if is_tool_enabled(state.policy, instance_id, "missing_fk"):
+            # --- Sub-tool: missing_fk ---
+            if is_tool_enabled(state.policy, instance_id, "missing_fk"):
+                @mcp.tool(
+                    name=f"db_{instance_number}_pg96_missing_fk",
+                    annotations={
+                        "readOnlyHint": True,
+                        "destructiveHint": False,
+                        "openWorldHint": False,
+                    },
+                    tags={"read-only", "performance", f"instance-{instance_number}"},
+                    timeout=120.0,
+                )
+                async def _missing_fk(
+                    database_name: str,
+                    schema_name: str,
+                    actor: str = "system",
+                    ctx: Context | None = None,
+                    _tool: str = f"db_{instance_number}_pg96_missing_fk",
+                    _instance: str = instance_id,
+                    _instance_number: int = instance_number,
+                    app_state: Any = Depends(lambda: state),
+                ) -> dict[str, Any]:
+                    """Detect columns with `_id` suffix that lack foreign key constraints.
 
-            @mcp.tool(
-                name=missing_fk_tool_name,
-                annotations={
-                    "readOnlyHint": True,
-                    "destructiveHint": False,
-                    "openWorldHint": False,
-                },
-                tags={"read-only", "performance", f"instance-{instance_number}"},
-                timeout=30.0,
-            )
-            async def _missing_fk(
-                database_name: str,
-                schema_name: str,
-                actor: str = "system",
-                ctx: Context | None = None,
-                _tool: str = missing_fk_tool_name,
-                _instance: str = instance_id,
-                _instance_number: int = instance_number,
-                app_state: Any = Depends(lambda: state),
-            ) -> dict[str, Any]:
-                """Detect columns likely missing foreign key constraints.
+                    Scans the schema for columns ending in `_id`, checks each against
+                    declared pg_constraint entries, and reports columns that likely need
+                    a foreign key. Infers the referenced table from the column name by
+                    stripping the `_id` suffix. Returns candidate DDL suggestions.
 
-                Scans all columns ending with `_id` in the schema and checks whether
-                they are backed by a foreign key in `pg_constraint`. Infers the
-                referenced table name from the column name (e.g., `user_id` -> `users`)
-                and checks whether the inferred table exists. Returns a candidate list
-                with suggested DDL for each missing FK.
-
-                Args:
-                    database_name: Target database context.
-                    schema_name: Target schema to scan for missing FKs.
-                """
-                request_id = str(uuid.uuid4())
-                started = time.time()
-                decision, error_code, row_count = "allow", None, 0
-                _auth_ctx = None
-                database_name = validate_database_name(database_name)
-                schema_name = validate_schema_name(schema_name)
-                try:
-                    actor, _auth_ctx = await _resolve_actor_and_authorize(
-                        actor=actor,
-                        tool=_tool,
-                        required_privilege="read",
-                        ctx=ctx,
-                    )
-                    # Find all *_id columns not covered by an existing FK
-                    sql = """
-                        SELECT
-                            c.table_name,
-                            c.column_name,
-                            c.data_type
-                        FROM information_schema.columns c
-                        JOIN pg_class t ON t.relname = c.table_name
-                        JOIN pg_namespace n ON n.oid = t.relnamespace
-                            AND n.nspname = $1
-                        WHERE c.column_name LIKE '%_id'
-                          AND c.table_schema = $1
-                          AND t.relkind = 'r'
-                          AND NOT EXISTS (
-                              SELECT 1 FROM pg_constraint fk
-                              WHERE fk.contype = 'f'
-                                AND fk.conrelid = t.oid
-                                AND fk.conkey[1] = (
-                                    SELECT attnum FROM pg_attribute
-                                    WHERE attrelid = t.oid
-                                      AND attname = c.column_name
-                                )
-                          )
-                        ORDER BY c.table_name, c.column_name
+                    Args:
+                        database_name: Target database context.
+                        schema_name: Target schema to scan for missing foreign keys.
                     """
-                    app_state.write_guard.enforce(_tool, sql)
-                    rows = await app_state.connection_manager.execute_query(
-                        _instance, database_name, sql, schema_name
-                    )
-                    row_count = len(rows)
+                    request_id = str(uuid.uuid4())
+                    started = time.time()
+                    decision, error_code, row_count = "allow", None, 0
+                    _auth_ctx = None
+                    database_name = validate_database_name(database_name)
+                    schema_name = validate_schema_name(schema_name)
+                    try:
+                        actor, _auth_ctx = await _resolve_actor_and_authorize(
+                            actor=actor, tool=_tool, required_privilege="read", ctx=ctx
+                        )
+                        # (handled by middleware)
+                        sql = """
+                            SELECT
+                                c.relname AS table_name,
+                                a.attname AS column_name,
+                                pg_catalog.format_type(a.atttypid, a.atttypmod) AS data_type,
+                                regexp_replace(a.attname, '_id$', '', 'g')
+                                AS inferred_referenced_table
+                            FROM pg_class c
+                            JOIN pg_namespace n ON n.oid = c.relnamespace
+                            JOIN pg_attribute a ON a.attrelid = c.oid
+                            WHERE n.nspname = $1
+                              AND c.relkind = 'r'
+                              AND a.attnum > 0
+                              AND NOT a.attisdropped
+                              AND a.attname LIKE '%_id'
+                              AND NOT EXISTS (
+                                  SELECT 1
+                                  FROM pg_constraint con
+                                  WHERE con.conrelid = c.oid
+                                    AND con.contype = 'f'
+                                    AND a.attnum = ANY(con.conkey)
+                              )
+                            ORDER BY c.relname, a.attnum
+                        """
+                        app_state.write_guard.enforce(_tool, sql)
+                        rows = await app_state.connection_manager.execute_query(
+                            _instance, database_name, sql, schema_name
+                        )
+                        row_count = len(rows)
 
-                    # Collect all real table names for existence check
-                    table_list_sql = """
-                        SELECT relname FROM pg_class c
-                        JOIN pg_namespace n ON n.oid = c.relnamespace
-                        WHERE n.nspname = $1 AND c.relkind = 'r'
-                    """
-                    all_tables = await app_state.connection_manager.execute_query(
-                        _instance, database_name, table_list_sql, schema_name
-                    )
-                    existing_tables = {t["relname"] for t in all_tables}
+                        candidates = []
+                        for r in rows:
+                            tbl = r.get("table_name", "")
+                            col = r.get("column_name", "")
+                            ref = r.get("inferred_referenced_table", "")
+                            ddl = (
+                                f"ALTER TABLE {tbl} ADD CONSTRAINT fk_{tbl}_{col}"
+                                f" FOREIGN KEY ({col}) REFERENCES {ref}(id);"
+                            )
+                            candidates.append({
+                                "table_name": tbl,
+                                "column_name": col,
+                                "data_type": r.get("data_type", ""),
+                                "inferred_referenced_table": ref,
+                                "suggestion": ddl,
+                            })
 
-                    candidates = []
-                    for row in rows:
-                        col_name = row["column_name"]
-                        # Infer referenced table: strip _id and try common plurals
-                        base = col_name[:-3]  # remove _id
-                        inferred = f"{base}s"
-                        table_exists = inferred in existing_tables
-                        candidates.append({
-                            "table_name": row["table_name"],
-                            "column_name": col_name,
-                            "data_type": row["data_type"],
-                            "inferred_referenced_table": inferred,
-                            "referenced_table_exists": table_exists,
-                            "suggestion": (
-                                f"ALTER TABLE {schema_name}.{row['table_name']} "
-                                f"ADD CONSTRAINT fk_{row['table_name']}_{col_name} "
-                                f"FOREIGN KEY ({col_name}) REFERENCES "
-                                f"{schema_name}.{inferred}(id);"
+                        return {
+                            "Category": "Performance",
+                            "Date Generated": datetime.now(UTC).strftime("%Y-%m-%d"),
+                            "Source DB Server Name": _instance,
+                            "Issues Identified": (
+                                f"Found {len(candidates)} columns with `_id` suffix"
+                                " missing foreign key constraints."
                             ),
-                        })
+                            "Impacted Metrics": "Data Integrity, Join Performance",
+                            "Issue Priority": "High" if candidates else "Low",
+                            "Recommendations/Fixes": candidates,
+                        }
+                    except PermissionError as exc:
+                        decision, error_code = "deny", str(exc)
+                        app_state.denied_requests += 1
+                        raise
+                    except RateLimitExceededError as exc:
+                        decision, error_code = "deny", str(exc)
+                        app_state.denied_requests += 1
+                        raise
+                    except Exception as exc:
+                        decision, error_code = f"TOOL_ERROR: {exc}"
+                        app_state.denied_requests += 1
+                        raise ToolError(error_code)
+                    finally:
+                        _log_audit_event(
+                            request_id=request_id,
+                            actor=actor,
+                            tool=_tool,
+                            instance=_instance,
+                            sql="missing_fk_query",
+                            decision=decision,
+                            latency_ms=int((time.time() - started) * 1000),
+                            rows=row_count,
+                            error_code=error_code,
+                            auth_ctx=_auth_ctx,
+                        )
 
-                    findings = {
-                        "schema": schema_name,
-                        "total_candidates": len(candidates),
-                        "with_existing_target": sum(
-                            1 for c in candidates if c["referenced_table_exists"]
-                        ),
-                        "missing_fk_candidates": candidates,
-                        "note": (
-                            "Candidates are columns ending in _id without a declared "
-                            "foreign key. Inferred target tables are based on column "
-                            "naming convention. Review before applying DDL."
-                        ),
-                    }
-                    issue_count = len(candidates)
-                    return {
-                        "Category": "Performance",
-                        "Date Generated": datetime.now(UTC).strftime("%Y-%m-%d"),
-                        "Source DB Server Name": _instance,
-                        "Issues Identified": (
-                            f"{issue_count} columns with _id suffix lack foreign key "
-                            f"constraints in schema '{schema_name}'."
-                        ),
-                        "Impacted Metrics": "Data Integrity, Referential Integrity",
-                        "Issue Priority": (
-                            "High" if issue_count > 5
-                            else "Medium" if issue_count > 0
-                            else "Low"
-                        ),
-                        "Recommendations/Fixes": findings,
-                    }
-                except PermissionError as exc:
-                    decision, error_code = "deny", str(exc)
-                    app_state.denied_requests += 1
-                    raise
-                except RateLimitExceededError as exc:
-                    decision, error_code = "deny", str(exc)
-                    app_state.denied_requests += 1
-                    raise
-                except Exception as exc:
-                    decision, error_code = f"TOOL_ERROR: {exc}"
-                    app_state.denied_requests += 1
-                    raise ToolError(error_code)
-                finally:
-                    _log_audit_event(
-                        request_id=request_id,
-                        actor=actor,
-                        tool=_tool,
-                        instance=_instance,
-                        sql="missing_fk_query",
-                        decision=decision,
-                        latency_ms=int((time.time() - started) * 1000),
-                        rows=row_count,
-                        error_code=error_code,
-                        auth_ctx=_auth_ctx,
-                    )
-
-            registered.append(missing_fk_tool_name)
+                registered.append(f"db_{instance_number}_pg96_missing_fk")
+            else:
+                logger.info(
+                    "Skipping disabled tool 'db_%s_pg96_missing_fk' for instance '%s'",
+                    instance_number,
+                    instance_id,
+                )
 
             # --- Sub-tool: analyze_normalization ---
             @mcp.tool(
@@ -1826,7 +2021,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     "openWorldHint": False,
                 },
                 tags={"read-only", "performance", f"instance-{instance_number}"},
-                timeout=30.0,
+                timeout=120.0,
             )
             async def _analyze_normalization(
                 database_name: str,
@@ -1891,7 +2086,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                         "Category": "Performance",
                         "Date Generated": datetime.now(UTC).strftime("%Y-%m-%d"),
                         "Source DB Server Name": _instance,
-                        "Issues Identified": f"Found {len(rows)} column(s) with data type mismatches across different tables in schema '{schema_name}'. Mismatched types on identically-named columns can cause implicit type coercion, degraded join performance, and data integrity risks.",  # noqa: E501
+                        "Issues Identified": f"{len(rows)} column type mismatches found across tables",  # noqa: E501
                         "Impacted Metrics": "Data Integrity, Join Performance",
                         "Issue Priority": "Medium" if len(rows) > 0 else "Low",
                         "Recommendations/Fixes": rows,
@@ -1933,7 +2128,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     "openWorldHint": False,
                 },
                 tags={"read-only", "performance", f"instance-{instance_number}"},
-                timeout=30.0,
+                timeout=120.0,
             )
             async def _analyze_index_statistics(
                 database_name: str,
@@ -2042,7 +2237,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     "openWorldHint": False,
                 },
                 tags={"read-only", "performance", f"instance-{instance_number}"},
-                timeout=30.0,
+                timeout=120.0,
             )
             async def _analyze_3nf_and_decomposition(
                 database_name: str,
@@ -2161,7 +2356,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 name=hypopg_create_tool_name,
                 annotations={"readOnlyHint": False},
                 tags={"hypopg", "performance", f"instance-{instance_number}"},
-                timeout=30.0,
+                timeout=120.0,
             )
             async def _hypopg_create_virtual_indexes(
                 database_name: str,
@@ -2248,7 +2443,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     "openWorldHint": False,
                 },
                 tags={"hypopg", "performance", f"instance-{instance_number}"},
-                timeout=30.0,
+                timeout=120.0,
             )
             async def _hypopg_explain_with_virtual(
                 database_name: str,
@@ -2323,7 +2518,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 name=hypopg_optimal_tool_name,
                 annotations={"readOnlyHint": False},
                 tags={"hypopg", "performance", f"instance-{instance_number}"},
-                timeout=60.0,
+                timeout=120.0,
             )
             async def _hypopg_find_optimal_indexes(
                 database_name: str,
@@ -2409,12 +2604,13 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     "openWorldHint": False,
                 },
                 tags={"read-only", f"instance-{instance_number}"},
-                timeout=30.0,
+                timeout=120.0,
             )
             async def _exec_query(
                 sql_statement: str,
                 database_name: str = "lenexa",
                 max_rows: int = 100,
+                cursor: str | None = None,
                 actor: str = "system",
                 ctx: Context | None = None,
                 _tool: str = exec_query_tool_name,
@@ -2424,14 +2620,16 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
             ) -> dict[str, Any]:
                 """Execute a user-supplied SELECT query against an EDBAS 9.6 instance.
 
-                Only SELECT statements are permitted. Results are capped at max_rows
-                (maximum 1000). Returns rows, row_count, truncated flag, and the
-                query/database context.
+                Only SELECT statements are permitted. When no cursor is provided, the tool
+                auto-fetches all pages and returns the complete result set in one response.
+                A cursor can be supplied to resume from a specific offset.
 
                 Args:
                     sql_statement: SELECT SQL statement to execute (required).
                     database_name: Target database on the instance (default "lenexa").
-                    max_rows: Maximum rows to return, 1-1000 (default 100).
+                    max_rows: Maximum rows per page, 1-5000 (default 100).
+                    cursor: Cursor string to resume pagination from a prior offset
+                        (optional). Empty string treated as no cursor.
                 """
                 request_id = str(uuid.uuid4())
                 started = time.time()
@@ -2439,10 +2637,17 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 _auth_ctx = None
                 sql_v = validate_sql_statement(sql_statement)
                 database_name_v = validate_database_name(database_name)
-                max_rows_v = validate_positive_int(max_rows, "max_rows", 1, 1000)
-                clamped = max_rows > 1000
-                if clamped:
-                    max_rows_v = 1000
+                max_rows_v = validate_positive_int(max_rows, "max_rows", 1, 5000)
+
+                # Resolve starting offset from cursor
+                current_offset = 0
+                if cursor is not None and cursor != "":
+                    try:
+                        cursor_state = CursorState.decode(cursor)
+                        current_offset = cursor_state.offset
+                    except Exception:
+                        raise ToolError("INVALID_INPUT: cursor is malformed or expired")
+
                 try:
                     actor, _auth_ctx = await _resolve_actor_and_authorize(
                         actor=actor, tool=_tool, required_privilege="read", ctx=ctx
@@ -2450,20 +2655,45 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     app_state.rate_limiter.allow(actor)
                     app_state.session_manager.touch(actor, request_id)
                     app_state.write_guard.enforce(_tool, sql_v)
-                    rows = await app_state.connection_manager.execute_query(
-                        _instance, database_name_v, sql_v, max_rows=max_rows_v
-                    )
-                    row_count = len(rows)
+
+                    all_rows: list[dict[str, Any]] = []
+                    page_count = 0
+                    max_auto_pages = 1000
+                    seen_offsets: set[int] = set()
+
+                    while True:
+                        if current_offset in seen_offsets:
+                            raise ToolError("TOOL_ERROR: cursor did not advance")
+                        seen_offsets.add(current_offset)
+
+                        page_count += 1
+                        if page_count > max_auto_pages:
+                            raise ToolError("TOOL_ERROR: pagination exceeded max_auto_pages")
+
+                        rows = await app_state.connection_manager.execute_query(
+                            _instance,
+                            database_name_v,
+                            sql_v,
+                            max_rows=max_rows_v,
+                            offset=current_offset,
+                        )
+                        all_rows.extend(rows)
+
+                        if len(rows) < max_rows_v:
+                            break
+
+                        current_offset += max_rows_v
+
+                    row_count = len(all_rows)
                     result: dict[str, Any] = {
-                        "rows": rows,
+                        "rows": all_rows,
                         "row_count": row_count,
-                        "truncated": row_count >= max_rows_v,
+                        "page": page_count,
+                        "nextCursor": None,
+                        "truncated": False,
                         "query": sql_v,
                         "database": database_name_v,
                     }
-                    if clamped:
-                        result["warned"] = True
-                        result["clamped_from"] = max_rows
                     return result
                 except PermissionError as exc:
                     decision, error_code = "deny", str(exc)
@@ -2473,8 +2703,10 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     decision, error_code = "deny", str(exc)
                     app_state.denied_requests += 1
                     raise
+                except ToolError:
+                    raise
                 except Exception as exc:
-                    decision, error_code = f"TOOL_ERROR: {exc}"
+                    decision, error_code = "deny", f"TOOL_ERROR: {exc}"
                     app_state.denied_requests += 1
                     raise ToolError(error_code)
                 finally:
@@ -2513,7 +2745,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     "openWorldHint": False,
                 },
                 tags={"read-only", "maintenance", f"instance-{instance_number}"},
-                timeout=30.0,
+                timeout=120.0,
             )
             async def _analyze_table(
                 schema_name: str,
@@ -2684,14 +2916,11 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
             "Index Health",
             "Index usage, scans, size, bloat",
             description=(
-                "Assess index health for a specific table: invalid, unused, and duplicate "
-                "indexes.\n"
-                "\n"
-                "Returns lists of problem indexes with sizes in bytes, total index size, "
-                "and recommended DROP INDEX actions. Wasted index space is flagged for "
-                "cleanup.\n"
-                "\n"
-                "Args:\n"
+                "Assess index health for a specific table: invalid, unused, "
+                "and duplicate indexes.\n\nReturns lists of problem indexes "
+                "with sizes in bytes, total index size, and recommended "
+                "DROP INDEX actions. Wasted index space is flagged for "
+                "cleanup.\n\nArgs:\n"
                 '    schema_name: Target schema containing the table.\n'
                 '    table_name: Table whose indexes to analyze.\n'
                 '    database_name: Target database (default "lenexa").'
@@ -2712,7 +2941,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     "openWorldHint": False,
                 },
                 tags={"read-only", "discovery", f"instance-{instance_number}"},
-                timeout=30.0,
+                timeout=120.0,
             )
             async def _list_objects(
                 schema_name: str = "public",
@@ -2865,7 +3094,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     "openWorldHint": False,
                 },
                 tags={"read-only", "discovery", f"instance-{instance_number}"},
-                timeout=30.0,
+                timeout=120.0,
             )
             async def _list_objects_by_type(
                 object_type: str,
@@ -2971,7 +3200,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     "security",
                     f"instance-{instance_number}",
                 },
-                timeout=60.0,
+                timeout=120.0,
             )
             async def _analyze_sett_sec(
                 database_name: str = "lenexa",
@@ -3328,16 +3557,14 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 "check_server",
                 settings_security.check_server,
                 description=(
-                    "Retrieve CPU, memory, and disk utilization for the database host.\n"
-                    "\n"
-                    "Queries the EDBAS host via SQL functions to gather OS-level resource "
-                    "metrics: CPU count, memory usage (total/used/free), and disk utilization "
-                    "for a specified filesystem path. Handles permission errors gracefully with "
-                    "explanatory notes.\n"
-                    "\n"
-                    "Args:\n"
-                    '    filesystem_path: Filesystem path for disk usage check '
-                    '(default "/data").\n'
+                    "Retrieve CPU, memory, and disk utilization for the "
+                    "database host.\n\nQueries the EDBAS host via SQL functions "
+                    "to gather OS-level resource metrics: CPU count, memory "
+                    "usage (total/used/free), and disk utilization for a "
+                    "specified filesystem path. Handles permission errors "
+                    "gracefully with explanatory notes.\n\nArgs:\n"
+                    '    filesystem_path: Filesystem path to check disk usage '
+                    'for (default "/data").\n'
                     '    database_name: Target database (default "lenexa").'
                 ),
             )

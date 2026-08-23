@@ -14,7 +14,7 @@ The MCP server container connects to an external Redis container (`fastmcp-redis
 
 ```
 ┌──────────────────┐     mcp-net bridge network     ┌──────────────────┐
-│  fastmcp-edb96   │ ─────────────────────────────── │  fastmcp-redis   │
+│  mcp-edb96       │ ─────────────────────────────── │  fastmcp-redis   │
 │  (MCP server)    │    redis://fastmcp-redis:6379   │  (Redis 7)       │
 │  port 8086:8080  │                                  │  port 6379       │
 └──────────────────┘                                  └──────────────────┘
@@ -39,6 +39,9 @@ docker run -d `
 > **Existing Redis**: If you already have a Redis container (`fastmcp-redis`) on `mcp-net`, skip this step. Verify with `docker ps --filter "name=fastmcp-redis"`.
 
 ## Building the Image
+
+The production deployment uses the Docker Hub image `harryvaldez/mcp-edb96-server:latest`.
+For local development, build the development image as `fastmcp-edb96:local`:
 
 ```powershell
 docker build -t fastmcp-edb96:local -f docker/Dockerfile .
@@ -94,8 +97,12 @@ docker compose -f docker/docker-compose.yml up -d
 ### Production
 
 ```powershell
+docker compose -f docker/docker-compose.runtime.yml pull
 docker compose -f docker/docker-compose.runtime.yml up -d
 ```
+
+The production compose file runs container `mcp-edb96` from
+`harryvaldez/mcp-edb96-server:latest`.
 
 ### Without Redis (local rate limiting)
 
@@ -151,7 +158,7 @@ If the MCP server cannot reach Redis:
 3. Check `FASTMCP_REDIS_URL` in `.env` — the hostname must match the Redis container name (`fastmcp-redis`)
 4. Test connectivity from inside the MCP container:
    ```powershell
-   docker exec fastmcp-edb96 python -c "import redis; r=redis.from_url('redis://fastmcp-redis:6379'); r.ping(); print('OK')"
+  docker exec mcp-edb96 python -c "import redis; r=redis.from_url('redis://fastmcp-redis:6379'); r.ping(); print('OK')"
    ```
 5. As a workaround, switch to local rate limiting:
    ```powershell

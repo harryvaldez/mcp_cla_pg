@@ -2,6 +2,10 @@
 
 Canonical list of exposed MCP tools for the dual-instance EnterpriseDB Advanced Server 9.6 MCP server.
 
+The server exposes 30 tool families per enabled instance, for 60 registered tools across the
+default primary and secondary instances. Each family uses the `db_<n>_pg96_<toolname>` naming
+pattern.
+
 ## `db_<n>_pg96_ping`
 
 Check accessibility and identity of an EDBAS 9.6 database instance.
@@ -73,6 +77,7 @@ When Okta authentication is enabled (`auth_mode: okta` in `config/runtime-policy
 | HypoPG explain with virtual | `_pg96_hypopg_explain_with_virtual` | Requires HypoPG session state |
 | HypoPG optimal indexes | `_pg96_hypopg_find_optimal_indexes` | Creates/drops virtual indexes during testing |
 | Blocking sessions | `_pg96_blocking_sessions` | Inspects cross-session activity |
+| Session counts | `_pg96_session_counts` | Inspects cross-session activity |
 
 Each restricted tool below includes a ⚠️ **Read-Group Access** annotation. Unrestricted tools include a ✅ marker.
 
@@ -82,7 +87,7 @@ The restricted suffix lists are configurable via `okta_read_restricted_tool_suff
 
 ## `db_<n>_pg96_exec_query`
 
-Execute a user-supplied SELECT query against an EDBAS 9.6 instance and return the result set. Only SELECT statements are permitted. Results are capped at `max_rows`.
+Execute a user-supplied SELECT query against an EDBAS 9.6 instance and return the complete result set. Only SELECT statements are permitted. The tool uses internal cursor pagination to fetch all pages before responding.
 
 **Registered as:** `db_1_pg96_exec_query`, `db_2_pg96_exec_query`
 
@@ -92,7 +97,8 @@ Execute a user-supplied SELECT query against an EDBAS 9.6 instance and return th
 |---|---|---|---|---|
 | `sql_statement` | string | **Yes** | — | SELECT SQL statement to execute |
 | `database_name` | string | No | `"lenexa"` | Target database on the instance |
-| `max_rows` | int | No | `100` | Maximum rows to return (1–1000, clamped if exceeded) |
+| `max_rows` | int | No | `2000` | Internal page size (1–5000) used during auto-pagination |
+| `cursor` | string | No | `null` | Optional opaque cursor offset to start from |
 | `actor` | string | No | `"system"` | Caller identity for audit logging |
 
 ### Output Schema
@@ -100,17 +106,33 @@ Execute a user-supplied SELECT query against an EDBAS 9.6 instance and return th
 | Field | Type | Description |
 |---|---|---|
 | `rows` | list[dict] | Array of result rows as column→value mappings |
-| `row_count` | int | Number of rows returned |
-| `truncated` | bool | `true` if result reached or exceeded `max_rows` |
+| `row_count` | int | Total number of rows returned after internal pagination completes |
+| `page` | int | Number of internal pages fetched (1-based count) |
+| `nextCursor` | string or null | Always `null` in final response because data is fully aggregated |
+| `truncated` | bool | Always `false` for successful responses |
 | `query` | string | The SELECT statement that was executed |
 | `database` | string | Target database that served the query |
+
+### Pagination Usage
+
+1. Call once with `sql_statement` and optional `max_rows`.
+2. The tool auto-fetches additional pages internally while a page is full.
+3. The final response includes the complete `rows` array.
+
+```json
+// Single call: tool auto-fetches all pages internally
+{ "sql_statement": "SELECT id FROM big_table ORDER BY id", "max_rows": 500 }
+
+// Response returns complete result set
+{ "rows": [...], "row_count": 1072, "page": 3, "nextCursor": null, "truncated": false, ... }
+```
 
 ### FastMCP 3 Annotations
 
 | Annotation | Value |
 |---|---|
 | `readOnlyHint` | `true` |
-| `idempotentHint` | `false` |
+| `destructiveHint` | `false` |
 | `openWorldHint` | `false` |
 | `timeout` | `30.0` seconds |
 
@@ -118,7 +140,13 @@ Execute a user-supplied SELECT query against an EDBAS 9.6 instance and return th
 
 `read-only`, `query`, `instance-1` (or `instance-2`)
 
-### Example Response
+### Read-Group Access
+
+✅ Always allowed for read-group callers.
+
+### Example Responses
+
+**Small result (single page, no pagination needed):**
 
 ```json
 {
@@ -127,11 +155,37 @@ Execute a user-supplied SELECT query against an EDBAS 9.6 instance and return th
     {"id": 2, "name": "bob"}
   ],
   "row_count": 2,
+  "page": 1,
+  "nextCursor": null,
   "truncated": false,
   "query": "SELECT id, name FROM users LIMIT 10",
   "database": "lenexa"
 }
 ```
+
+**Large result (multi-page internally, full result returned):**
+
+```json
+{
+  "rows": [
+    {"id": 1, "name": "row_1"},
+    {"id": 2, "name": "row_2"}
+  ],
+  "row_count": 1072,
+  "page": 3,
+  "nextCursor": null,
+  "truncated": false,
+  "query": "SELECT id, name FROM big_table ORDER BY id",
+  "database": "lenexa"
+}
+```
+
+### Implementation Notes
+
+- **SQL wrapping**: For internal pages after the first (offset > 0), the user's SQL is wrapped as `SELECT * FROM ({sql}) AS _mcp_page OFFSET {offset}`. This paginates arbitrary SELECT queries without parsing.
+- **Cursor encoding**: Internal cursors use FastMCP's `CursorState` (base64-encoded JSON with offset).
+- **Completion behavior**: The tool continues internal retrieval while page size is full and stops when a partial page is reached.
+- **ORDER BY**: For deterministic pagination, always include an `ORDER BY` clause. Without it, PostgreSQL may return rows in different orders across pages.
 
 ### Error Codes
 
@@ -140,7 +194,8 @@ Execute a user-supplied SELECT query against an EDBAS 9.6 instance and return th
 | `INVALID_INPUT: sql_statement is required` | Empty or missing `sql_statement` |
 | `INVALID_INPUT: only SELECT queries are allowed` | Non-SELECT verb detected |
 | `INVALID_INPUT: sql_statement contains invalid characters` | `;` or `--` found |
-| `INVALID_INPUT: max_rows must be between 1 and 1000` | `max_rows` out of range |
+| `INVALID_INPUT: max_rows must be between 1 and 5000` | `max_rows` out of range |
+| `INVALID_INPUT: cursor is malformed or expired` | Invalid cursor string |
 | `RATE_LIMIT_EXCEEDED` | Per-actor or global rate limit exceeded |
 | `TOOL_ERROR: ...` | Database or query execution failure |
 
@@ -223,41 +278,57 @@ Complies with standard Performance Analysis Schema reporting lock event resoluti
 
 ---
 
-## `db_<n>_pg96_analyze_data_model`
+## `db_<n>_pg96_session_counts`
 
-Orchestrates comprehensive data model analysis by delegating to sub-tools internally and aggregating findings. Includes HyperPG index recommendations for tables with sequential scan abuse.
+Reports the configured connection ceiling, total sessions, active sessions, idle sessions, and
+idle-in-transaction risk for a target database. The tool analyzes utilization and headroom and
+returns actionable recommendations for capacity pressure, idle connection buildup, and
+idle-in-transaction sessions.
 
-**Registered as:** `db_1_pg96_analyze_data_model`, `db_2_pg96_analyze_data_model`
+**Registered as:** `db_1_pg96_session_counts`, `db_2_pg96_session_counts`
 
 ### Parameters
 
 | Name | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `database_name` | string | Yes | - | Target database context |
-| `schema_name` | string | Yes | - | The target schema space inside the database to evaluate |
+| `database_name` | string | Yes | - | Name of the database to inspect |
 | `actor` | string | No | `"system"` | Caller identity for audit logging |
 
 ### Output Schema
 
-Complies with standard Performance Analysis Schema. The `Recommendations/Fixes` array includes sections for:
-- Constraints & Foreign Keys
-- Normalization - Type Mismatches
-- Index Statistics (stale/missing ANALYZE)
-- 3NF Decomposition Analysis
-- HypoPG Index Recommendations (when applicable)
+Returns the standard Performance Analysis Schema plus a nested `Session Counts` object with:
+
+- `total_sessions`
+- `active_sessions`
+- `idle_sessions`
+- `idle_in_transaction_sessions`
+- `idle_in_transaction_aborted_sessions`
+- `max_connections`
+- `active_pct_of_max`
+- `connection_headroom`
+
+`active_pct_of_max` is calculated from active sessions divided by `max_connections`; the
+connection headroom is `max_connections - total_sessions`. Recommendation priority increases
+when utilization is high, headroom is low, or idle-in-transaction sessions are present.
+
+The `Recommendations/Fixes` array is populated with warnings for near-capacity conditions, idle-in-transaction risk, and idle connection buildup.
 
 ### FastMCP 3 Annotations
 
 | Annotation | Value |
-|---|---|
+|---|---| 
 | `readOnlyHint` | `true` |
 | `idempotentHint` | `false` |
 | `openWorldHint` | `false` |
-| `timeout` | `60.0` seconds |
+| `timeout` | `30.0` seconds |
 
 ### Tags
 
 `read-only`, `performance`, `instance-1` (or `instance-2`)
+
+### Read-Group Access
+
+⚠️ **Restricted** — inspects `pg_stat_activity` across all sessions on the target database.
 
 ---
 
@@ -565,29 +636,33 @@ The `hypopg_find_optimal_indexes` tool and `get_slow_statements` use the followi
 
 ### Tool Type Annotations
 
-| Tool | readOnlyHint | Reason | Timeout |
-|------|---|---|---|
-| `get_slow_statements` | `true` | Read-only; uses HypoPG internally but does not expose session state to caller | 60s |
-| `blocking_sessions` | `true` | Read-only session/lock queries | 30s |
-| `analyze_data_model` | `true` | Read-only schema/statistics queries | 60s |
-| Data model sub-tools | `true` | Read-only analysis | 30s |
-| `hypopg_create_virtual_indexes` | `false` | Modifies session memory state via hypopg_create_index | 30s |
-| `hypopg_explain_with_virtual` | `true` | Read-only EXPLAIN (uses existing session state) | 30s |
-| `hypopg_find_optimal_indexes` | `false` | Creates/drops virtual indexes during testing | 60s |
-| `exec_query` | `true` | Read-only SELECT execution | 30s |
-| `analyze_table` | `true` | Read-only maintenance analysis | 30s |
-| `check_table_bloat` | `true` | Read-only bloat analysis | 30s |
-| `check_table_wraparound` | `true` | Read-only wraparound check | 30s |
-| `check_table_statistics` | `true` | Read-only statistics check | 30s |
-| `check_index_health` | `true` | Read-only index health | 30s |
-| `list_objects` | `true` | Read-only object discovery | 30s |
-| `list_tables` | `true` | Read-only table listing | 30s |
-| `list_indexes` | `true` | Read-only index listing | 30s |
-| `list_views` | `true` | Read-only view listing | 30s |
-| `missing_fk` | `true` | Read-only missing FK detection | 30s |
-| `list_objects_by_type` | `true` | Read-only generic object listing | 30s |
-| `check_server` | `true` | Read-only OS resource retrieval | 30s |
-| `check_db_parameters` | `true` | Read-only parameter analysis | 45s |
+| Tool | readOnlyHint | destructiveHint | Reason | Timeout |
+|------|---|---|---|---|
+| `get_slow_statements` | `true` | `false` | Read-only; uses HypoPG internally but does not expose session state to caller | 60s |
+| `blocking_sessions` | `true` | `false` | Read-only session/lock queries | 30s |
+| `analyze_data_model` | `true` | `false` | Read-only schema/statistics queries | 60s |
+| Data model sub-tools | `true` | `false` | Read-only analysis | 30s |
+| `hypopg_create_virtual_indexes` | `false` | `false` | Modifies session memory state via hypopg_create_index | 30s |
+| `hypopg_explain_with_virtual` | `true` | `false` | Read-only EXPLAIN (uses existing session state) | 30s |
+| `hypopg_find_optimal_indexes` | `false` | `false` | Creates/drops virtual indexes during testing | 60s |
+| `exec_query` | `true` | `false` | Read-only SELECT execution with cursor pagination | 30s |
+| `analyze_table` | `true` | `false` | Read-only maintenance analysis | 30s |
+| `check_table_bloat` | `true` | `false` | Read-only bloat analysis | 30s |
+| `check_table_wraparound` | `true` | `false` | Read-only wraparound check | 30s |
+| `check_table_statistics` | `true` | `false` | Read-only statistics check | 30s |
+| `check_index_health` | `true` | `false` | Read-only index health | 30s |
+| `list_objects` | `true` | `false` | Read-only object discovery | 30s |
+| `list_tables` | `true` | `false` | Read-only table listing | 30s |
+| `list_indexes` | `true` | `false` | Read-only index listing | 30s |
+| `list_views` | `true` | `false` | Read-only view listing | 30s |
+| `missing_fk` | `true` | `false` | Read-only missing FK detection | 30s |
+| `list_objects_by_type` | `true` | `false` | Read-only generic object listing | 30s |
+| `check_server` | `true` | `false` | Read-only OS resource retrieval | 30s |
+| `check_db_parameters` | `true` | `false` | Read-only parameter analysis | 45s |
+| `compute_db_metrics` | `true` | `false` | Read-only performance metrics | 45s |
+| `analyze_db_security` | `true` | `false` | Read-only security audit | 45s |
+| `analyze_sett_sec` | `true` | `false` | Read-only settings/security orchestrator | 60s |
+| `ping` | `true` | `false` | Read-only identity check | 10s |
 
 ---
 
@@ -667,7 +742,22 @@ Orchestrates a comprehensive database settings and security analysis across 3 do
 
 **Output:** `Category: "Maintenance"`, `Overall Assessment`, `Issues` array with 3 entries: "DB Parameters Misconfiguration", "Database Performance Metrics", "Security Vulnerabilities". Each entry contains `Issue`, `Impacted Metrics`, `Issue Priority`, `Recommendations/Fixes`.
 
-**Tags:** `read-only`, `maintenance`, `security` | **Timeout:** 60s
+### FastMCP 3 Annotations
+
+| Annotation | Value |
+|---|---|
+| `readOnlyHint` | `true` |
+| `destructiveHint` | `false` |
+| `openWorldHint` | `false` |
+| `timeout` | `60.0` seconds |
+
+### Tags
+
+`read-only`, `maintenance`, `security`, `instance-1` (or `instance-2`)
+
+### Read-Group Access
+
+✅ Always allowed for read-group callers.
 
 ### `db_<n>_pg96_check_db_parameters`
 

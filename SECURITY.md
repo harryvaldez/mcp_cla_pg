@@ -56,6 +56,12 @@ FastMCP 3 `mask_error_details=True` is enabled in production to prevent internal
 
 `stateless_http=True` mode prevents cross-request session state accumulation.
 
+### Cross-Session Diagnostics
+
+The `db_<n>_pg96_blocking_sessions` and `db_<n>_pg96_session_counts` tools inspect
+`pg_stat_activity` across database sessions. Okta read-group callers are denied access to these
+tools; access requires the configured higher-privilege group.
+
 ## Configuration Guidance
 
 - Never commit `.env` files

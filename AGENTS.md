@@ -40,6 +40,7 @@ When adding features, keep changes inside the relevant boundary.
 - **Deterministic error contracts**: `RATE_LIMIT_EXCEEDED`, `INVALID_INPUT: <reason>`, `PermissionError`.
 - **Audit logging**: Every tool invocation produces a structured JSON event via `state.audit_logger.log_event()`.
 - **Dual-instance symmetry**: Every tool added must auto-register for all enabled instances via the registration loop pattern. Never hardcode instance names in tool logic.
+- **Cross-session access**: `blocking_sessions` and `session_counts` inspect `pg_stat_activity` and are restricted for Okta read-group callers.
 
 ## Change Workflow
 
@@ -131,7 +132,7 @@ The `_tool`, `_instance`, and `_instance_number` parameters use default argument
 | Method | Async | Returns | Use |
 |---|---|---|---|
 | `fetch_single_row(instance_id, db, sql)` | yes | `dict[str, Any]` or `{}` | Single-row queries |
-| `execute_query(instance_id, db, sql, max_rows)` | yes | `list[dict]` | Multi-row (capped) |
+| `execute_query(instance_id, db, sql, max_rows=100, offset=0)` | yes | `list[dict]` | Multi-row (capped, paginated) |
 | `acquire(instance_id)` | context mgr | `asyncpg.Connection` | Raw SQL |
 | `list_enabled_instances()` | no | `list[str]` | Get instance IDs |
 | `healthcheck_instance(instance_id)` | yes | `dict` | Per-instance health |

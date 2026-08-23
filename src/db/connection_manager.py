@@ -127,10 +127,19 @@ class ConnectionManager:
             return dict(row)
 
     async def execute_query(
-        self, instance_id: str, database_name: str, sql: str, *args: Any, max_rows: int = 100
+        self, instance_id: str, database_name: str, sql: str, *args: Any,
+        max_rows: int = 100, offset: int = 0,
     ) -> list[dict[str, Any]]:
-        """Execute a query and return all rows as list of dicts."""
+        """Execute a query and return rows as list of dicts.
+
+        When offset > 0, the SQL is wrapped as a subquery with OFFSET
+        to enable cursor-based pagination.
+        """
+        if offset < 0:
+            raise ValueError("INVALID_INPUT: offset must be >= 0")
         async with self.acquire(instance_id) as conn:
+            if offset > 0:
+                sql = f"SELECT * FROM ({sql}) AS _mcp_page OFFSET {offset}"
             rows = await conn.fetch(sql, *args)
             return [dict(r) for r in rows[:max_rows]]
 

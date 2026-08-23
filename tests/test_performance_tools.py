@@ -53,7 +53,12 @@ class TestGetSlowStatements:
     def test_registered_count_matches(self, mock_state, mock_mcp):
         """Verify total registered count matches expected value."""
         registered = register_pg_tools(mock_mcp, mock_state)
-        assert len(registered) == 58
+        assert len(registered) == 60
+
+    def test_session_counts_registered(self, mock_state, mock_mcp):
+        """Verify session_counts tool is included in the registration set."""
+        registered = register_pg_tools(mock_mcp, mock_state)
+        assert any("session_counts" in name for name in registered)
 
     def test_hypopg_sub_tools_registered(self, mock_state, mock_mcp):
         """Verify HypoPG sub-tools are in the registered list."""

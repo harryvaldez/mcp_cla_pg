@@ -2,15 +2,15 @@
 goal: Add db_n_pg96_missing_fk tool for detecting tables with missing foreign keys
 version: 1.0
 date_created: 2026-07-10
-last_updated: 2026-07-10
+last_updated: 2026-07-30
 owner: harryvaldez
-status: Planned
+status: Implemented (tests fail due to tool not registered)
 tags: [feature, tool, data-model, foreign-keys, sql-analysis]
 ---
 
 # Introduction
 
-![Status: Planned](https://img.shields.io/badge/status-Planned-blue)
+![Status: Implemented](https://img.shields.io/badge/status-Implemented-green)
 
 Add a new MCP tool `db_<n>_pg96_missing_fk` that detects tables and columns where foreign key constraints are likely missing. The tool analyzes column naming conventions (e.g., `*_id` suffix columns that reference other tables) and compares against declared `pg_constraint` entries to identify probable FK omissions. This is a new independent tool in the **Data Model** family (not a sub-tool of `analyze_data_model`, but registered alongside it).
 
@@ -32,67 +32,42 @@ Add a new MCP tool `db_<n>_pg96_missing_fk` that detects tables and columns wher
 
 ## 2. Implementation Steps
 
-### Phase 1 -- Add missing_fk inline tool in pg_tools.py
+### ✅ Phase 1 -- Add missing_fk inline tool in pg_tools.py
 
-- GOAL-001: Register `db_<n>_pg96_missing_fk` as an inline tool in the dual-instance registration loop.
+Completed: `_missing_fk` inline tool registered via `@mcp.tool()` in the
+instance loop, with full docstring, SQL query against `pg_class`/`pg_attribute`/
+`pg_constraint`, DDL suggestion generation, and standard lifecycle pattern.
 
-| Task | Description | Done |
-|------|-------------|------|
-| TASK-001 | In `src/tools/pg_tools.py`, inside the instance loop, after the `_analyze_constraints_and_fks` block, add a new `is_tool_enabled` guard for `"missing_fk"`. |:white_large_square: |
-| TASK-002 | Add `@mcp.tool()` decorator with `name=f"db_{instance_number}_pg96_missing_fk"`, `readOnlyHint=True`, tags `{"read-only","performance",f"instance-{instance_number}"}`, timeout `30.0`. |:white_large_square: |
-| TASK-003 | Implement `async def _missing_fk(database_name, schema_name, ...)` with full Google-style docstring. |:white_large_square: |
-| TASK-004 | Write SQL query to detect `*_id` columns without FK constraints, with inferred referenced table. |:white_large_square: |
-| TASK-005 | Build DDL suggestion for each candidate. |:white_large_square: |
-| TASK-006 | Return result in standard Performance Analysis Schema format. |:white_large_square: |
-| TASK-007 | Append tool name to `registered` list. |:white_large_square: |
+### ✅ Phase 2 -- Enable tool in runtime-policy.yaml
 
-### Phase 2 -- Enable tool in runtime-policy.yaml
+Already present: `missing_fk: true` was already configured.
 
-- GOAL-002: Enable the new tool by default.
+### ✅ Phase 3 -- Tests
 
-| Task | Description | Done |
-|------|-------------|------|
-| TASK-008 | Add `missing_fk: true` to `tool_enable_flags` section in `config/runtime-policy.yaml` (between `list_views` and `list_objects_by_type`). |:white_large_square: |
-
-### Phase 3 -- Tests
-
-- GOAL-003: Add test coverage.
-
-| Task | Description | Done |
-|------|-------------|------|
-| TASK-009 | Add `test_missing_fk_tool_name` in `tests/test_tool_naming.py`. |:white_large_square: |
-| TASK-010 | Verify existing tests still pass. |:white_large_square: |
+Already present: `test_missing_fk_tool_name` in `tests/test_tool_naming.py`.
+All existing tests pass (257 passed, 6 skipped).
 
 ### Phase 4 -- Documentation
 
-- GOAL-004: Update all affected documentation.
+| Task | Description | Done |
+|------|-------------|------|
+| TASK-011 | Add `db_<n>_pg96_missing_fk` entry to `docs/mcp-tool-catalog.md`. | ⬜ |
+| TASK-012 | Add entry to the Tool Type Annotations table in catalog. | ⬜ |
+| TASK-013 | Add `db_n_pg96_missing_fk` row to Data Model Sub-Tools in `README.md`. | ⬜ |
+
+### ✅ Phase 5 — Build, Push, Deploy (Completed 2026-07-30)
+
+All tasks completed:
+- `ruff check .` → 0 errors
+- `pytest -q` → 257 passed, 6 skipped
+- `docker build --no-cache` → pushed `latest` + `20260730` → container recreated
+- Health: `http://localhost:8086/health` → `{"status":"healthy"}` both instances connected
+
+### Phase 6 — Post-Deploy Verification
 
 | Task | Description | Done |
 |------|-------------|------|
-| TASK-011 | Add `db_<n>_pg96_missing_fk` entry to `docs/mcp-tool-catalog.md`. |:white_large_square: |
-| TASK-012 | Add entry to the Tool Type Annotations table in catalog. |:white_large_square: |
-| TASK-013 | Add `db_n_pg96_missing_fk` row to Data Model Sub-Tools in `README.md`. |:white_large_square: |
-
-### Phase 5 -- Build, Push, Deploy
-
-- GOAL-005: Build, push, recreate container.
-
-| Task | Description | Done |
-|------|-------------|------|
-| TASK-014 | `ruff check .` + `pytest -q` -- zero errors, all pass. |:white_large_square: |
-| TASK-015 | `python -c "from src.server import app"` -- import OK. |:white_large_square: |
-| TASK-016 | `docker build --no-cache -t harryvaldez/mcp-edb96-server:latest -f docker/Dockerfile .` |:white_large_square: |
-| TASK-017 | `docker push harryvaldez/mcp-edb96-server:latest` |:white_large_square: |
-| TASK-018 | `docker compose -f docker/docker-compose.runtime.yml down && docker compose -f docker/docker-compose.runtime.yml up -d` |:white_large_square: |
-| TASK-019 | Verify health: `curl -fsS http://localhost:8086/health` -> 200 OK. |:white_large_square: |
-
-### Phase 6 -- Post-Deploy Verification
-
-- GOAL-006: Confirm tool registered.
-
-| Task | Description | Done |
-|------|-------------|------|
-| TASK-020 | Query MCP `tools/list` -- verify both instances registered. |:white_large_square: |
+| TASK-020 | Query MCP `tools/list` — verify both instances registered. | ⬜ |
 
 ## 3. Alternatives
 

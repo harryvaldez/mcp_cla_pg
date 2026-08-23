@@ -10,13 +10,14 @@ blocked_sql_patterns:
   - "(?i)\\b(pg_read_file|pg_write_file|pg_sleep)\\b"
   - "(?i)\\b(CREATE\\s+(OR\\s+REPLACE\\s+)?(PACKAGE|TYPE\\s+BODY|SYNONYM|DIRECTORY))\\b"
 max_result_rows: 5000
-max_query_duration_ms: 15000
+max_query_duration_ms: 120000
 instance_enable_flags:
   primary: true
   secondary: true
 tool_enable_flags:
   get_slow_statements: true
   blocking_sessions: true
+  session_counts: true
   analyze_data_model: true
   extract_schema_model: true
   analyze_constraints_and_fks: true

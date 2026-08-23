@@ -75,6 +75,7 @@ class AuthConfig(BaseModel):
     okta_cross_session_tool_suffixes: list[str] = Field(
         default_factory=lambda: [
             "_pg96_blocking_sessions",
+            "_pg96_session_counts",
         ]
     )
     # Connection pool

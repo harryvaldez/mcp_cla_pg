@@ -58,11 +58,15 @@ def validate_query_text(query_text: str) -> str:
 
 
 def validate_sql_statement(sql_statement: str) -> str:
-    """Validate a user-supplied SQL statement for the exec_query tool.
+    """Validate and sanitize a user-supplied SQL statement for the exec_query tool.
 
-    Only SELECT statements are permitted. Rejects SQL injection vectors.
+    Normalizes whitespace (collapses runs of tabs, newlines, extra spaces),
+    then validates SELECT-only and rejects SQL injection vectors.
     """
+    import re
+
     value = sql_statement.strip()
+    value = re.sub(r'\s+', ' ', value)
     if not value:
         raise ValueError("INVALID_INPUT: sql_statement is required")
     if ";" in value or "--" in value:

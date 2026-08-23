@@ -1,6 +1,6 @@
 # MCP EnterpriseDB Advanced Server 9.6
 
-Dual-instance FastMCP 3 server for EnterpriseDB Advanced Server 9.6 (EDBAS 9.6) with read-only controls, Redis-backed rate limiting, Okta OAuth, table analysis, settings & security diagnostics, and Prometheus metrics.
+Dual-instance FastMCP 3 server for EnterpriseDB Advanced Server 9.6 (EDBAS 9.6) with read-only controls, Redis-backed rate limiting, Okta OAuth, table analysis, settings & security diagnostics, session monitoring, and Prometheus metrics.
 
 ## What This Repository Provides
 
@@ -98,14 +98,15 @@ curl http://localhost:8086/readiness
 
 ## Available MCP Tools
 
-Each tool is auto-mirrored as `db_1_pg96_<name>` and `db_2_pg96_<name>`.
+The server exposes 30 tool families per instance, for 60 registered tools total. Each tool is
+auto-mirrored as `db_1_pg96_<name>` and `db_2_pg96_<name>`.
 
 ### Core / Diagnostics
 
 | Tool | Description |
 |---|---|
 | `db_n_pg96_ping` | Check accessibility and identity of an EDBAS 9.6 instance |
-| `db_n_pg96_exec_query` | Execute a user-supplied SELECT query (default 100 rows, max 1000) |
+| `db_n_pg96_exec_query` | Execute a user-supplied SELECT query with internal auto-pagination (1–5000 page size) and return the full result set |
 
 ### Performance Analysis
 
@@ -113,6 +114,7 @@ Each tool is auto-mirrored as `db_1_pg96_<name>` and `db_2_pg96_<name>`.
 |---|---|
 | `db_n_pg96_get_slow_statements` | Analysis of long-running SQL with ranked HypoPG index recommendations |
 | `db_n_pg96_blocking_sessions` | Identify locking, deadlocks, and wait events (⚠️ restricted for read-group callers) |
+| `db_n_pg96_session_counts` | Report max connections, active/idle session counts, utilization, headroom, and recommendations (⚠️ restricted for read-group callers) |
 | `db_n_pg96_analyze_data_model` | Data model health, 3NF compliance, and DB constraints (aggregates sub-tools) |
 
 ### Data Model Sub-Tools

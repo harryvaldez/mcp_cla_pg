@@ -58,7 +58,7 @@ class TestPingTool:
         registered = register_pg_tools(mock_mcp, mock_state)
         assert "db_1_pg96_ping" in registered
         assert "db_2_pg96_ping" in registered
-        assert len(registered) == 58
+        assert len(registered) == 60
 
     def test_ping_sql_contains_edb_columns(self):
         from src.tools.pg_tools import _PING_SQL
@@ -94,7 +94,7 @@ class TestExecQueryTool:
         state.write_guard = MagicMock()
 
         # Mock execute_query to return sample rows
-        async def mock_execute(instance_id, db, sql, max_rows=100):
+        async def mock_execute(instance_id, db, sql, max_rows=100, offset=0):
             return [
                 {"id": 1, "name": "alice"},
                 {"id": 2, "name": "bob"},
@@ -120,5 +120,5 @@ class TestExecQueryTool:
         from src.tools.pg_tools import register_pg_tools
 
         registered = register_pg_tools(mock_mcp, mock_state)
-        # 29 tools per instance x 2 instances = 58
-        assert len(registered) == 58
+        # 30 tools per instance x 2 instances = 60
+        assert len(registered) == 60
