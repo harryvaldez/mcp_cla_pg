@@ -1066,6 +1066,19 @@ class TestCheckServer:
         assert result["cpu_count"] is None
 
     @pytest.mark.asyncio
+    async def test_get_cpu_info_masks_internal_error_details(self):
+        conn = AsyncMock()
+        conn.fetchrow = AsyncMock(
+            side_effect=RuntimeError("db.internal.example password=super-secret")
+        )
+
+        result = await settings_security._get_cpu_info(conn)
+
+        assert result["note"] == "Could not read max_worker_processes"
+        assert "db.internal.example" not in result["note"]
+        assert "super-secret" not in result["note"]
+
+    @pytest.mark.asyncio
     async def test_check_server_returns_all_sections(self):
         """check_server returns cpu, memory, disk, filesystem_checked."""
         conn = AsyncMock()

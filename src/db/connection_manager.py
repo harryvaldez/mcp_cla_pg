@@ -2,15 +2,19 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 import ssl
 import threading
 import time
 from collections.abc import Callable
 from typing import Any
+from urllib.parse import quote
 
 import asyncpg
 
 from src.models import EdbInstanceConfig
+
+logger = logging.getLogger(__name__)
 
 
 class ConnectionManager:
@@ -36,6 +40,8 @@ class ConnectionManager:
         creds = self._secret_resolver(instance.auth_secret_ref)
         user = creds.get("username", "")
         password = creds.get("password", "")
+        user = quote(user, safe="")
+        password = quote(password, safe="")
         return (
             f"postgresql://{user}:{password}@"
             f"{instance.host}:{instance.port}/"
@@ -69,6 +75,8 @@ class ConnectionManager:
             max_size=instance.pool_max,
             command_timeout=instance.command_timeout_sec,
             ssl=self._build_ssl_context(instance),
+            # Defense in depth: even if a SQL guard is bypassed, sessions cannot write.
+            server_settings={"default_transaction_read_only": "on"},
         )
         self._pools[instance_id] = pool
         self._health[instance_id] = {
@@ -87,7 +95,7 @@ class ConnectionManager:
                 self._health[instance_id] = {
                     "state": "error",
                     "checked_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                    "error": str(exc),
+                    "error": type(exc).__name__,
                 }
 
     @contextlib.asynccontextmanager
@@ -103,15 +111,14 @@ class ConnectionManager:
                 # Lazy init makes tools resilient when startup pool init was skipped/failed.
                 pool = await self._initialize_pool_for_instance(instance_id, instance)
             except Exception as exc:
-                error_msg = str(exc)
                 self._health[instance_id] = {
                     "state": "error",
                     "checked_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                    "error": error_msg,
+                    "error": type(exc).__name__,
                 }
                 raise RuntimeError(
-                    f"Failed to initialize pool for instance '{instance_id}': {error_msg}"
-                ) from exc
+                    f"Failed to initialize pool for instance '{instance_id}'"
+                ) from None
 
         async with pool.acquire() as conn:
             yield conn
@@ -132,14 +139,17 @@ class ConnectionManager:
     ) -> list[dict[str, Any]]:
         """Execute a query and return rows as list of dicts.
 
-        When offset > 0, the SQL is wrapped as a subquery with OFFSET
-        to enable cursor-based pagination.
+        The SQL is wrapped as a subquery with LIMIT/OFFSET so the server
+        returns only the requested page.
         """
         if offset < 0:
             raise ValueError("INVALID_INPUT: offset must be >= 0")
         async with self.acquire(instance_id) as conn:
-            if offset > 0:
-                sql = f"SELECT * FROM ({sql}) AS _mcp_page OFFSET {offset}"
+            # Push LIMIT/OFFSET to the server so each page fetches only what it returns.
+            sql = (
+                f"SELECT * FROM ({sql}) AS _mcp_page "
+                f"OFFSET {int(offset)} LIMIT {int(max_rows)}"
+            )
             rows = await conn.fetch(sql, *args)
             return [dict(r) for r in rows[:max_rows]]
 
@@ -157,7 +167,7 @@ class ConnectionManager:
             self._health[instance_id] = {
                 "state": "disconnected",
                 "checked_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                "error": str(exc),
+                "error": type(exc).__name__,
             }
         return self._health[instance_id]
 
@@ -174,7 +184,7 @@ class ConnectionManager:
                 else {
                     "state": "error",
                     "checked_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                    "error": str(result),
+                    "error": type(result).__name__,
                 }
             )
             for instance_id, result in zip(tasks.keys(), results)
@@ -185,10 +195,10 @@ class ConnectionManager:
         diagnostics: dict[str, dict[str, Any]] = {}
         for instance_id, pool in self._pools.items():
             diagnostics[instance_id] = {
-                "min_size": pool._minsize,
-                "max_size": pool._maxsize,
-                "size": len(pool._holders),
-                "free": len(getattr(getattr(pool, "_queue", None), "_queue", [])),
+                "min_size": pool.get_min_size(),
+                "max_size": pool.get_max_size(),
+                "size": pool.get_size(),
+                "free": pool.get_idle_size(),
             }
         return diagnostics
 
@@ -196,11 +206,25 @@ class ConnectionManager:
         """Return list of enabled instance IDs."""
         return list(self._instances.keys())
 
+    def is_ssl_enforced(self) -> bool:
+        """Return whether every enabled database connection requires TLS."""
+        enforced_modes = {"require", "verify-ca", "verify-full"}
+        return bool(self._instances) and all(
+            instance.sslmode in enforced_modes for instance in self._instances.values()
+        )
+
     async def close_all_pools(self) -> None:
         """Gracefully close all connection pools."""
+        failures: list[str] = []
         for instance_id, pool in self._pools.items():
             try:
                 await pool.close()
             except Exception:
-                pass
+                failures.append(instance_id)
+                logger.error("Failed to close connection pool for instance %s", instance_id)
         self._pools.clear()
+        if failures:
+            failed_instances = ", ".join(failures)
+            raise RuntimeError(
+                f"Failed to close connection pools for instances: {failed_instances}"
+            )

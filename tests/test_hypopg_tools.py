@@ -169,10 +169,11 @@ class TestHypopgExplainWithVirtual:
         conn.fetchrow = AsyncMock(
             side_effect=Exception("syntax error")
         )
-        with pytest.raises(ToolError, match="EXPLAIN failed"):
+        with pytest.raises(ToolError, match="EXPLAIN failed") as exc:
             await hypopg_tools.hypopg_explain_with_virtual(
                 conn, "SELECT invalid"
             )
+        assert "syntax error" not in str(exc.value)
 
 
 class TestHypopgFindOptimalIndexes:

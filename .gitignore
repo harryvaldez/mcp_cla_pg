@@ -16,6 +16,14 @@ build/
 # Docker
 docker-compose.override.yml
 
+# Local query output scratch files
+/explain.sql
+/explain_*.json
+/query_results*.json
+/query_runner.ps1
+/run_q.ps1
+/n8n-exec-query-long-timeout - Copy.json
+
 # IDE
 .idea/
 .vscode/settings.json

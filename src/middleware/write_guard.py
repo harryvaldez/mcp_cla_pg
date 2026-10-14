@@ -5,7 +5,7 @@ import re
 from src.models import RuntimePolicy
 
 # Recognized non-write SQL verbs
-_READ_VERBS = {"SELECT", "EXPLAIN", "SHOW", "SET", "COPY"}
+_READ_VERBS = {"SELECT", "EXPLAIN", "SHOW"}
 # EDBAS Oracle-compatible verbs that may write
 _EDB_WRITE_VERBS = {"MERGE", "EXEC", "EXECUTE", "CALL"}
 

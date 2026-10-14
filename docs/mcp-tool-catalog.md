@@ -61,7 +61,7 @@ Check accessibility and identity of an EDBAS 9.6 database instance.
 
 | Error | Description |
 |---|---|
-| `PING_ERROR: ...` | Database connectivity or query execution failure |
+| `PING_ERROR: Database connectivity or query execution failure` | Database connectivity or query execution failure; internal details are masked |
 | `RATE_LIMIT_EXCEEDED` | Per-actor or global rate limit exceeded |
 | `AUTH_FAILED` | Missing or invalid authentication |
 
@@ -199,7 +199,7 @@ Execute a user-supplied SELECT query against an EDBAS 9.6 instance and return th
 | `INVALID_INPUT: cursor is malformed or expired` | Invalid cursor string |
 | `INVALID_INPUT: cursor offset out of bounds` | Cursor offset is negative, non-integer, or exceeds 1,000,000 |
 | `RATE_LIMIT_EXCEEDED` | Per-actor or global rate limit exceeded |
-| `TOOL_ERROR: ...` | Database or query execution failure |
+| `TOOL_ERROR: Internal operation failed` | Unexpected database or query execution failure; internal details are masked |
 
 ---
 

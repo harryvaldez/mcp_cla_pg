@@ -204,8 +204,8 @@ async def hypopg_create_virtual_indexes(
                             "indexdef": index_def,
                         }
                     )
-            except Exception as exc:
-                logger.warning("Failed to create virtual index %s: %s", index_def, exc)
+            except Exception:
+                logger.warning("Failed to create a virtual index candidate")
 
     return created
 
@@ -229,8 +229,8 @@ async def hypopg_explain_with_virtual(
     explain_sql = f"EXPLAIN (FORMAT JSON) {query_text}"
     try:
         row = await conn.fetchrow(explain_sql)
-    except Exception as exc:
-        raise ToolError(f"EXPLAIN failed: {exc}") from exc
+    except Exception:
+        raise ToolError("EXPLAIN failed") from None
 
     if not row or not row[0]:
         raise ToolError("EXPLAIN returned no plan")

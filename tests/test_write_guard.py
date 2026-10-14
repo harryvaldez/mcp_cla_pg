@@ -14,6 +14,7 @@ class TestWriteGuard:
             blocked_sql_patterns=[
                 r"(?i)\b(drop|alter|truncate|create)\b",
                 r"(?i)\b(pg_read_file|pg_write_file|pg_sleep)\b",
+                r"(?is)\bCOPY\b[^;]*?\b(?:TO|FROM)\s+PROGRAM\b",
                 r"(?i)\b(CREATE\s+(OR\s+REPLACE\s+)?(PACKAGE|TYPE\s+BODY|SYNONYM|DIRECTORY))\b",
             ],
         )
@@ -23,6 +24,9 @@ class TestWriteGuard:
         return RuntimePolicy(
             write_mode_default="allow",
             allowed_write_tools=["db_1_pg96_write"],
+            blocked_sql_patterns=[
+                r"(?is)\bCOPY\b[^;]*?\b(?:TO|FROM)\s+PROGRAM\b",
+            ],
         )
 
     def test_select_passes(self, policy_deny):
@@ -68,9 +72,20 @@ class TestWriteGuard:
         guard = WriteGuard(policy_deny)
         guard.enforce("db_1_pg96_ping", "EXPLAIN SELECT * FROM users")
 
-    def test_copy_passes(self, policy_deny):
+    def test_copy_denied_by_default(self, policy_deny):
         guard = WriteGuard(policy_deny)
-        guard.enforce("db_1_pg96_ping", "COPY (SELECT 1) TO STDOUT")
+        with pytest.raises(PermissionError):
+            guard.enforce("db_1_pg96_ping", "COPY (SELECT 1) TO STDOUT")
+
+    def test_set_denied_by_default(self, policy_deny):
+        guard = WriteGuard(policy_deny)
+        with pytest.raises(PermissionError):
+            guard.enforce("db_1_pg96_ping", "SET statement_timeout = '5s'")
+
+    def test_copy_to_program_blocked_even_when_writes_allowed(self, policy_allow):
+        guard = WriteGuard(policy_allow)
+        with pytest.raises(PermissionError):
+            guard.enforce("db_1_pg96_write", "COPY users TO PROGRAM 'malicious command'")
 
     def test_allowlisted_tool_insert_passes(self, policy_allow):
         guard = WriteGuard(policy_allow)

@@ -323,6 +323,34 @@ class TestExecQueryPagination:
         error_code = mock_state.audit_logger.log_event.call_args.kwargs.get("error_code")
         assert error_code == "TOOL_ERROR: pagination exceeded max_auto_pages"
 
+    @pytest.mark.asyncio
+    async def test_invalid_sql_is_authorized_rate_limited_and_audited(self, mock_state, mock_mcp):
+        tool_fn = self._get_tool(mock_state, mock_mcp)
+
+        with pytest.raises(ToolError, match="INVALID_INPUT: only SELECT queries are allowed"):
+            await tool_fn(sql_statement="UPDATE users SET name = 'x'")
+
+        mock_state.rate_limiter.allow.assert_called()
+        assert mock_state.session_manager.touch.called
+        assert mock_state.audit_logger.log_event.called
+        assert (
+            mock_state.audit_logger.log_event.call_args.kwargs["error_code"]
+            == "INVALID_INPUT: only SELECT queries are allowed"
+        )
+
+    @pytest.mark.asyncio
+    async def test_malformed_cursor_is_audited(self, mock_state, mock_mcp):
+        tool_fn = self._get_tool(mock_state, mock_mcp)
+
+        with pytest.raises(ToolError, match="INVALID_INPUT: cursor is malformed or expired"):
+            await tool_fn(sql_statement="SELECT 1", cursor="not-a-valid-cursor")
+
+        assert mock_state.audit_logger.log_event.called
+        assert (
+            mock_state.audit_logger.log_event.call_args.kwargs["error_code"]
+            == "INVALID_INPUT: cursor is malformed or expired"
+        )
+
     def test_offset_wraps_sql_as_subquery(self):
         """ConnectionManager.execute_query wraps SQL with OFFSET subquery."""
         from src.db.connection_manager import ConnectionManager
@@ -354,8 +382,8 @@ class TestExecQueryPagination:
 
         asyncio.run(_run())
 
-    def test_offset_zero_no_wrapping(self):
-        """When offset is 0, SQL is not wrapped."""
+    def test_offset_zero_still_pushes_limit_to_server(self):
+        """LIMIT is pushed to the server even for the first page."""
         from src.db.connection_manager import ConnectionManager
 
         manager = ConnectionManager.__new__(ConnectionManager)
@@ -377,9 +405,9 @@ class TestExecQueryPagination:
                     max_rows=100, offset=0,
                 )
                 call_sql = mock_conn.fetch.call_args[0][0]
-                # No wrapping when offset is 0
-                assert "_mcp_page" not in call_sql
-                assert "OFFSET" not in call_sql
+                # Always wrapped so LIMIT is pushed to the server
+                assert "_mcp_page" in call_sql
+                assert call_sql.endswith("OFFSET 0 LIMIT 100")
 
         asyncio.run(_run())
 

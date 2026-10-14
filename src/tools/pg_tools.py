@@ -47,6 +47,15 @@ MAX_TOTAL_ROWS = 10_000
 MAX_CURSOR_OFFSET = 1_000_000
 
 
+def _safe_tool_error_message(exc: Exception) -> str:
+    """Keep validation errors actionable without exposing internal exceptions."""
+    if isinstance(exc, ValueError):
+        message = str(exc)
+        if message.startswith("INVALID_INPUT: "):
+            return message
+    return "TOOL_ERROR: Internal operation failed"
+
+
 def _is_restricted_read_tool(
     tool_name: str,
     restricted_suffixes: list[str] | None = None,
@@ -158,81 +167,86 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
         auth_mode = getattr(auth_cfg, "auth_mode", "disabled") if auth_cfg else "disabled"
 
         # Okta OAuth: extract actor from JWT sub claim
-        if auth_mode == "okta" and ctx is not None:
+        if auth_mode == "okta":
+            if ctx is None:
+                raise PermissionError("AUTH_REQUIRED: Okta request context is unavailable")
             try:
                 token = ctx.access_token  # type: ignore[attr-defined]
-                if token is not None:
-                    claims = token.claims or {}
-                    actor = claims.get("sub", actor)
-                    scopes: list[str] = []
-                    raw_scopes = claims.get("scp", "")
-                    if isinstance(raw_scopes, str):
-                        scopes = raw_scopes.split()
-                    elif isinstance(raw_scopes, list):
-                        scopes = raw_scopes
+                if token is None:
+                    raise PermissionError("AUTH_REQUIRED: Okta access token is unavailable")
+                claims = token.claims or {}
+                actor = claims.get("sub", actor)
+                scopes: list[str] = []
+                raw_scopes = claims.get("scp", "")
+                if isinstance(raw_scopes, str):
+                    scopes = raw_scopes.split()
+                elif isinstance(raw_scopes, list):
+                    scopes = raw_scopes
 
-                    # Groups take priority over scopes (Okta groups claim)
-                    groups: list[str] = []
-                    raw_groups = claims.get("groups", [])
-                    if isinstance(raw_groups, list):
-                        groups = [str(g) for g in raw_groups]
+                # Groups take priority over scopes (Okta groups claim)
+                groups: list[str] = []
+                raw_groups = claims.get("groups", [])
+                if isinstance(raw_groups, list):
+                    groups = [str(g) for g in raw_groups]
 
-                    write_groups = getattr(auth_cfg, "okta_write_groups", ["mcp-writers"]) or []
-                    read_groups = getattr(auth_cfg, "okta_read_groups", ["mcp-readers"]) or []
-                    write_scopes = getattr(auth_cfg, "okta_write_scopes", ["mcp:write"]) or []
-                    read_scopes = getattr(auth_cfg, "okta_read_scopes", ["mcp:read"]) or []
+                write_groups = getattr(auth_cfg, "okta_write_groups", ["mcp-writers"]) or []
+                read_groups = getattr(auth_cfg, "okta_read_groups", ["mcp-readers"]) or []
+                write_scopes = getattr(auth_cfg, "okta_write_scopes", ["mcp:write"]) or []
+                read_scopes = getattr(auth_cfg, "okta_read_scopes", ["mcp:read"]) or []
 
-                    privilege = "none"
-                    # 1) Check Okta groups first (stronger signal)
-                    if any(g in write_groups for g in groups):
-                        privilege = "write"
-                    elif any(g in read_groups for g in groups):
-                        privilege = "read"
-                    # 2) Fall back to scopes if no group match
-                    elif any(s in write_scopes for s in scopes):
-                        privilege = "write"
-                    elif any(s in read_scopes for s in scopes):
-                        privilege = "read"
+                privilege = "none"
+                # 1) Check Okta groups first (stronger signal)
+                if any(g in write_groups for g in groups):
+                    privilege = "write"
+                elif any(g in read_groups for g in groups):
+                    privilege = "read"
+                # 2) Fall back to scopes if no group match
+                elif any(s in write_scopes for s in scopes):
+                    privilege = "write"
+                elif any(s in read_scopes for s in scopes):
+                    privilege = "read"
 
-                    matched_groups = [g for g in groups if g in write_groups or g in read_groups]
+                matched_groups = [g for g in groups if g in write_groups or g in read_groups]
 
-                    # Build restricted suffix list from auth config, falling back to defaults
-                    restricted_suffixes: list[str] | None = None
-                    if auth_cfg is not None:
-                        restricted_suffixes = list(
-                            getattr(auth_cfg, "okta_read_restricted_tool_suffixes", []) or []
-                        ) + list(getattr(auth_cfg, "okta_cross_session_tool_suffixes", []) or [])
-                        restricted_suffixes = restricted_suffixes or None
+                # Build restricted suffix list from auth config, falling back to defaults
+                restricted_suffixes: list[str] | None = None
+                if auth_cfg is not None:
+                    restricted_suffixes = list(
+                        getattr(auth_cfg, "okta_read_restricted_tool_suffixes", []) or []
+                    ) + list(getattr(auth_cfg, "okta_cross_session_tool_suffixes", []) or [])
+                    restricted_suffixes = restricted_suffixes or None
 
-                    is_allowed, deny_reason = evaluate_okta_tool_access(
-                        tool_name=tool,
-                        privilege_level=privilege,
-                        groups=groups,
-                        write_groups=write_groups,
-                        read_groups=read_groups,
-                        restricted_suffixes=restricted_suffixes,
-                    )
-                    if not is_allowed:
-                        raise PermissionError(deny_reason)
+                is_allowed, deny_reason = evaluate_okta_tool_access(
+                    tool_name=tool,
+                    privilege_level=privilege,
+                    groups=groups,
+                    write_groups=write_groups,
+                    read_groups=read_groups,
+                    restricted_suffixes=restricted_suffixes,
+                )
+                if not is_allowed:
+                    raise PermissionError(deny_reason)
 
-                    request_id = ctx.request_id
-                    state.session_manager.touch(actor, request_id)
-                    state.rate_limiter.allow(actor)
+                request_id = ctx.request_id
+                state.session_manager.touch(actor, request_id)
+                state.rate_limiter.allow(actor)
 
-                    return actor, {
-                        "auth_mode": "okta",
-                        "auth_subject": actor,
-                        "privilege_level": privilege,
-                        "scopes": scopes,
-                        "groups": groups,
-                        "authorization_decision": "allow",
-                        "group_match_result": {
-                            "group_authorization_enabled": True,
-                            "matched_groups": matched_groups,
-                        },
-                    }
+                return actor, {
+                    "auth_mode": "okta",
+                    "auth_subject": actor,
+                    "privilege_level": privilege,
+                    "scopes": scopes,
+                    "groups": groups,
+                    "authorization_decision": "allow",
+                    "group_match_result": {
+                        "group_authorization_enabled": True,
+                        "matched_groups": matched_groups,
+                    },
+                }
+            except PermissionError:
+                raise
             except Exception:
-                pass  # fall through to disabled/error
+                raise PermissionError("AUTH_REQUIRED: Okta authorization failed") from None
 
         # Azure Entra / disabled: pass-through
         request_id = ctx.request_id if ctx is not None else str(uuid.uuid4())
@@ -303,10 +317,11 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
             started = time.time()
             decision, error_code, row_count = "allow", None, 0
             _auth_ctx = None
-            schema_name_v = validate_schema_name(schema_name)
-            table_name_v = validate_table_name(table_name)
-            validate_database_name(database_name)
             try:
+                schema_name_v = validate_schema_name(schema_name)
+                table_name_v = validate_table_name(table_name)
+                validate_database_name(database_name)
+
                 actor, _auth_ctx = await _resolve_actor_and_authorize(
                     actor=actor, tool=_t, required_privilege="read", ctx=ctx
                 )
@@ -334,7 +349,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 app_state.denied_requests += 1
                 raise
             except Exception as exc:
-                decision, error_code = f"TOOL_ERROR: {exc}"
+                decision, error_code = "deny", _safe_tool_error_message(exc)
                 app_state.denied_requests += 1
                 raise ToolError(error_code)
             finally:
@@ -386,9 +401,10 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
             started = time.time()
             decision, error_code, row_count = "allow", None, 0
             _auth_ctx = None
-            schema_name_v = validate_schema_name(schema_name)
-            validate_database_name(database_name)
             try:
+                schema_name_v = validate_schema_name(schema_name)
+                validate_database_name(database_name)
+
                 actor, _auth_ctx = await _resolve_actor_and_authorize(
                     actor=actor, tool=_t, required_privilege="read", ctx=ctx
                 )
@@ -414,7 +430,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 app_state.denied_requests += 1
                 raise
             except Exception as exc:
-                decision, error_code = f"TOOL_ERROR: {exc}"
+                decision, error_code = "deny", _safe_tool_error_message(exc)
                 app_state.denied_requests += 1
                 raise ToolError(error_code)
             finally:
@@ -466,8 +482,9 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
             started = time.time()
             decision, error_code, row_count = "allow", None, 0
             _auth_ctx = None
-            database_name_v = validate_database_name(database_name)
             try:
+                database_name_v = validate_database_name(database_name)
+
                 actor, _auth_ctx = await _resolve_actor_and_authorize(
                     actor=actor, tool=_t, required_privilege="read", ctx=ctx
                 )
@@ -485,7 +502,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 app_state.denied_requests += 1
                 raise
             except Exception as exc:
-                decision, error_code = f"TOOL_ERROR: {exc}"
+                decision, error_code = "deny", _safe_tool_error_message(exc)
                 app_state.denied_requests += 1
                 raise ToolError(error_code)
             finally:
@@ -632,9 +649,9 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                         extra={"tool": _tool, "instance": _instance, "error": error_code},
                     )
                 raise
-            except Exception as exc:
+            except Exception:
                 decision = "deny"
-                error_code = f"PING_ERROR: {exc}"
+                error_code = "PING_ERROR: Database connectivity or query execution failure"
                 app_state.denied_requests += 1
                 if ctx is not None:
                     await ctx.error(
@@ -701,12 +718,13 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 decision, error_code, row_count = "allow", None, 0
                 _auth_ctx = None
 
-                database_name = validate_database_name(database_name)
-                max_combinations = validate_positive_int(
-                    max_combinations, "max_combinations", 1, 100
-                )
 
                 try:
+                    database_name = validate_database_name(database_name)
+                    max_combinations = validate_positive_int(
+                        max_combinations, "max_combinations", 1, 100
+                    )
+
                     actor, _auth_ctx = await _resolve_actor_and_authorize(
                         actor=actor, tool=_tool, required_privilege="read", ctx=ctx
                     )
@@ -845,7 +863,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     app_state.denied_requests += 1
                     raise
                 except Exception as exc:
-                    decision, error_code = f"TOOL_ERROR: {exc}"
+                    decision, error_code = "deny", _safe_tool_error_message(exc)
                     app_state.denied_requests += 1
                     raise ToolError(error_code)
                 finally:
@@ -903,9 +921,10 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 decision, error_code, row_count = "allow", None, 0
                 _auth_ctx = None
 
-                database_name = validate_database_name(database_name)
 
                 try:
+                    database_name = validate_database_name(database_name)
+
                     actor, _auth_ctx = await _resolve_actor_and_authorize(
                         actor=actor, tool=_tool, required_privilege="read", ctx=ctx
                     )
@@ -1067,7 +1086,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     app_state.denied_requests += 1
                     raise
                 except Exception as exc:
-                    decision, error_code = f"TOOL_ERROR: {exc}"
+                    decision, error_code = "deny", _safe_tool_error_message(exc)
                     app_state.denied_requests += 1
                     raise ToolError(error_code)
                 finally:
@@ -1126,9 +1145,10 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 decision, error_code, row_count = "allow", None, 0
                 _auth_ctx = None
 
-                database_name = validate_database_name(database_name)
 
                 try:
+                    database_name = validate_database_name(database_name)
+
                     actor, _auth_ctx = await _resolve_actor_and_authorize(
                         actor=actor, tool=_tool, required_privilege="read", ctx=ctx
                     )
@@ -1310,7 +1330,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     app_state.denied_requests += 1
                     raise
                 except Exception as exc:
-                    decision, error_code = f"TOOL_ERROR: {exc}"
+                    decision, error_code = "deny", _safe_tool_error_message(exc)
                     app_state.denied_requests += 1
                     raise ToolError(error_code)
                 finally:
@@ -1372,10 +1392,11 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 decision, error_code, row_count = "allow", None, 0
                 _auth_ctx = None
 
-                database_name = validate_database_name(database_name)
-                schema_name = validate_schema_name(schema_name)
 
                 try:
+                    database_name = validate_database_name(database_name)
+                    schema_name = validate_schema_name(schema_name)
+
                     actor, _auth_ctx = await _resolve_actor_and_authorize(
                         actor=actor, tool=_tool, required_privilege="read", ctx=ctx
                     )
@@ -1634,7 +1655,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     app_state.denied_requests += 1
                     raise
                 except Exception as exc:
-                    decision, error_code = f"TOOL_ERROR: {exc}"
+                    decision, error_code = "deny", _safe_tool_error_message(exc)
                     app_state.denied_requests += 1
                     raise ToolError(error_code)
                 finally:
@@ -1688,9 +1709,10 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 started = time.time()
                 decision, error_code, row_count = "allow", None, 0
                 _auth_ctx = None
-                database_name = validate_database_name(database_name)
-                schema_name = validate_schema_name(schema_name)
                 try:
+                    database_name = validate_database_name(database_name)
+                    schema_name = validate_schema_name(schema_name)
+
                     actor, _auth_ctx = await _resolve_actor_and_authorize(
                         actor=actor, tool=_tool, required_privilege="read", ctx=ctx
                     )
@@ -1734,7 +1756,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     app_state.denied_requests += 1
                     raise
                 except Exception as exc:
-                    decision, error_code = f"TOOL_ERROR: {exc}"
+                    decision, error_code = "deny", _safe_tool_error_message(exc)
                     app_state.denied_requests += 1
                     raise ToolError(error_code)
                 finally:
@@ -1788,9 +1810,10 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 started = time.time()
                 decision, error_code, row_count = "allow", None, 0
                 _auth_ctx = None
-                database_name = validate_database_name(database_name)
-                schema_name = validate_schema_name(schema_name)
                 try:
+                    database_name = validate_database_name(database_name)
+                    schema_name = validate_schema_name(schema_name)
+
                     actor, _auth_ctx = await _resolve_actor_and_authorize(
                         actor=actor, tool=_tool, required_privilege="read", ctx=ctx
                     )
@@ -1862,7 +1885,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     app_state.denied_requests += 1
                     raise
                 except Exception as exc:
-                    decision, error_code = f"TOOL_ERROR: {exc}"
+                    decision, error_code = "deny", _safe_tool_error_message(exc)
                     app_state.denied_requests += 1
                     raise ToolError(error_code)
                 finally:
@@ -1918,9 +1941,10 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     started = time.time()
                     decision, error_code, row_count = "allow", None, 0
                     _auth_ctx = None
-                    database_name = validate_database_name(database_name)
-                    schema_name = validate_schema_name(schema_name)
                     try:
+                        database_name = validate_database_name(database_name)
+                        schema_name = validate_schema_name(schema_name)
+
                         actor, _auth_ctx = await _resolve_actor_and_authorize(
                             actor=actor, tool=_tool, required_privilege="read", ctx=ctx
                         )
@@ -1993,7 +2017,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                         app_state.denied_requests += 1
                         raise
                     except Exception as exc:
-                        decision, error_code = f"TOOL_ERROR: {exc}"
+                        decision, error_code = "deny", _safe_tool_error_message(exc)
                         app_state.denied_requests += 1
                         raise ToolError(error_code)
                     finally:
@@ -2053,9 +2077,10 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 started = time.time()
                 decision, error_code, row_count = "allow", None, 0
                 _auth_ctx = None
-                database_name = validate_database_name(database_name)
-                schema_name = validate_schema_name(schema_name)
                 try:
+                    database_name = validate_database_name(database_name)
+                    schema_name = validate_schema_name(schema_name)
+
                     actor, _auth_ctx = await _resolve_actor_and_authorize(
                         actor=actor, tool=_tool, required_privilege="read", ctx=ctx
                     )
@@ -2106,7 +2131,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     app_state.denied_requests += 1
                     raise
                 except Exception as exc:
-                    decision, error_code = f"TOOL_ERROR: {exc}"
+                    decision, error_code = "deny", _safe_tool_error_message(exc)
                     app_state.denied_requests += 1
                     raise ToolError(error_code)
                 finally:
@@ -2160,9 +2185,10 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 started = time.time()
                 decision, error_code, row_count = "allow", None, 0
                 _auth_ctx = None
-                database_name = validate_database_name(database_name)
-                schema_name = validate_schema_name(schema_name)
                 try:
+                    database_name = validate_database_name(database_name)
+                    schema_name = validate_schema_name(schema_name)
+
                     actor, _auth_ctx = await _resolve_actor_and_authorize(
                         actor=actor, tool=_tool, required_privilege="read", ctx=ctx
                     )
@@ -2215,7 +2241,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     app_state.denied_requests += 1
                     raise
                 except Exception as exc:
-                    decision, error_code = f"TOOL_ERROR: {exc}"
+                    decision, error_code = "deny", _safe_tool_error_message(exc)
                     app_state.denied_requests += 1
                     raise ToolError(error_code)
                 finally:
@@ -2269,9 +2295,10 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 started = time.time()
                 decision, error_code, row_count = "allow", None, 0
                 _auth_ctx = None
-                database_name = validate_database_name(database_name)
-                schema_name = validate_schema_name(schema_name)
                 try:
+                    database_name = validate_database_name(database_name)
+                    schema_name = validate_schema_name(schema_name)
+
                     actor, _auth_ctx = await _resolve_actor_and_authorize(
                         actor=actor, tool=_tool, required_privilege="read", ctx=ctx
                     )
@@ -2333,7 +2360,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     app_state.denied_requests += 1
                     raise
                 except Exception as exc:
-                    decision, error_code = f"TOOL_ERROR: {exc}"
+                    decision, error_code = "deny", _safe_tool_error_message(exc)
                     app_state.denied_requests += 1
                     raise ToolError(error_code)
                 finally:
@@ -2387,9 +2414,10 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 started = time.time()
                 decision, error_code, row_count = "allow", None, 0
                 _auth_ctx = None
-                database_name = validate_database_name(database_name)
-                query_text = validate_query_text(query_text)
                 try:
+                    database_name = validate_database_name(database_name)
+                    query_text = validate_query_text(query_text)
+
                     actor, _auth_ctx = await _resolve_actor_and_authorize(
                         actor=actor, tool=_tool, required_privilege="read", ctx=ctx
                     )
@@ -2416,7 +2444,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     app_state.denied_requests += 1
                     raise
                 except Exception as exc:
-                    decision, error_code = f"TOOL_ERROR: {exc}"
+                    decision, error_code = "deny", _safe_tool_error_message(exc)
                     app_state.denied_requests += 1
                     raise ToolError(error_code)
                 finally:
@@ -2475,9 +2503,10 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 started = time.time()
                 decision, error_code, row_count = "allow", None, 0
                 _auth_ctx = None
-                database_name = validate_database_name(database_name)
-                query_text = validate_query_text(query_text)
                 try:
+                    database_name = validate_database_name(database_name)
+                    query_text = validate_query_text(query_text)
+
                     actor, _auth_ctx = await _resolve_actor_and_authorize(
                         actor=actor, tool=_tool, required_privilege="read", ctx=ctx
                     )
@@ -2495,7 +2524,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     app_state.denied_requests += 1
                     raise
                 except Exception as exc:
-                    decision, error_code = f"TOOL_ERROR: {exc}"
+                    decision, error_code = "deny", _safe_tool_error_message(exc)
                     app_state.denied_requests += 1
                     raise ToolError(error_code)
                 finally:
@@ -2552,12 +2581,13 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 started = time.time()
                 decision, error_code, row_count = "allow", None, 0
                 _auth_ctx = None
-                database_name = validate_database_name(database_name)
-                query_text = validate_query_text(query_text)
-                max_combinations = validate_positive_int(
-                    max_combinations, "max_combinations", 1, 100
-                )
                 try:
+                    database_name = validate_database_name(database_name)
+                    query_text = validate_query_text(query_text)
+                    max_combinations = validate_positive_int(
+                        max_combinations, "max_combinations", 1, 100
+                    )
+
                     actor, _auth_ctx = await _resolve_actor_and_authorize(
                         actor=actor, tool=_tool, required_privilege="read", ctx=ctx
                     )
@@ -2577,7 +2607,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     app_state.denied_requests += 1
                     raise
                 except Exception as exc:
-                    decision, error_code = f"TOOL_ERROR: {exc}"
+                    decision, error_code = "deny", _safe_tool_error_message(exc)
                     app_state.denied_requests += 1
                     raise ToolError(error_code)
                 finally:
@@ -2641,32 +2671,38 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 started = time.time()
                 decision, error_code, row_count = "allow", None, 0
                 _auth_ctx = None
-                sql_v = validate_sql_statement(sql_statement)
-                database_name_v = validate_database_name(database_name)
-                max_rows_v = validate_positive_int(max_rows, "max_rows", 1, 5000)
-
-                # Resolve starting offset from cursor
-                current_offset = 0
-                if cursor is not None and cursor != "":
-                    try:
-                        cursor_state = CursorState.decode(cursor)
-                        current_offset = cursor_state.offset
-                    except Exception:
-                        raise ToolError("INVALID_INPUT: cursor is malformed or expired")
-
-                if (
-                    not isinstance(current_offset, int)
-                    or current_offset < 0
-                    or current_offset > MAX_CURSOR_OFFSET
-                ):
-                    raise ToolError("INVALID_INPUT: cursor offset out of bounds")
-
+                sql_v = sql_statement
                 try:
                     actor, _auth_ctx = await _resolve_actor_and_authorize(
                         actor=actor, tool=_tool, required_privilege="read", ctx=ctx
                     )
                     app_state.rate_limiter.allow(actor)
                     app_state.session_manager.touch(actor, request_id)
+
+                    try:
+                        sql_v = validate_sql_statement(sql_statement)
+                        database_name_v = validate_database_name(database_name)
+                        max_rows_v = validate_positive_int(max_rows, "max_rows", 1, 5000)
+                    except ValueError as exc:
+                        raise ToolError(str(exc)) from exc
+
+                    current_offset = 0
+                    if cursor is not None and cursor != "":
+                        try:
+                            cursor_state = CursorState.decode(cursor)
+                            current_offset = cursor_state.offset
+                        except Exception as exc:
+                            raise ToolError(
+                                "INVALID_INPUT: cursor is malformed or expired"
+                            ) from exc
+
+                    if (
+                        not isinstance(current_offset, int)
+                        or current_offset < 0
+                        or current_offset > MAX_CURSOR_OFFSET
+                    ):
+                        raise ToolError("INVALID_INPUT: cursor offset out of bounds")
+
                     app_state.write_guard.enforce(_tool, sql_v)
 
                     all_rows: list[dict[str, Any]] = []
@@ -2728,7 +2764,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     app_state.denied_requests += 1
                     raise
                 except Exception as exc:
-                    decision, error_code = "deny", f"TOOL_ERROR: {exc}"
+                    decision, error_code = "deny", _safe_tool_error_message(exc)
                     app_state.denied_requests += 1
                     raise ToolError(error_code)
                 finally:
@@ -2803,11 +2839,12 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 started = time.time()
                 decision, error_code, row_count = "allow", None, 0
                 _auth_ctx = None
-                schema_name_v = validate_schema_name(schema_name)
-                table_name_v = validate_table_name(table_name)
-                database_name_v = validate_database_name(database_name)
                 results: dict[str, Any] = {}
                 try:
+                    schema_name_v = validate_schema_name(schema_name)
+                    table_name_v = validate_table_name(table_name)
+                    database_name_v = validate_database_name(database_name)
+
                     actor, _auth_ctx = await _resolve_actor_and_authorize(
                         actor=actor, tool=_tool, required_privilege="read", ctx=ctx
                     )
@@ -2852,7 +2889,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     app_state.denied_requests += 1
                     raise
                 except Exception as exc:
-                    decision, error_code = f"TOOL_ERROR: {exc}"
+                    decision, error_code = "deny", _safe_tool_error_message(exc)
                     app_state.denied_requests += 1
                     raise ToolError(error_code)
                 finally:
@@ -2995,10 +3032,11 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 started = time.time()
                 decision, error_code, row_count = "allow", None, 0
                 _auth_ctx = None
-                schema_name_v = validate_schema_name(schema_name)
-                database_name_v = validate_database_name(database_name)
                 results: dict[str, Any] = {}
                 try:
+                    schema_name_v = validate_schema_name(schema_name)
+                    database_name_v = validate_database_name(database_name)
+
                     actor, _auth_ctx = await _resolve_actor_and_authorize(
                         actor=actor, tool=_tool, required_privilege="read", ctx=ctx
                     )
@@ -3035,7 +3073,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     app_state.denied_requests += 1
                     raise
                 except Exception as exc:
-                    decision, error_code = f"TOOL_ERROR: {exc}"
+                    decision, error_code = "deny", _safe_tool_error_message(exc)
                     app_state.denied_requests += 1
                     raise ToolError(error_code)
                 finally:
@@ -3146,10 +3184,11 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 started = time.time()
                 decision, error_code, row_count = "allow", None, 0
                 _auth_ctx = None
-                schema_name_v = validate_schema_name(schema_name)
-                relkind_v = validate_object_type(object_type)
-                validate_database_name(database_name)
                 try:
+                    schema_name_v = validate_schema_name(schema_name)
+                    relkind_v = validate_object_type(object_type)
+                    validate_database_name(database_name)
+
                     actor, _auth_ctx = await _resolve_actor_and_authorize(
                         actor=actor, tool=_t, required_privilege="read", ctx=ctx
                     )
@@ -3178,7 +3217,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     app_state.denied_requests += 1
                     raise
                 except Exception as exc:
-                    decision, error_code = f"TOOL_ERROR: {exc}"
+                    decision, error_code = "deny", _safe_tool_error_message(exc)
                     app_state.denied_requests += 1
                     raise ToolError(error_code)
                 finally:
@@ -3249,8 +3288,9 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                 started = time.time()
                 decision, error_code, row_count = "allow", None, 0
                 _auth_ctx = None
-                database_name_v = validate_database_name(database_name)
                 try:
+                    database_name_v = validate_database_name(database_name)
+
                     actor, _auth_ctx = await _resolve_actor_and_authorize(
                         actor=actor,
                         tool=_tool,
@@ -3418,7 +3458,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     app_state.denied_requests += 1
                     raise
                 except Exception as exc:
-                    decision, error_code = f"TOOL_ERROR: {exc}"
+                    decision, error_code = "deny", _safe_tool_error_message(exc)
                     app_state.denied_requests += 1
                     raise ToolError(error_code)
                 finally:
@@ -3539,7 +3579,7 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                     app_state.denied_requests += 1
                     raise
                 except Exception as exc:
-                    decision, error_code = f"TOOL_ERROR: {exc}"
+                    decision, error_code = "deny", _safe_tool_error_message(exc)
                     app_state.denied_requests += 1
                     raise ToolError(error_code)
                 finally:

@@ -1122,8 +1122,8 @@ async def _get_cpu_info(conn: Any) -> dict[str, Any]:
         )
         if row and row["cpu_count"] is not None:
             result["cpu_count"] = int(row["cpu_count"])
-    except Exception as exc:
-        result["note"] = f"Could not read max_worker_processes: {exc}"
+    except Exception:
+        result["note"] = "Could not read max_worker_processes"
 
     # Secondary: attempt to read /proc/cpuinfo for model info (requires superuser)
     try:
@@ -1206,8 +1206,8 @@ async def _get_memory_info(conn: Any) -> dict[str, Any]:
             "showing pg_settings memory parameters as indicators"
         )
         result["pg_memory_indicators"] = indicators
-    except Exception as exc:
-        result["note"] = f"Memory info unavailable: {exc}"
+    except Exception:
+        result["note"] = "Memory info unavailable"
 
     return result
 

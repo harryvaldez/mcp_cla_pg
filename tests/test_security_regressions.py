@@ -8,9 +8,12 @@ Covers:
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
 import yaml
+from fastmcp.exceptions import ToolError
 
 from src.models import AuthConfig
 from src.tools.pg_tools import register_pg_tools
@@ -89,3 +92,103 @@ class TestCrossSessionRestriction:
         cross = data["auth"]["okta_cross_session_tool_suffixes"]
         assert "_pg96_blocking_sessions" in cross
         assert "_pg96_session_counts" in cross
+
+
+class TestAuditedToolFailures:
+    @pytest.mark.asyncio
+    async def test_previously_unwrapped_validation_failure_is_audited_once(self):
+        state = _mock_state()
+        tools = {}
+        mcp = MagicMock()
+
+        def capture_tool(**kwargs):
+            def decorator(fn):
+                tools[kwargs["name"]] = fn
+                return fn
+
+            return decorator
+
+        mcp.tool.side_effect = capture_tool
+        register_pg_tools(mcp, state)
+
+        with pytest.raises(ToolError, match="INVALID_INPUT: schema_name"):
+            await tools["db_1_pg96_list_objects"](
+                schema_name="invalid-schema", app_state=state
+            )
+
+        state.audit_logger.log_event.assert_called_once()
+        assert (
+            state.audit_logger.log_event.call_args.kwargs["error_code"]
+            == "INVALID_INPUT: schema_name must be alphanumeric with underscores"
+        )
+
+    @pytest.mark.asyncio
+    async def test_unexpected_database_error_is_masked_from_tool_response(self):
+        state = _mock_state()
+        state.connection_manager.acquire = MagicMock(
+            side_effect=RuntimeError("db.internal.example password=super-secret")
+        )
+        tools = {}
+        mcp = MagicMock()
+
+        def capture_tool(**kwargs):
+            def decorator(fn):
+                tools[kwargs["name"]] = fn
+                return fn
+
+            return decorator
+
+        mcp.tool.side_effect = capture_tool
+        register_pg_tools(mcp, state)
+
+        with pytest.raises(ToolError, match="TOOL_ERROR: Internal operation failed") as exc:
+            await tools["db_1_pg96_list_objects"](app_state=state)
+
+        assert "db.internal.example" not in str(exc.value)
+        assert "super-secret" not in str(exc.value)
+        state.audit_logger.log_event.assert_called_once()
+        assert (
+            state.audit_logger.log_event.call_args.kwargs["error_code"]
+            == "TOOL_ERROR: Internal operation failed"
+        )
+
+
+class TestOktaAuthorizationFailsClosed:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "ctx",
+        [
+            None,
+            SimpleNamespace(
+                request_id="request-id",
+                debug=AsyncMock(),
+                warning=AsyncMock(),
+                access_token=SimpleNamespace(
+                    claims={"sub": "unprivileged-user", "groups": [], "scp": "openid"}
+                ),
+            ),
+            SimpleNamespace(
+                request_id="request-id", debug=AsyncMock(), warning=AsyncMock()
+            ),
+        ],
+    )
+    async def test_missing_or_unprivileged_okta_context_is_denied(self, ctx):
+        state = _mock_state()
+        state.auth = AuthConfig(auth_mode="okta")
+        tools = {}
+        mcp = MagicMock()
+
+        def capture_tool(**kwargs):
+            def decorator(fn):
+                tools[kwargs["name"]] = fn
+                return fn
+
+            return decorator
+
+        mcp.tool.side_effect = capture_tool
+        register_pg_tools(mcp, state)
+
+        with pytest.raises(PermissionError, match="AUTH_REQUIRED|AUTHZ_DENIED"):
+            await tools["db_1_pg96_ping"](ctx=ctx, app_state=state)
+
+        state.connection_manager.fetch_single_row.assert_not_called()

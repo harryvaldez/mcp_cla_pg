@@ -51,6 +51,18 @@ class TestServerStartup:
         assert "status" in data
         assert "instances" in data
 
+    def test_health_endpoint_does_not_expose_instance_errors(self, client, monkeypatch):
+        from src.db.connection_manager import ConnectionManager
+
+        async def failing_healthcheck(self, instance_id):
+            raise RuntimeError("database host and password details")
+
+        monkeypatch.setattr(ConnectionManager, "healthcheck_instance", failing_healthcheck)
+        response = client.get("/health")
+        assert response.status_code == 200
+        assert "database host and password details" not in response.text
+        assert "RuntimeError" in response.text
+
     def test_readiness_endpoint(self, client):
         """GET /readiness returns ready status."""
         response = client.get("/readiness")
@@ -67,6 +79,7 @@ class TestServerStartup:
         assert "write_mode" in data
         assert "enabled_instances" in data
         assert "registered_tools" in data
+        assert data["ssl_enforced"] is False
 
     def test_metrics_endpoint(self, client):
         """GET /metrics returns Prometheus text."""

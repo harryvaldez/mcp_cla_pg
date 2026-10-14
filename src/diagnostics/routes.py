@@ -51,7 +51,7 @@ def register_diagnostics_routes(mcp: Any, state: Any) -> None:
                 "state": result.get("state", "unknown"),
                 "instance_number": instance_number,
                 "checked_at": result.get("checked_at"),
-                "error": result.get("error"),
+                "error": "check_failed" if result.get("error") else None,
             }
 
         tasks = {iid: _check(iid) for iid in instances}
@@ -63,7 +63,7 @@ def register_diagnostics_routes(mcp: Any, state: Any) -> None:
                     "state": "error",
                     "instance_number": None,
                     "checked_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                    "error": str(result),
+                    "error": type(result).__name__,
                 }
             else:
                 instance_states[iid] = result
@@ -132,7 +132,7 @@ def register_diagnostics_routes(mcp: Any, state: Any) -> None:
                 "blocked_patterns_count": len(state.policy.blocked_sql_patterns),
                 "policy_checksum": policy_checksum,
                 "last_secret_refresh_utc": getattr(state, "last_secret_refresh_utc", ""),
-                "ssl_enforced": True,
+                "ssl_enforced": state.connection_manager.is_ssl_enforced(),
                 "mask_error_details": getattr(state, "mask_error_details", True),
                 "stateless_http": getattr(state, "stateless_http", True),
                 "enabled_instances": state.connection_manager.list_enabled_instances(),
