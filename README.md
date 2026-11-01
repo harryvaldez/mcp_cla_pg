@@ -1,10 +1,10 @@
 # MCP EnterpriseDB Advanced Server 9.6
 
-Dual-instance FastMCP 3 server for EnterpriseDB Advanced Server 9.6 (EDBAS 9.6) with read-only controls, Redis-backed rate limiting, Okta OAuth, table analysis, settings & security diagnostics, session monitoring, and Prometheus metrics.
+Dual-instance FastMCP 4 (Prefect) server for EnterpriseDB Advanced Server 9.6 (EDBAS 9.6) with read-only controls, Redis-backed rate limiting, Okta OAuth, table analysis, settings & security diagnostics, session monitoring, and Prometheus metrics.
 
 ## What This Repository Provides
 
-- FastMCP 3 service exposing MCP tools over HTTP at `/mcp`
+- FastMCP 4 service exposing MCP tools over HTTP at `/mcp`
 - Dual-instance EDBAS 9.6 support (primary and secondary with auto-mirrored tools via closure binding)
 - Read-only SQL policy controls with EDBAS-specific DDL blocking
 - **Redis-backed distributed rate limiting** (per-actor + global token buckets; local in-process fallback)
@@ -197,8 +197,7 @@ auto-mirrored as `db_1_pg96_<name>` and `db_2_pg96_<name>`.
 | `FASTMCP_TOOL_ENABLE_FLAGS_JSON` | — | JSON object of per-tool enable flags (overrides policy) |
 | `FASTMCP_INSTANCE_TOOL_ENABLE_FLAGS_JSON` | — | Nested JSON object of per-instance, per-tool enable flags |
 | `OKTA_DOMAIN` | — | Okta org domain (required when `auth_mode=okta`) |
-| `OKTA_CLIENT_ID` | — | Okta OIDC app client ID (required when `auth_mode=okta`) |
-| `OKTA_AUTH_SERVER_ID` | `default` | Okta authorization server ID |
+| `OKTA_CLIENT_ID` | — | Okta OIDC app client ID (required when `auth_mode=okta`) |\n| `OKTA_AUTH_SERVER_ID` | `default` | Okta authorization server ID |
 
 ## Documentation Links
 
