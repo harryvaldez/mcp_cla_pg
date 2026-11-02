@@ -201,8 +201,7 @@ This server targets FastMCP 4 (MCP Python SDK v2; requires `pydantic>=2.12` and 
 | `FASTMCP_TOOL_ENABLE_FLAGS_JSON` | — | JSON object of per-tool enable flags (overrides policy) |
 | `FASTMCP_INSTANCE_TOOL_ENABLE_FLAGS_JSON` | — | Nested JSON object of per-instance, per-tool enable flags |
 | `OKTA_DOMAIN` | — | Okta org domain (required when `auth_mode=okta`) |
-| `OKTA_CLIENT_ID` | — | Okta OIDC app client ID (required when `auth_mode=okta`) |
-| `OKTA_AUTH_SERVER_ID` | `default` | Okta authorization server ID |
+| `OKTA_CLIENT_ID` | — | Okta OIDC app client ID (required when `auth_mode=okta`) |\n| `OKTA_AUTH_SERVER_ID` | `default` | Okta authorization server ID |
 
 ## Documentation Links
 

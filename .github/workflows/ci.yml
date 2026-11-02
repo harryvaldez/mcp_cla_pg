@@ -16,6 +16,8 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: ruff check .
       - run: pytest -q
+        env:
+          FASTMCP_AUDIT_PATH: ${{ runner.temp }}/audit.log
 
   docker:
     needs: test

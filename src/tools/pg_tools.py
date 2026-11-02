@@ -2692,6 +2692,10 @@ def register_pg_tools(mcp: FastMCP, state: AppState) -> list[str]:
                             cursor_state = CursorState.decode(cursor)
                             current_offset = cursor_state.offset
                         except Exception as exc:
+                            if "offset must be a non-negative" in str(exc.__cause__):
+                                raise ToolError(
+                                    "INVALID_INPUT: cursor offset out of bounds"
+                                ) from exc
                             raise ToolError(
                                 "INVALID_INPUT: cursor is malformed or expired"
                             ) from exc
