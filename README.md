@@ -177,6 +177,10 @@ auto-mirrored as `db_1_pg96_<name>` and `db_2_pg96_<name>`.
 
 > All diagnostics endpoints are unauthenticated by design.
 
+### FastMCP 4 Notes
+
+This server targets FastMCP 4 (MCP Python SDK v2; requires `pydantic>=2.12` and `starlette>=1.0.1`). It does not use `ctx.elicit`, `ctx.sample`, `ctx.set_state`, or other APIs removed or era-gated in 4.0, so no tool code changes were needed.
+
 ## Environment Variables
 
 | Variable | Default | Purpose |
@@ -207,5 +211,5 @@ auto-mirrored as `db_1_pg96_<name>` and `db_2_pg96_<name>`.
 - [Database setup guide](docs/database-setup-guide.md) — Privilege requirements and ROLE configuration
 - [Docker runtime guide](docs/run-mcp-server-with-docker.md) — Docker deployment instructions with Redis setup
 - [Okta authentication setup guide](docs/okta-authentication-setup.md) — End-to-end Okta OAuth + group setup for MCP access
-- [FastMCP 3 Documentation](https://gofastmcp.com/) — FastMCP framework documentation
+- [FastMCP Documentation](https://gofastmcp.com/) — FastMCP framework documentation
 - [EDBAS Documentation](https://www.enterprisedb.com/docs/) — EnterpriseDB Advanced Server docs

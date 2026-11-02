@@ -4,7 +4,7 @@ Guidance for AI coding agents working in this repository.
 
 ## Project Snapshot
 
-- Python 3.11+ FastMCP 3 service for dual-instance EnterpriseDB Advanced Server 9.6.
+- Python 3.11+ FastMCP 4 service for dual-instance EnterpriseDB Advanced Server 9.6.
 - Strong read-only posture with controlled-write guardrails, rate limiting, and diagnostics.
 - Runtime entry point: [src/server.py](src/server.py). Module-level `app = build_app()` for uvicorn.
 - Tool naming: `db_{n}_pg96_{toolname}` — auto-mirrored across all enabled instances via closure binding in a registration loop.
@@ -146,7 +146,7 @@ The `_tool`, `_instance`, and `_instance_number` parameters use default argument
 - **Custom routes are unauthenticated** by design — do not place sensitive data in `/health`, `/readiness`, `/metrics`, or `/security`.
 - **Rate limiter has both per-actor and global buckets** — if global blocks, the actor token is refunded. Both must pass.
 
-## FastMCP 3 Patterns
+## FastMCP 4 Patterns
 
 - `@mcp.tool(name=..., annotations=ToolAnnotations(readOnlyHint=True), timeout=10.0)` for tools.
 - `@mcp.custom_route("/path", methods=["GET"])` for diagnostics. Uses `starlette.requests.Request` and `starlette.responses.JSONResponse`.
@@ -172,5 +172,5 @@ The `_tool`, `_instance`, and `_instance_number` parameters use default argument
 - [Tool catalog](docs/mcp-tool-catalog.md) — canonical tool contracts
 - [Docker runtime guide](docs/run-mcp-server-with-docker.md)
 - [Implementation plan](plan/feature-postgres96-fastmcp-deployment-plan-1.md)
-- [FastMCP 3 docs](https://gofastmcp.com/)
+- [FastMCP 4 docs](https://gofastmcp.com/)
 - [Security policy](SECURITY.md)
