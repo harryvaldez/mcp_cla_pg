@@ -28,7 +28,7 @@ Check accessibility and identity of an EDBAS 9.6 database instance.
 | `ip_address` | string | Server IP address from `host(inet_server_addr())` |
 | `current_utc_time` | string | Current UTC timestamp (ISO 8601) |
 
-### FastMCP 3 Annotations
+### FastMCP 4 Annotations
 
 | Annotation | Value |
 |---|---|
@@ -127,7 +127,7 @@ Execute a user-supplied SELECT query against an EDBAS 9.6 instance and return th
 { "rows": [...], "row_count": 1072, "page": 3, "nextCursor": null, "truncated": false, ... }
 ```
 
-### FastMCP 3 Annotations
+### FastMCP 4 Annotations
 
 | Annotation | Value |
 |---|---|
@@ -229,7 +229,7 @@ Retrieves long-running SQL statements from `pg_stat_statements`, reporting execu
 | `Issue Priority` | string | Derived priority depending on query length counts (`High` or `Low`) |
 | `Recommendations/Fixes` | array | Recommendations and execution plan breakdowns |
 
-### FastMCP 3 Annotations
+### FastMCP 4 Annotations
 
 | Annotation | Value |
 |---|---|
@@ -261,7 +261,7 @@ Analyzes `pg_stat_activity` targeting locking, waits, queue length, and transact
 
 Complies with standard Performance Analysis Schema reporting lock event resolutions natively.
 
-### FastMCP 3 Annotations
+### FastMCP 4 Annotations
 
 | Annotation | Value |
 |---|---|
@@ -315,7 +315,7 @@ when utilization is high, headroom is low, or idle-in-transaction sessions are p
 
 The `Recommendations/Fixes` array is populated with warnings for near-capacity conditions, idle-in-transaction risk, and idle connection buildup.
 
-### FastMCP 3 Annotations
+### FastMCP 4 Annotations
 
 | Annotation | Value |
 |---|---| 
@@ -401,7 +401,7 @@ Detect columns ending in `_id` that lack a declared foreign key constraint. Infe
 | `Recommendations/Fixes` | object | `{schema, total_candidates, with_existing_target, missing_fk_candidates, note}` |
 | `missing_fk_candidates` | array | `[{table_name, column_name, data_type, inferred_referenced_table, referenced_table_exists, suggestion}]` |
 
-### FastMCP 3 Annotations
+### FastMCP 4 Annotations
 
 | Annotation | Value |
 |---|---|
@@ -495,7 +495,7 @@ Parses a SELECT query and creates candidate virtual indexes via HypoPG. Extracts
 | `query_analysis` | object | Parsed table/column references from the query |
 | `count` | integer | Number of virtual indexes created |
 
-### FastMCP 3 Annotations
+### FastMCP 4 Annotations
 
 | Annotation | Value |
 |---|---|
@@ -535,7 +535,7 @@ Runs EXPLAIN (FORMAT JSON) for a query using the current session's virtual index
 | `plan` | object | Raw JSON plan from EXPLAIN |
 | `total_cost` | float | Total cost extracted from the plan |
 
-### FastMCP 3 Annotations
+### FastMCP 4 Annotations
 
 | Annotation | Value |
 |---|---|
@@ -578,7 +578,7 @@ Finds the optimal HypoPG virtual index combination for a query. Captures baselin
 | `ranked_plans` | array | Ranked plans (ascending by cost) with virtual_indexes_used, total_cost, cost_improvement_pct |
 | `best_recommendation` | object | The single best plan with virtual_indexes, total_cost, improvement_pct |
 
-### FastMCP 3 Annotations
+### FastMCP 4 Annotations
 
 | Annotation | Value |
 |---|---|
@@ -744,7 +744,7 @@ Orchestrates a comprehensive database settings and security analysis across 3 do
 
 **Output:** `Category: "Maintenance"`, `Overall Assessment`, `Issues` array with 3 entries: "DB Parameters Misconfiguration", "Database Performance Metrics", "Security Vulnerabilities". Each entry contains `Issue`, `Impacted Metrics`, `Issue Priority`, `Recommendations/Fixes`.
 
-### FastMCP 3 Annotations
+### FastMCP 4 Annotations
 
 | Annotation | Value |
 |---|---|
@@ -842,7 +842,7 @@ Retrieve CPU, memory, and disk utilization for a filesystem path from the EDBAS 
 
 **Tags:** `read-only`, `diagnostics` | **Timeout:** 30s
 
-**FastMCP 3 Annotations:**
+**FastMCP 4 Annotations:**
 
 | Annotation | Value |
 |---|---|

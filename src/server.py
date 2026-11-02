@@ -1,4 +1,4 @@
-"""EnterpriseDB Advanced Server 9.6 FastMCP 3 Server.
+"""EnterpriseDB Advanced Server 9.6 FastMCP 4 Server.
 
 Dual-instance MCP server exposing database tools over HTTP.
 Entry point: python -m src.server
@@ -86,7 +86,7 @@ class AppState:
 
 
 def build_app() -> Any:
-    """Build and return the FastMCP 3 ASGI application.
+    """Build and return the FastMCP 4 ASGI application.
 
     Returns:
         ASGI app from mcp.http_app() with dual-instance tools, diagnostics,
@@ -166,7 +166,6 @@ def build_app() -> Any:
     else:
         state.okta_enabled = False
 
-    # Initialize FastMCP 3 server with lifespan (+ optional auth)
     mcp = FastMCP(
         "pg96-edb-dual-instance",
         version="1.0.0",
