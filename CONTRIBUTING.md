@@ -28,7 +28,7 @@
 ## Code Style
 
 - Use type hints for all function signatures
-- Use FastMCP 3 idiomatic patterns (see AGENTS.md)
+- Use FastMCP 4 idiomatic patterns (see AGENTS.md)
 - Follow existing patterns in the codebase
 - Keep functions focused and single-purpose
 - Use descriptive variable names

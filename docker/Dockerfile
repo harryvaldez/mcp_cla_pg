@@ -14,7 +14,7 @@ COPY pyproject.toml /app/pyproject.toml
 COPY src /app/src
 
 RUN python -m pip install --upgrade pip wheel && \
-    pip install --prefix=/install --ignore-installed "packaging>=24.0" "fastmcp[server]>=3.2.0" && \
+    pip install --prefix=/install --ignore-installed "packaging>=24.0" "fastmcp>=4.0.0" && \
     pip install --prefix=/install .
 
 FROM python:3.14-slim AS runtime

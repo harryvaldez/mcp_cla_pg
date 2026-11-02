@@ -50,7 +50,7 @@ Structured JSON audit events are written to `/var/log/mcp/audit.log` for every t
 
 ### Error Masking
 
-FastMCP 3 `mask_error_details=True` is enabled in production to prevent internal error information leakage.
+FastMCP 4 `mask_error_details=True` is enabled in production to prevent internal error information leakage.
 
 ### Stateless HTTP
 

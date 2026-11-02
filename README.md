@@ -1,10 +1,10 @@
 # MCP EnterpriseDB Advanced Server 9.6
 
-Dual-instance FastMCP 3 server for EnterpriseDB Advanced Server 9.6 (EDBAS 9.6) with read-only controls, Redis-backed rate limiting, Okta OAuth, table analysis, settings & security diagnostics, session monitoring, and Prometheus metrics.
+Dual-instance FastMCP 4 (Prefect) server for EnterpriseDB Advanced Server 9.6 (EDBAS 9.6) with read-only controls, Redis-backed rate limiting, Okta OAuth, table analysis, settings & security diagnostics, session monitoring, and Prometheus metrics.
 
 ## What This Repository Provides
 
-- FastMCP 3 service exposing MCP tools over HTTP at `/mcp`
+- FastMCP 4 service exposing MCP tools over HTTP at `/mcp`
 - Dual-instance EDBAS 9.6 support (primary and secondary with auto-mirrored tools via closure binding)
 - Read-only SQL policy controls with EDBAS-specific DDL blocking
 - **Redis-backed distributed rate limiting** (per-actor + global token buckets; local in-process fallback)
@@ -177,6 +177,10 @@ auto-mirrored as `db_1_pg96_<name>` and `db_2_pg96_<name>`.
 
 > All diagnostics endpoints are unauthenticated by design.
 
+### FastMCP 4 Notes
+
+This server targets FastMCP 4 (MCP Python SDK v2; requires `pydantic>=2.12` and `starlette>=1.0.1`). It does not use `ctx.elicit`, `ctx.sample`, `ctx.set_state`, or other APIs removed or era-gated in 4.0, so no tool code changes were needed.
+
 ## Environment Variables
 
 | Variable | Default | Purpose |
@@ -208,5 +212,5 @@ auto-mirrored as `db_1_pg96_<name>` and `db_2_pg96_<name>`.
 - [Database setup guide](docs/database-setup-guide.md) — Privilege requirements and ROLE configuration
 - [Docker runtime guide](docs/run-mcp-server-with-docker.md) — Docker deployment instructions with Redis setup
 - [Okta authentication setup guide](docs/okta-authentication-setup.md) — End-to-end Okta OAuth + group setup for MCP access
-- [FastMCP 3 Documentation](https://gofastmcp.com/) — FastMCP framework documentation
+- [FastMCP Documentation](https://gofastmcp.com/) — FastMCP framework documentation
 - [EDBAS Documentation](https://www.enterprisedb.com/docs/) — EnterpriseDB Advanced Server docs
